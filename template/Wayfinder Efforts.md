@@ -67,6 +67,12 @@ const MAP_LABEL = {
 // ⇒ ทั้งสองไฟล์ต้องประกาศตัวแปรชื่อ `LS_KEY` เหมือนกัน ห้ามยัดสตริงลง setItem ตรง ๆ
 // (คอมเมนต์บรรทัดนี้จงใจไม่เขียนรูปประกาศเต็ม ๆ ให้ครบ — regex ของ doctor จะได้ไม่คว้าคอมเมนต์ไปแทนของจริง)
 const LS_KEY = "wayfinder-effort-tickets:selected"
+// localStorage ของ Obsidian เป็นของ **ทั้งแอป ไม่ใช่ของ vault** — เปิดสอง vault พร้อมกันเมื่อไหร่
+// ทั้งคู่อ่านเขียนช่องเดียวกัน ⇒ หน้าใบของ vault หนึ่งประกาศ **ชื่อ effort ของอีก vault** ออกมา
+// (เจอตอนถ่ายภาพหน้าจอลง README: vault เปล่าที่สร้างใหม่โชว์ชื่อ effort จาก vault งานจริง)
+// ⇒ ต่อชื่อ vault ท้ายคีย์ ให้แต่ละ vault มีช่องของตัวเอง · ทั้งสองไฟล์ต้องคิดคีย์แบบเดียวกัน
+// และ **ห้ามส่ง `LS_KEY` ดิบ ๆ เข้า localStorage อีก** — `doctor.mjs` ตรวจทั้งสองข้อนี้
+const lsKey = () => `${LS_KEY}:${app.vault.getName()}`
 const SELECT_EVENT = "wayfinder-effort-select" // ยิงหลังเขียนคีย์ ให้ pane ที่เปิดค้างสลับ effort ตามทันที
 const TICKETS_NOTE = "Wayfinder Effort Tickets"
 
@@ -325,7 +331,7 @@ dv.container.innerHTML = !rows.length
 // ── 6. คลิกตัวเลขใบ → เปิดหน้าใบของ effort นั้น ─────────────────────────────
 // ผูกหลังวาดเสร็จเสมอ: `innerHTML` สร้าง element ใหม่ทั้งชุด listener ที่ผูกไว้ก่อนหน้าตายไปด้วย
 const goTickets = (key) => {
-  try { localStorage.setItem(LS_KEY, key) } catch (_) {} // ① เขียนคีย์ก่อน — หน้าใบอ่านตอนวาด
+  try { localStorage.setItem(lsKey(), key) } catch (_) {} // ① เขียนคีย์ก่อน — หน้าใบอ่านตอนวาด
   window.dispatchEvent(new CustomEvent(SELECT_EVENT))    // ② ปลุก pane ที่เปิดหน้าใบค้างอยู่ให้สลับตาม
   app.workspace.openLinkText(TICKETS_NOTE, "")           // ③ ค่อยเปิด/โฟกัสโน้ต
 }

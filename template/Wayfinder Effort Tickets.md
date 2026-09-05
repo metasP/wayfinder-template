@@ -35,6 +35,12 @@
 // ⇒ ไม่มีใครรู้ว่ามันเสีย · `_tools/doctor.mjs` จึงดึงสตริงนี้จากทั้งสองไฟล์แล้วเทียบ
 //    regex ที่ doctor ใช้จับ **ชื่อตัวแปร** ⇒ ทั้งสองไฟล์ต้องประกาศเป็น `const LS_KEY = "..."` เหมือนกัน
 const LS_KEY = "wayfinder-effort-tickets:selected"
+// localStorage ของ Obsidian เป็นของ **ทั้งแอป ไม่ใช่ของ vault** — เปิดสอง vault พร้อมกันเมื่อไหร่
+// ทั้งคู่อ่านเขียนช่องเดียวกัน ⇒ หน้าใบของ vault หนึ่งประกาศ **ชื่อ effort ของอีก vault** ออกมา
+// (เจอตอนถ่ายภาพหน้าจอลง README: vault เปล่าที่สร้างใหม่โชว์ชื่อ effort จาก vault งานจริง)
+// ⇒ ต่อชื่อ vault ท้ายคีย์ ให้แต่ละ vault มีช่องของตัวเอง · ทั้งสองไฟล์ต้องคิดคีย์แบบเดียวกัน
+// และ **ห้ามส่ง `LS_KEY` ดิบ ๆ เข้า localStorage อีก** — `doctor.mjs` ตรวจทั้งสองข้อนี้
+const lsKey = () => `${LS_KEY}:${app.vault.getName()}`
 
 // event ที่ `Wayfinder Efforts` ยิงต่อจากการเขียนคีย์ — ทำให้หน้านี้ที่เปิดค้างอยู่ใน pane อื่น
 // สลับ effort ตามทันที แทนที่จะต้องรอ dataview วาดบล็อกใหม่ (หรือปิดเปิดหน้า)
@@ -203,8 +209,8 @@ for (const r of rows) r.block = blockState(r)
 rows.sort((a, b) => (a.days ?? 0) - (b.days ?? 0)) // ขยับล่าสุดขึ้นก่อน — เหมือน `Wayfinder Efforts`
 
 // ── 4. state — selection อยู่ใน localStorage ตัวเดียว ที่เหลือเป็นของชั่วคราว ──
-const readLS = () => { try { return localStorage.getItem(LS_KEY) } catch (_) { return null } }
-const writeLS = (k) => { try { localStorage.setItem(LS_KEY, k) } catch (_) {} }
+const readLS = () => { try { return localStorage.getItem(lsKey()) } catch (_) { return null } }
+const writeLS = (k) => { try { localStorage.setItem(lsKey(), k) } catch (_) {} }
 
 let selected = readLS()
 // effort ที่จำไว้อาจถูกลบ/เปลี่ยนชื่อไปแล้ว — บอกตรง ๆ ดีกว่าเปิดมาเจอหน้าว่างแบบไม่มีเหตุผล

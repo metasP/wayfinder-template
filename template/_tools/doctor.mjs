@@ -237,6 +237,18 @@ try {
       same ? `"${a}"` : `Efforts=${show(a)} · Effort Tickets=${show(b)}`)
   }
 
+  // localStorage ของ Obsidian เป็นของ **ทั้งแอป** ไม่ใช่ของ vault ⇒ คีย์ที่ไม่ผูกชื่อ vault ทำให้
+  // สอง vault ที่เปิดพร้อมกันใช้ช่องเดียวกัน — หน้าใบของ vault หนึ่งประกาศชื่อ effort ของอีก vault
+  // ออกมาให้เห็นเต็ม ๆ · นั่นคือการรั่วข้าม vault ไม่ใช่แค่ความรำคาญ ⇒ ตรวจสองชั้น: มีตัวคิดคีย์ที่
+  // ผูกชื่อ vault จริง **และ** ไม่มีใครส่ง `LS_KEY` ดิบเข้า localStorage หลงเหลืออยู่
+  const nsKey = (b) => /^const lsKey = \(\) =>/m.test(b) && /app\.vault\.getName\(\)/.test(b)
+  const rawLS = (b) => /localStorage\.(get|set)Item\(\s*LS_KEY\s*[,)]/.test(b)
+  const nsOk = nsKey(eff) && nsKey(tix) && !rawLS(eff) && !rawLS(tix)
+  check(nsOk, 'คีย์ localStorage ผูกกับชื่อ vault (ไม่รั่วข้าม vault)',
+    nsOk ? 'ทั้งสองหน้าใช้ lsKey() ที่ต่อ app.vault.getName()'
+      : `Efforts=${nsKey(eff) ? 'ผูกแล้ว' : 'ยังไม่ผูก'}${rawLS(eff) ? ' +ยังมี LS_KEY ดิบ' : ''}`
+        + ` · Effort Tickets=${nsKey(tix) ? 'ผูกแล้ว' : 'ยังไม่ผูก'}${rawLS(tix) ? ' +ยังมี LS_KEY ดิบ' : ''}`)
+
   // ── coupling ตัวที่สาม: `TICKETS_NOTE` → ชื่อโน้ตจริงบนดิสก์ ─────────────────
   // สองข้อบนเทียบ **ไฟล์กับไฟล์** (ค่าเดียวกันประกาศไว้สองที่ ต้องตรงกัน) · ข้อนี้อยู่ **คนละฝั่ง
   // ของสัญญา** — เทียบ *สตริงกับชื่อไฟล์ที่มีอยู่จริง* ⇒ `sharedConst()` ใช้ซ้ำไม่ได้ ต้องดึงเอง
