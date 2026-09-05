@@ -599,8 +599,11 @@ if (parts.has('hook') || has('wire-hook')) {
   const cmd = `${script} 2>/dev/null || true`
   let added = 0
   for (const matcher of ['Write|Edit', 'Bash']) {
-    const block = settings.hooks.PostToolUse.find((b) => b.matcher === matcher)
-    const mine = (block?.hooks ?? []).filter((h) => typeof h?.command === 'string' && h.command.includes(script))
+    // `.find` เอา **บล็อกแรก**ที่ matcher ตรง — แต่ matcher เดียวกันมีได้หลายบล็อก และมักมี:
+    // เครื่องที่ลงปลั๊กอินอื่นไว้จะมี `Bash` หลายอันเรียงกัน ของ wayfinder ไปอยู่ท้าย ⇒ มองบล็อกแรก
+    // แล้วไม่เจอ ⇒ เติมซ้ำ (ลงในบล็อกของคนอื่นด้วย) · ต้องกวาดทุกบล็อกที่ matcher ตรง
+    const blocks = settings.hooks.PostToolUse.filter((b) => b.matcher === matcher)
+    const mine = blocks.flatMap((b) => (b.hooks ?? []).filter((h) => typeof h?.command === 'string' && h.command.includes(script)))
     if (mine.length) {
       // ต่อไว้แล้ว — ไม่แตะของเขา แต่ห้ามเงียบถ้าสภาพผิดปกติ (กติกาข้อ 5 ของ INSTALL)
       if (mine.length > 1)
@@ -612,7 +615,7 @@ if (parts.has('hook') || has('wire-hook')) {
       continue
     }
     const entry = { type: 'command', command: cmd, timeout: 15, statusMessage: 'Committing wayfinder-vault...' }
-    if (block) block.hooks.push(entry)
+    if (blocks.length) (blocks[0].hooks ??= []).push(entry)
     else settings.hooks.PostToolUse.push({ matcher, hooks: [entry] })
     added++
   }
