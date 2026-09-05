@@ -25,6 +25,25 @@ The format itself — frontmatter, statuses, blockers, and the three dashboards 
 vault as its own README. **That is the only copy of it** (written in Thai), and this page
 deliberately does not repeat any of it.
 
+## What it looks like
+
+Two of the three dashboards, reading a vault with three efforts and fourteen tickets in it.
+
+![The Dashboard — every open ticket in the vault, grouped by what you can actually do about it](docs/screenshots/dashboard.png)
+
+**Ticket level.** What is pickable right now; what is blocked by another ticket you own — and
+by which one; what is waiting on someone outside, with the reason and the date it started
+waiting. Nothing here is a status you set by hand: *blocked* is computed from the blockers
+every time the query runs, so closing the blocker moves the ticket to Frontier on its own.
+
+![The Efforts view — one row per map, with progress, live ticket counts and staleness](docs/screenshots/efforts.png)
+
+**Map level.** One row per effort with how far it has got, the counts behind that number, and
+when it last moved. Paused and finished efforts fold away below rather than competing with the
+work in front of you.
+
+The dashboards are written in Thai.
+
 ## What this repo is — and what it is not
 
 This repo is an **installer and template**. It is **not** a vault, and your plans do not live
