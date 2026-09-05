@@ -81,11 +81,19 @@ cd ~/Documents/Git/wayfinder-template
 ## อัปเดตยังไง
 
 ```bash
+npx https://github.com/metasP/wayfinder-template
+```
+
+**คำสั่งเดียวกับตอนติดตั้งเป๊ะ** · จะได้อันไหนเป็นการตัดสินของ *vault* ไม่ใช่ของคุณ — vault ที่มี manifest
+อยู่แล้วจะเข้าโหมด update และ **ไม่ถามอะไรเลย** เพราะคำตอบตอนติดตั้งถูกจดไว้แล้ว · เติม `--plan`
+ถ้าอยากเห็นก่อนว่ามันจะทำอะไรบ้าง
+
+หรือถ้ามี clone ไว้ในเครื่อง จะ pull แล้วบอก agent ว่า *"update wayfinder"* ก็ได้ผลเหมือนกัน:
+
+```bash
 cd ~/Documents/Git/wayfinder-template
 git pull
 ```
-
-แล้วบอก agent ว่า *"update wayfinder"* · รอบนี้มันไม่ถามอะไรเลย เพราะคำตอบตอนติดตั้งถูกจดไว้แล้ว
 
 - `template/` ถูกทับ **ทั้งชุด all-or-nothing** — โน้ตใน vault เช็คค่าคงที่ข้ามไฟล์กันเอง
   อัปเดตครึ่ง ๆ กลาง ๆ = vault พัง

@@ -202,12 +202,12 @@ A migration is therefore two commands rather than one: install, then update.
 
 ## Update
 
-> **A vault that predates this repo cannot start here.** It has no manifest, and its own
-> `_tools/bootstrap.mjs` does not know `--from` — the second command below exits with an
-> unknown-flag error before it writes anything. Run
-> [Installing onto a vault you already have](#installing-onto-a-vault-you-already-have)
-> once first: that run replaces `_tools/` whatever you answered, and every update from then
-> on is the command below.
+```bash
+npx https://github.com/metasP/wayfinder-template
+```
+
+The same command as install, because the mode is not something you type. Or run it from a
+clone you keep:
 
 ```bash
 cd ~/Documents/Git/wayfinder-template && git pull
@@ -216,6 +216,12 @@ cd ~/Documents/Git/wayfinder-template && git pull
 ```bash
 node ~/Documents/Git/wayfinder-vault/_tools/bootstrap.mjs --from ~/Documents/Git/wayfinder-template
 ```
+
+> **That last command is the one a vault predating this repo cannot run.** It has no manifest,
+> and its own `_tools/bootstrap.mjs` does not know `--from`, so it exits on an unknown flag
+> before writing anything. The `npx` command above has no such problem — with no manifest to
+> read it installs instead, questions and all. See
+> [Installing onto a vault you already have](#installing-onto-a-vault-you-already-have).
 
 **Update asks nothing.** The five answers from install are recorded in the vault's manifest
 (`.wayfinder-template.json` — which pieces, where the skills went, which vault path was

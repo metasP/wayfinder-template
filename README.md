@@ -89,12 +89,20 @@ The full walkthrough, including every question it asks and how to answer, is in
 ## Update
 
 ```bash
+npx https://github.com/metasP/wayfinder-template
+```
+
+**The same command that installs it.** Which of the two you get is the vault's decision, not
+yours: a vault that already carries a manifest is updated and **asked nothing**, because your
+answers from install time are on record. Add `--plan` to see what an update would do before it
+does anything.
+
+Or, if you keep a clone, pull it and tell the agent *"update wayfinder"* — same result:
+
+```bash
 cd ~/Documents/Git/wayfinder-template
 git pull
 ```
-
-Then tell the agent: *"update wayfinder."* It asks nothing — your answers from install time
-are on record.
 
 - `template/` is replaced **as a single unit**, all or nothing. The vault's notes cross-check
   each other's constants, so a half-applied update is a broken vault.

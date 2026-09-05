@@ -182,11 +182,11 @@ node ~/Documents/Git/wayfinder-vault/_tools/doctor.mjs
 
 ## อัปเดต
 
-> **vault ที่เกิดก่อน repo นี้ เริ่มจากตรงนี้ไม่ได้** — มันยังไม่มี manifest และ
-> `_tools/bootstrap.mjs` ของมันเองไม่รู้จัก `--from` ⇒ คำสั่งที่สองข้างล่างจะจบด้วย
-> unknown flag ตั้งแต่ก่อนเขียนอะไรสักไบต์ · ให้รัน
-> [ติดตั้งลง vault ที่มีอยู่ก่อนแล้ว](#ติดตั้งลง-vault-ที่มีอยู่ก่อนแล้ว) หนึ่งครั้งก่อน
-> — รอบนั้นเขียนทับ `_tools/` ไม่ว่าตอบอะไร แล้วหลังจากนั้นทุกการอัปเดตคือคำสั่งข้างล่างนี้
+```bash
+npx https://github.com/metasP/wayfinder-template
+```
+
+คำสั่งเดียวกับตอนติดตั้ง เพราะโหมดไม่ใช่สิ่งที่คุณพิมพ์ · หรือจะรันจาก clone ที่เก็บไว้ก็ได้:
 
 ```bash
 cd ~/Documents/Git/wayfinder-template && git pull
@@ -195,6 +195,11 @@ cd ~/Documents/Git/wayfinder-template && git pull
 ```bash
 node ~/Documents/Git/wayfinder-vault/_tools/bootstrap.mjs --from ~/Documents/Git/wayfinder-template
 ```
+
+> **คำสั่งสุดท้ายนั้นคือคำสั่งที่ vault ซึ่งเกิดก่อน repo นี้รันไม่ได้** — มันยังไม่มี manifest และ
+> `_tools/bootstrap.mjs` ของมันเองไม่รู้จัก `--from` ⇒ จบด้วย unknown flag ตั้งแต่ก่อนเขียนอะไรสักไบต์
+> · คำสั่ง `npx` ข้างบนไม่มีปัญหานี้ — ไม่มี manifest ให้อ่าน มันก็ติดตั้งให้พร้อมถาม 5 ข้อตามปกติ
+> · ดู [ติดตั้งลง vault ที่มีอยู่ก่อนแล้ว](#ติดตั้งลง-vault-ที่มีอยู่ก่อนแล้ว)
 
 **update ไม่ถามอะไรเลย** — คำตอบ 5 ข้อจากตอน install ถูกจดไว้ใน manifest ของ vault
 (`.wayfinder-template.json`: ติดตั้งชิ้นไหน · สกิลไปลงที่ไหน · เรนเดอร์ path ไหนเข้าไป)
