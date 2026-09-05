@@ -179,7 +179,15 @@ if (!REPO) {
 const SRC = join(REPO, 'template')
 const SKILLS_SRC = join(REPO, 'skills')
 
-const templateFiles = await walk(SRC).catch(() => die(`ไม่มี ${SRC}`))
+// npm **ตัดไฟล์ชื่อ `.gitignore` ออกจาก tarball เสมอ** (กฎเฉพาะชื่อนี้ — `.obsidian/*` รอด)
+// ⇒ ต้นทางเก็บไว้ในชื่อ `_gitignore` แล้วแมปกลับตอนวาง · ไม่งั้น vault ที่ติดตั้งผ่าน `npx`
+// เกิดมาโดยไม่มี `.gitignore` แล้ว `autocommit.sh` (`git add -A -uall`) จะลาก
+// `.claude/worktrees/` ทั้งชุดเข้า commit — อาการเดียวกับที่ไฟล์นั้นเขียนเตือนตัวเองไว้
+// แมปที่ **rel ปลายทาง** ไม่ใช่ต้นทาง ⇒ manifest ของ vault ที่ติดตั้งไปแล้วไม่ต้องย้ายคีย์
+const SRC_ALIAS = { '.gitignore': '_gitignore' }
+const srcOf = (rel) => SRC_ALIAS[rel] ?? rel
+const templateFiles = (await walk(SRC).catch(() => die(`ไม่มี ${SRC}`)))
+  .map((rel) => (rel === '_gitignore' ? '.gitignore' : rel))
 const skillFiles = await walk(SKILLS_SRC).catch(() => [])
 const templateSha = await run('git', ['-C', REPO, 'rev-parse', 'HEAD'])
   .then((r) => r.stdout.trim(), () => null)
@@ -491,10 +499,10 @@ for (const rel of wanted) {
       if (carried) { seeded[rel] = carried; stats.keptSeed++ }
       continue
     }
-    seeded[rel] = await place(join(SRC, rel), dest, rel, { seed: true })
+    seeded[rel] = await place(join(SRC, srcOf(rel)), dest, rel, { seed: true })
     stats.seeded++
   } else {
-    files[rel] = await place(join(SRC, rel), dest, rel)
+    files[rel] = await place(join(SRC, srcOf(rel)), dest, rel)
   }
 }
 // update: ชิ้นที่คราวนี้ไม่ได้เลือก (หรือ part หายไป) ยังต้องอยู่ใน manifest ไม่งั้นจะโดนลบ
@@ -818,7 +826,7 @@ const verify = (ok, label, detail = '') => { if (!ok) bad++; log(`  ${ok ? '✅'
 for (const rel of RENDER_EXEMPT) {
   if (!(rel in files)) continue
   const src = await readFile(join(TARGET, rel), 'utf8').catch(() => '')
-  const srcT = await readFile(join(SRC, rel), 'utf8').catch(() => '')
+  const srcT = await readFile(join(SRC, srcOf(rel)), 'utf8').catch(() => '')
   if (!srcT.includes('__VAULT__')) continue
   // ถูกเรนเดอร์ทับเมื่อไหร่ = update รอบหน้าเลิกเรนเดอร์ทุกไฟล์โดยไม่มีอะไรเตือน
   verify(src.includes('__VAULT__'), `${rel}: โทเคน __VAULT__ ในตัวสคริปต์ยังอยู่`)
@@ -838,7 +846,7 @@ for (const rel of RENDER_EXEMPT) {
   const hardcoded = []
   for (const rel of templateFiles) {
     if (!isSeed(rel) || !rel.endsWith('.md')) continue
-    const line = await readFile(join(SRC, rel), 'utf8').catch(() => '').then((t) => t.match(/^status_since:.*$/m)?.[0])
+    const line = await readFile(join(SRC, srcOf(rel)), 'utf8').catch(() => '').then((t) => t.match(/^status_since:.*$/m)?.[0])
     if (line && !line.includes(DATE_TOKEN)) hardcoded.push(`${rel} → ${line.trim()}`)
   }
   verify(hardcoded.length === 0, `ต้นฉบับ seed-once ใช้ ${DATE_TOKEN} ไม่ใช่วันที่ตายตัว`, hardcoded.join(' · '))

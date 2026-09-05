@@ -18,3 +18,16 @@
 
 # เผื่อวันหนึ่งมี tooling ของ repo เอง (ตอนนี้ยังไม่มี — repo นี้ไม่มี build step)
 node_modules/
+
+# ── กฎที่ `template/.gitignore` เคยทำให้ repo นี้ ตอนมันยังชื่อนั้น ──────────────
+# ไฟล์นั้นชื่อ `template/_gitignore` แล้ว เพราะ **npm ตัดไฟล์ชื่อ `.gitignore` ออกจาก
+# tarball เสมอ** ⇒ ติดตั้งผ่าน `npx` แล้ว vault จะเกิดมาโดยไม่มีมัน
+# พอเปลี่ยนชื่อ git ก็ไม่อ่านมันเป็นกฎของ repo นี้อีก — กฎที่ repo นี้ต้องใช้เองจึงย้ายมาอยู่ตรงนี้
+# (ผลพลอยได้: npm ไม่เอากฎในนั้นไปใช้ตอน pack อีกต่อไป ⇒ `dataview/data.json` ไม่เสี่ยงหลุด)
+template/.obsidian/workspace.json
+template/.obsidian/workspace-mobile.json
+template/.obsidian/cache
+template/.obsidian/plugins/*/data.json
+!template/.obsidian/plugins/dataview/data.json
+template/.trash/
+template/.impeccable/
