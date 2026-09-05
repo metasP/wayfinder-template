@@ -591,11 +591,26 @@ if (parts.has('hook') || has('wire-hook')) {
   const settings = (await readJson(p)) ?? {}
   settings.hooks ??= {}
   settings.hooks.PostToolUse ??= []
-  const cmd = `${TARGET}/_tools/autocommit.sh 2>/dev/null || true`
+  // เทียบ **path ของสคริปต์** ไม่ใช่ทั้งบรรทัด · hook ที่เจ้าของต่อไว้เองก่อนมี installer มักเขียน
+  // ต่างกันแค่ redirect (`\u2026/autocommit.sh || true` ไม่มี `2>/dev/null`) ⇒ การเทียบทั้งบรรทัดมองไม่เห็นมัน
+  // แล้วเติมเส้นที่สองซ้อนลงไป ⇒ autocommit รัน **สองรอบทุก tool call ตลอดไป** โดยไม่มีอะไรบอกสักคำ
+  // path เป็นตัวระบุที่ถูกต้อง: hook สองเส้นที่เรียกสคริปต์เดียวกัน คือเส้นเดียวกันเสมอ ไม่ว่าเขียนยังไง
+  const script = `${TARGET}/_tools/autocommit.sh`
+  const cmd = `${script} 2>/dev/null || true`
   let added = 0
   for (const matcher of ['Write|Edit', 'Bash']) {
     const block = settings.hooks.PostToolUse.find((b) => b.matcher === matcher)
-    if (JSON.stringify(block?.hooks ?? []).includes(cmd)) continue
+    const mine = (block?.hooks ?? []).filter((h) => typeof h?.command === 'string' && h.command.includes(script))
+    if (mine.length) {
+      // ต่อไว้แล้ว — ไม่แตะของเขา แต่ห้ามเงียบถ้าสภาพผิดปกติ (กติกาข้อ 5 ของ INSTALL)
+      if (mine.length > 1)
+        log(`  \u26a0\ufe0f  matcher ${matcher}: มี hook ชี้มาที่สคริปต์นี้ ${mine.length} เส้น — autocommit รันซ้ำทุกครั้ง
+     ลบให้เหลือเส้นเดียวใน ~/.claude/settings.json`)
+      else if (mine[0].command !== cmd)
+        log(`  \u2705 matcher ${matcher}: ต่อไว้แล้ว เขียนต่างจากของ installer — ปล่อยไว้ตามเดิม
+     ${mine[0].command}`)
+      continue
+    }
     const entry = { type: 'command', command: cmd, timeout: 15, statusMessage: 'Committing wayfinder-vault...' }
     if (block) block.hooks.push(entry)
     else settings.hooks.PostToolUse.push({ matcher, hooks: [entry] })
