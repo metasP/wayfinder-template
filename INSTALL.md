@@ -160,6 +160,24 @@ Two results are worth expecting rather than being surprised by:
 Then report: what was installed, what was declined, what `doctor.mjs` said, and which manual
 steps are still outstanding.
 
+### Installing onto a vault you already have
+
+If the target is already a wayfinder vault — one that predates this repo — the install is a
+**migration**, and question 3 covers less than its wording suggests:
+
+- `_tools/` and the skills are written **whatever you answered**. They are the program, not
+  documents: a vault left running an older `bootstrap.mjs` quietly stops converging on every
+  later update, and nothing tells you. The run names each file it replaced; vault files are
+  recoverable from git, and `--on-conflict backup` keeps a `.bak` of the skills, which live
+  outside it.
+- The documents — `README.md`, `SETUP.md`, the three Wayfinder notes — do follow your answer,
+  so the default `skip` leaves them exactly as they are. They converge on the **first
+  update**, which is the same command everyone else runs.
+- `example-repo/` is not placed at all when the vault already holds real efforts, and it
+  never enters the manifest, so no later update brings it back.
+
+A migration is therefore two commands rather than one: install, then update.
+
 ---
 
 ## Manual steps the script cannot do for you

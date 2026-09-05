@@ -200,6 +200,8 @@ const QUESTIONS = `
 
   3. เจอของเดิมอยู่แล้วเอายังไง?                  --on-conflict skip|backup
      ค่าเริ่มต้น skip (ข้าม ไม่ทับ) · อีกทาง backup (สำรอง .bak แล้วทับ)
+     คำตอบนี้คุมเฉพาะ **เอกสารกับค่าตั้ง** — \`_tools/\` กับสกิลทับเสมอไม่ว่าตอบอะไร
+     (ค้างรุ่นเก่าเมื่อไหร่ update รอบหน้าไม่ทำงาน แล้วไม่มีอะไรเตือน)
 
   4. อนุญาต \`brew install --cask obsidian\` ไหม?  --allow-brew yes|no
      **ไม่มีค่าเริ่มต้น ต้องตอบเอง** (ถามเฉพาะตอนเลือก obsidian และยังไม่มีแอป)
@@ -320,7 +322,20 @@ const renderVault = (rel, text, isSkill = false) => {
 const files = {}          // managed: rel → sha ของไฟล์ที่เขียนลงไปจริง
 const seeded = {}         // seed-once: rel → sha ตอน install (update ไม่แตะ)
 const rendered = []
-const stats = { written: 0, skipped: 0, seeded: 0, keptSeed: 0, localEdits: [] }
+const stats = { written: 0, skipped: 0, seeded: 0, keptSeed: 0, localEdits: [], replaced: [] }
+
+// คำตอบข้อ 3 ตัดสินชะตาของ **เอกสาร** ไม่ใช่ของ **โปรแกรม** (ใบ 09)
+// เจอตอน dogfood: install ลง vault ที่มีอยู่ก่อนแล้วด้วยค่าเริ่มต้น `skip` เขียนได้ **ไฟล์เดียว**
+// (`example-repo/.gitkeep`) — `_tools/` ยังรุ่นเก่า · สกิลยังรุ่นเก่า · `autocommit.sh` ยังเป็น
+// `VAULT="__VAULT__"` ที่ไม่ถูกเรนเดอร์ ⇒ installer ประกาศว่าตัวเองไม่ผ่าน แล้วผู้ใช้ไม่มีทาง
+// เดินต่อนอกจากก็อบเอง = ค่าเริ่มต้นที่พังสำหรับทุกคนที่มี vault อยู่ก่อน (ซึ่งคือทุกคนที่ย้ายมา)
+//   · `_tools/*` คือตัวที่รัน update รอบหน้า — ค้างรุ่นเก่าเมื่อไหร่ vault หยุด converge เงียบ ๆ
+//     ตระกูลเดียวกับบั๊ก `RENDER_EXEMPT` ของใบ 03 พอดี
+//   · สกิลเป็นสำเนาไบต์ต่อไบต์ตามกติกาข้อ 4 ของ `INSTALL.md` — ไม่มี "ฉบับของผู้ใช้" ให้รักษา
+//   · เอกสาร (`README` `SETUP` สามหน้า) ต่างกันได้จริง และ update รอบแรกทับให้เองอยู่แล้ว
+//     ⇒ ปล่อยให้ `skip` คุ้มครองต่อ — และเป็นกันชนถ้า `--vault` ชี้ผิดที่ จะได้ไม่ทับ `README.md`
+//     ของโฟลเดอร์อื่นทิ้ง
+const mustWrite = (rel, isSkill) => isSkill || rel.startsWith('_tools/')
 
 const place = async (src, dest, rel, { isSkill = false, seed = false } = {}) => {
   const raw = await readFile(src)
@@ -336,7 +351,8 @@ const place = async (src, dest, rel, { isSkill = false, seed = false } = {}) => 
   if (already === digest) { stats.skipped++; return digest }
   if (already !== null) {
     // ของเดิมอยู่ตรงนั้นแล้วและเนื้อไม่ตรง — ตัดสินตามคำตอบข้อ 3 (install) หรือทับ (update)
-    if (CONFLICT === 'skip') { stats.skipped++; return already }
+    const must = mustWrite(rel, isSkill)
+    if (CONFLICT === 'skip' && !must) { stats.skipped++; return already }
     if (CONFLICT === 'backup') await copyFile(dest, `${dest}.bak`)
     // update: ทับตรง ๆ ตามข้อ 3 ของ map (all-or-nothing) แต่จดไว้ว่าเขาเคยแก้ ⇒ กู้จาก git ได้
     if (CONFLICT === 'overwrite') {
@@ -344,6 +360,9 @@ const place = async (src, dest, rel, { isSkill = false, seed = false } = {}) => 
         : seed ? oldManifest?.seeded_once?.[rel]
         : oldManifest?.files?.[rel]
       if (prev !== already) stats.localEdits.push(rel)
+    } else if (must) {
+      // ทับทั้งที่เขาตอบ skip — ต้องพูดออกมาทีละไฟล์ (กติกาข้อ 5 ของ INSTALL: ห้ามทับเงียบ ๆ)
+      stats.replaced.push(isSkill ? `skills/${rel}` : rel)
     }
   }
   await mkdir(dirname(dest), { recursive: true })
@@ -353,7 +372,23 @@ const place = async (src, dest, rel, { isSkill = false, seed = false } = {}) => 
   return digest
 }
 
+// ข้อ 9 ของ map: ship `example-repo/` **ตอน install เท่านั้น** เพื่อให้ Dashboard ไม่ว่างวันแรก
+// — แต่ vault ที่ย้ายมาจากของเดิมมี effort จริงอยู่แล้ว การหย่อน effort ตัวอย่างลงไปคือการเพิ่ม
+// แถวปลอมเข้า Frontier ที่เจ้าของต้องมาลบเอง (ใบ 09 ข้อ 4) · ข้ามแล้ว **ไม่ลง `seeded_once`**
+// ⇒ update ไม่ปลุกคืน ตรงตามกฎ "ลบแล้วต้องลบขาด" ของข้อ 9
+const vaultHasRealEfforts = async () => {
+  for (const e of await readdir(TARGET, { withFileTypes: true }).catch(() => [])) {
+    if (!e.isDirectory() || e.name.startsWith('.') || e.name.startsWith('_') || e.name === 'example-repo') continue
+    for (const f of await readdir(join(TARGET, e.name), { withFileTypes: true }).catch(() => []))
+      if (f.isDirectory() && await exists(join(TARGET, e.name, f.name, 'map.md'))) return true
+  }
+  return false
+}
+const skipExample = MODE === 'install' && await vaultHasRealEfforts()
+if (skipExample) log('  ↪️  vault มี effort จริงอยู่แล้ว — ข้าม example-repo/ (ข้อ 9: seed ครั้งเดียว ไม่ปลุกคืน)')
+
 for (const rel of wanted) {
+  if (skipExample && (rel === 'example-repo' || rel.startsWith('example-repo/'))) continue
   const dest = join(TARGET, rel)
   if (isSeed(rel)) {
     // seed-once: install วางให้ · update **ไม่แตะเลย** ทั้งที่ยังอยู่และที่เขาลบไปแล้ว
@@ -406,6 +441,12 @@ if (parts.has('skills') && skillFiles.length) {
 } else if (MODE === 'update') {
   Object.assign(skills, oldManifest.skills ?? {})
 }
+
+if (stats.replaced.length)
+  log(`  ⚠️  ทับของเดิม ${stats.replaced.length} ตัว ทั้งที่ตอบข้อ 3 ว่า "${CONFLICT}" — โปรแกรม
+     (\`_tools/\` + สกิล) ไม่ขึ้นกับคำตอบข้อนั้น ไม่งั้น vault จะค้างรุ่นเก่าโดยไม่มีอะไรเตือน
+     ${stats.replaced.join(' · ')}
+     ของใน vault กู้ได้ที่ git log -p -- <ไฟล์> · สกิลอยู่นอก git ⇒ ใช้ --on-conflict backup ถ้าต้องเก็บ`)
 
 // ── 4d. ลบไฟล์ที่ template เลิกใช้แล้ว ───────────────────────────────────────
 // ขับด้วย **manifest เก่าเท่านั้น** — ของที่ไม่เคยอยู่ใน manifest (harness-kit, effort ของผู้ใช้)
@@ -623,7 +664,9 @@ verify(!Object.keys(files).some(isSeed), 'manifest ไม่ครอบ Config/
 for (const rel of Object.keys(skills)) {
   const name = rel.split('/')[0]
   const t = await readFile(join(skillTargets[name] ?? '', rel.slice(name.length + 1)), 'utf8').catch(() => '')
-  if (TARGET !== DEFAULT_VAULT && t.includes('Documents/Git/wayfinder-vault'))
+  // ตัด TARGET ออกก่อนค้น — ไม่งั้น vault ที่ path ลงท้ายด้วย `Documents/Git/wayfinder-vault`
+  // (เช่นใน `$HOME` จำลองตอนทดสอบ) จะเตือนใส่ path ที่ **เพิ่งเรนเดอร์ถูก** ของตัวเอง
+  if (TARGET !== DEFAULT_VAULT && t.split(TARGET).join('').includes('Documents/Git/wayfinder-vault'))
     log(`  ⚠️  ${rel} ยังพูดถึง ~/Documents/Git/wayfinder-vault ทั้งที่ vault คุณอยู่ ${TARGET}
      — ใส่ __VAULT__ ตรงนั้นใน repo แล้ว installer จะเรนเดอร์ให้`)
 }
