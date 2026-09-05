@@ -3,7 +3,7 @@ repo: example-repo
 effort: getting-started
 type: task
 status: open
-status_since: 2026-09-05
+status_since: __TODAY__
 blockers:
   - "[[02-chart-your-first-map]]"
 ---

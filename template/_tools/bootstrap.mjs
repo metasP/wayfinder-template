@@ -310,11 +310,38 @@ const AUTOCOMMIT = '_tools/autocommit.sh'
 // ผลลัพธ์ ไม่ได้เทียบว่าโค้ดที่ทำงานอยู่ยังเป็นตัวเดิมไหม
 const RENDER_EXEMPT = new Set([AUTOCOMMIT, '_tools/bootstrap.mjs', '_tools/doctor.mjs'])
 
+// สูตรที่สาม — โทเคน **วันที่** ที่เรนเดอร์เฉพาะชั้น seed-once (ใบ 11)
+// `example-repo/` เคย hardcode `status_since: 2026-09-05` ⇒ ใครติดตั้งช้ากว่า `stale_days` (14)
+// เห็น effort ตัวอย่างตกจาก `🔥 กำลังเดิน` ไป `⚠️ ต้องตัดสินใจ` พร้อมข้อความ "ประกาศ active แต่ไม่มี
+// ใบไหนขยับ N วัน → paused" **ตั้งแต่วินาทีแรกที่ติดตั้งเสร็จ** — ตัวอย่างมีไว้ให้ "ว่างกับพังแยกออกจากกัน"
+// แล้วกลายเป็น "สดกับเน่าแยกไม่ออก" แทน (ใบ 06 เจอแล้วบันทึกไว้ ไม่ได้แก้)
+// `doctor.mjs` ไม่จับเพราะข้อ `lying` ตรวจแค่ map ที่ `paused`/`dropped`/`done` ⇒ เงียบ ไม่ใช่แดง
+//
+// **ทำไมไม่ขยับ `stale_days` แทน** — เส้นนั้นคุม effort จริงของผู้ใช้ด้วย ขยับเมื่อไหร่ก็ไปกลบสัญญาณ
+// ที่เขาต้องการจริง เพื่อแก้ปัญหาของไฟล์ตัวอย่างสี่ไฟล์
+//
+// **ทำไมเฉพาะ seed-once ไม่ใช่ทุกไฟล์อย่าง `__VAULT__`** — สองโทเคนนี้อายุไม่เท่ากัน: path ของ vault
+// จริงตลอดอายุ vault ส่วนวันที่จริงแค่วินาทีที่เขียน · ไฟล์ managed ถูกเรนเดอร์ใหม่ทุกครั้งที่ update
+// ⇒ โทเคนวันที่ที่หลุดไปอยู่ในนั้นทำให้เนื้อไฟล์เปลี่ยน**ทุกวัน**ทั้งที่ไม่มีของใหม่ ⇒ `updated_at`
+// ขยับทุกรอบ แล้วคำถาม "มีของใหม่ไหม" ที่ `flat(oldManifest) !== flat(manifest)` ถามไว้ ตอบว่า "มี"
+// ตลอดกาล · จำกัดที่ seed-once แล้วโทเคนมีความหมายเดียวคือ **"วันที่ vault นี้ถูก seed"**
+// และเคสนั้นเกิดไม่ได้เชิงโครงสร้าง — ข้อ 5a ข้างล่างบังคับกฎนี้ ไม่ได้ฝากไว้กับความระวังของคนแก้
+const DATE_TOKEN = '__TODAY__'
+
+// เวลา **ท้องถิ่น** ไม่ใช่ `toISOString()` ซึ่งเป็น UTC — ในโซนที่ offset ติดลบ UTC เป็นวันพรุ่งนี้
+// ของผู้ใช้ได้ ⇒ `Wayfinder Efforts` คิด `daysAgo()` ออกมาเป็น -1 วัน · ฝั่ง Dataview เทียบกับ
+// `DateTime.now()` ที่เป็นเวลาท้องถิ่น สองฝั่งจึงต้องใช้ปฏิทินเดียวกัน
+const TODAY = (() => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+})()
+
 const renderVault = (rel, text, isSkill = false) => {
   // `autocommit.sh` แทน **ทั้งบรรทัด** อย่างเดียว — บรรทัด fallback ข้างล่างต้องรอด
   if (rel === AUTOCOMMIT) return text.replace(/^VAULT=.*$/m, `VAULT="${TARGET}"`)
   if (RENDER_EXEMPT.has(rel)) return text
-  const out = text.split('__VAULT__').join(TARGET)
+  let out = text.split('__VAULT__').join(TARGET)
+  if (isSeed(rel)) out = out.split(DATE_TOKEN).join(TODAY)   // seed-once เท่านั้น — เหตุผลข้างบน
   return isSkill ? out.split('<VAULT>').join(TARGET) : out
 }
 
@@ -625,13 +652,19 @@ const verify = (ok, label, detail = '') => { if (!ok) bad++; log(`  ${ok ? '✅'
   for (const rel of [...Object.keys(files), ...Object.keys(seeded)]) {
     if (RENDER_EXEMPT.has(rel)) continue      // ไฟล์พวกนี้พูดถึงโทเคนโดยตั้งใจ
     const buf = await readFile(join(TARGET, rel)).catch(() => null)
-    if (buf && isText(buf) && buf.toString('utf8').includes('__VAULT__')) leftover.push(rel)
+    if (!buf || !isText(buf)) continue
+    const t = buf.toString('utf8')
+    if (t.includes('__VAULT__')) leftover.push(rel)
+    // โทเคนวันที่เรนเดอร์เฉพาะ seed-once ⇒ ที่โผล่ในไฟล์ managed คือของที่จะ **ไม่มีวันถูกเรนเดอร์**
+    // กวาดทั้งสองชั้นด้วยกฎเดียว กฎ "seed-once เท่านั้น" จึงบังคับตัวเอง ไม่ได้ฝากไว้กับคอมเมนต์
+    if (t.includes(DATE_TOKEN)) leftover.push(`${rel} (${DATE_TOKEN})`)
   }
   for (const rel of Object.keys(skills)) {
     const name = rel.split('/')[0]
     const buf = await readFile(join(skillTargets[name] ?? '', rel.slice(name.length + 1))).catch(() => null)
     const t = buf && isText(buf) ? buf.toString('utf8') : ''
     if (t.includes('__VAULT__') || t.includes('<VAULT>')) leftover.push(`skills/${rel}`)
+    if (t.includes(DATE_TOKEN)) leftover.push(`skills/${rel} (${DATE_TOKEN})`)
   }
   verify(leftover.length === 0, 'ไม่เหลือ placeholder ค้าง', leftover.join(' · '))
 }
@@ -644,6 +677,26 @@ for (const rel of RENDER_EXEMPT) {
   if (!srcT.includes('__VAULT__')) continue
   // ถูกเรนเดอร์ทับเมื่อไหร่ = update รอบหน้าเลิกเรนเดอร์ทุกไฟล์โดยไม่มีอะไรเตือน
   verify(src.includes('__VAULT__'), `${rel}: โทเคน __VAULT__ ในตัวสคริปต์ยังอยู่`)
+}
+
+// 5a3. กลับด้านของ 5a สำหรับโทเคนวันที่: ต้นฉบับชั้น seed-once ที่มี `status_since:` ต้องใช้โทเคน
+// ไม่ใช่วันที่ตายตัว · 5a จับ "โทเคนไม่ถูกเรนเดอร์" ซึ่ง**ดัง** (doctor บังคับ `status_since` เป็น ISO
+// date ⇒ ❌ ทันที) แต่ทิศตรงข้าม — โทเคนหายไปจาก template แล้วกลับไป hardcode — **เงียบสนิท**:
+// ไฟล์ผ่าน lint ทุกข้อ แค่แก่ขึ้นวันละวันจนตัวอย่างขึ้นเตือนใส่คนที่เพิ่งติดตั้งเสร็จ (ใบ 06 · ใบ 11)
+//
+// อยู่ที่นี่ **ไม่ใช่ที่ `doctor.mjs`** ทั้งที่ใบ 04 วางข้อกลับด้านของ `__VAULT__` ไว้ฝั่งโน้น เพราะ
+// สองข้อนี้ถามคนละคำถามกับของที่มองเห็นคนละชุด: doctor รันบน **vault** ที่ค่านั้นเรนเดอร์เป็นวันที่จริง
+// ไปแล้ว **และขยับต่อได้ตามจริง**เมื่อผู้ใช้ลงมือกับตัวอย่าง ⇒ แยก "hardcode" ออกจาก "เก่าจริง" ไม่ได้
+// เลย · ของที่ต้องเฝ้าคือ `template/` ของ repo ซึ่ง doctor ไม่เคยเห็น (มันรันบน vault เท่านั้น)
+// ⇒ installer เป็นตัวเดียวที่ถือทั้ง SRC และ TARGET อยู่ในมือ
+{
+  const hardcoded = []
+  for (const rel of templateFiles) {
+    if (!isSeed(rel) || !rel.endsWith('.md')) continue
+    const line = await readFile(join(SRC, rel), 'utf8').catch(() => '').then((t) => t.match(/^status_since:.*$/m)?.[0])
+    if (line && !line.includes(DATE_TOKEN)) hardcoded.push(`${rel} → ${line.trim()}`)
+  }
+  verify(hardcoded.length === 0, `ต้นฉบับ seed-once ใช้ ${DATE_TOKEN} ไม่ใช่วันที่ตายตัว`, hardcoded.join(' · '))
 }
 
 // 5b. autocommit.sh — บรรทัด VAULT= ต้องชี้มาที่นี่ **และ** บรรทัด fallback ต้องรอด

@@ -3,7 +3,7 @@ repo: example-repo
 effort: getting-started
 type: research
 status: resolved
-status_since: 2026-09-05
+status_since: __TODAY__
 ---
 
 ## Question
