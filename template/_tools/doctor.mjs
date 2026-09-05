@@ -522,6 +522,12 @@ const byEffort = new Map()
     if (!STATUS.includes(status)) bad.push(`${t.name}: status="${status}" ไม่ถูกต้อง`)
     if (!TYPES.includes(type)) bad.push(`${t.name}: type="${type}" ไม่ถูกต้อง`)
     if (!fm.get('effort')) bad.push(`${t.name}: ไม่มี effort`)
+    // `blockers` ต้อง **มีคีย์เสมอ** — ใบที่ไม่ติดใครเขียน `blockers: []`
+    // DQL ของ Frontier กรองด้วย `all(map(blockers, …))` ซึ่งเป็นจริงบน list ว่าง แต่ **ไม่ใช่**
+    // เมื่อคีย์หายไปทั้งอัน ⇒ ใบที่หยิบได้จริงหลุดจาก Frontier เงียบ ๆ · ทางแก้ที่ระดับ query
+    // (`default(blockers, [])`) ลองแล้วแย่กว่า: มันทำให้ใบที่ **ถูกบล็อกอยู่** โผล่ขึ้น Frontier
+    // แทน ⇒ กติกาอยู่ที่นี่ ที่ซึ่งมันดังได้
+    if (fm.get('blockers') === undefined) bad.push(`${t.name}: ไม่มีคีย์ blockers (ไม่ติดใครให้เขียน blockers: [])`)
     // waiting = รอเหตุการณ์นอกมือเรา ⇒ ต้องบอกว่ารออะไร ไม่งั้นมันเน่าเงียบ
     if (status === 'waiting' && !fm.get('status_note')) bad.push(`${t.name}: waiting แต่ไม่มี status_note`)
     if (!ISO_DATE.test(since ?? '')) noSince.push(`${t.name}${since ? `="${since}"` : ''}`)

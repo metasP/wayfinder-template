@@ -4,6 +4,7 @@ effort: getting-started
 type: research
 status: resolved
 status_since: __TODAY__
+blockers: []
 ---
 
 ## Question
