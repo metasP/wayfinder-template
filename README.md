@@ -56,8 +56,20 @@ outlives the branch it was written on, and no work repo ever has to carry it.
 
 ## Install
 
+One command, and nothing to clone:
+
 ```bash
-git clone <repo-url> ~/Documents/Git/wayfinder-template
+npx https://github.com/metasP/wayfinder-template
+```
+
+It asks the same five questions an agent would, one at a time, and writes nothing until every
+one has an answer. Nothing lands globally — npx runs it once out of a cache and throws that
+copy away.
+
+Or clone it, read it first, and let an agent do the install:
+
+```bash
+git clone https://github.com/metasP/wayfinder-template ~/Documents/Git/wayfinder-template
 cd ~/Documents/Git/wayfinder-template
 ```
 
@@ -96,7 +108,7 @@ removes — files it put there itself. Anything else you keep in the vault is in
 
 ## Requirements
 
-- **macOS**
+- **macOS**, and **Node 18 or newer** (`node -v`) — the installer is one Node script
 - **[Obsidian](https://obsidian.md)** — reads the vault; the three dashboards are Obsidian notes
 - **[Claude Code](https://claude.com/claude-code)** — runs the wayfinder skills
 
@@ -113,6 +125,7 @@ Obsidian's plugin browser and no restart to sit through.
 | [`template/_tools/`](template/_tools) | `bootstrap.mjs` (install/update), `doctor.mjs` (health check + lint of every ticket), `autocommit.sh` (commits the vault whenever an agent edits a ticket). |
 | [`template/example-repo/`](template/example-repo) | A worked example effort, seeded **on install only**, so the dashboards have something real to show on day one. Delete it when you're done — no update brings it back. |
 | [`skills/`](skills) | The `/wayfinder` and `/wayfinder-next` skills (English), placed wherever you tell the installer to put them. |
+| [`package.json`](package.json) | Declares `template/_tools/bootstrap.mjs` as the `bin`, which is what makes the `npx` one-liner above work. Not published to npm. |
 | [`INSTALL.md`](INSTALL.md) | Installing and updating, in full. |
 | [`THIRD-PARTY.md`](THIRD-PARTY.md) | The one vendored component and its license. |
 | [`LICENSE`](LICENSE) | MIT. |

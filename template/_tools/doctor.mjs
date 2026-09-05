@@ -718,7 +718,8 @@ const byEffort = new Map()
   // ลงทะเบียนเลย** แทนที่จะลงทะเบียนแบบเขียวโดยไม่ได้ตรวจอะไร — ตัวเลข `N/M` จะได้ไม่โกหกว่า
   // ตรวจครบแล้ว · บรรทัด ⚠️ นี้คือสิ่งที่บอกว่าทำไม M ถึงน้อยลง
   warn(man !== null, `มี ${MANIFEST} (vault นี้ติดตั้งจากเทมเพลต)`,
-    man ? `template_sha ${String(man.template_sha ?? '?').slice(0, 12)}`
+    man ? `template ${man.template_sha ? String(man.template_sha).slice(0, 12)
+        : man.template_version ? `v${man.template_version} · npx` : '?'}`
       + ` · ติดตั้ง ${String(man.installed_at ?? '?').slice(0, 10)}`
       + ` · อัปเดต ${String(man.updated_at ?? '?').slice(0, 10)}`
       : 'ยังไม่ได้ติดตั้งจากเทมเพลต ⇒ ข้อที่ขึ้นกับ manifest ยังไม่ถูกตรวจ (node _tools/bootstrap.mjs --plan)')

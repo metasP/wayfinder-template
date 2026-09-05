@@ -50,8 +50,19 @@ vault เดียว อยู่นอก repo งานทุกตัว ม
 
 ## ติดตั้งยังไง
 
+คำสั่งเดียว ไม่ต้อง clone อะไรเลย:
+
 ```bash
-git clone <repo-url> ~/Documents/Git/wayfinder-template
+npx https://github.com/metasP/wayfinder-template
+```
+
+มันถามคำถาม 5 ข้อชุดเดียวกับที่ agent จะถาม ทีละข้อ และ **ไม่เขียนอะไรจนกว่าจะตอบครบทุกข้อ**
+ไม่มีอะไรถูกติดตั้งค้างไว้ในเครื่อง — npx รันจาก cache ครั้งเดียวแล้วทิ้งสำเนานั้นไป
+
+หรือจะ clone มาอ่านก่อนแล้วค่อยให้ agent ติดตั้งให้ก็ได้:
+
+```bash
+git clone https://github.com/metasP/wayfinder-template ~/Documents/Git/wayfinder-template
 cd ~/Documents/Git/wayfinder-template
 ```
 
@@ -87,7 +98,7 @@ git pull
 
 ## ต้องมีอะไรบ้าง
 
-- **macOS**
+- **macOS** และ **Node 18 ขึ้นไป** (`node -v`) — installer เป็นสคริปต์ Node ใบเดียว
 - **[Obsidian](https://obsidian.md)** — คนอ่าน vault · สามหน้า dashboard คือโน้ตของ Obsidian
 - **[Claude Code](https://claude.com/claude-code)** — คนรันสกิล wayfinder
 

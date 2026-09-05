@@ -40,6 +40,12 @@ Thai: [`INSTALL.th.md`](INSTALL.th.md) · Repo overview: [`README.md`](README.md
 ### Step 1 — Inspect. Write nothing yet.
 
 ```bash
+npx https://github.com/metasP/wayfinder-template --plan
+```
+
+Or clone it first, if you would rather read the thing before running it:
+
+```bash
 git clone https://github.com/metasP/wayfinder-template ~/Documents/Git/wayfinder-template
 ```
 

@@ -36,7 +36,13 @@ English: [`INSTALL.md`](INSTALL.md) · ภาพรวม repo: [`README.th.md`]
 ### ขั้นที่ 1 — ตรวจ ยังห้ามเขียนอะไรทั้งสิ้น
 
 ```bash
-git clone <url ของ repo นี้> ~/Documents/Git/wayfinder-template
+npx https://github.com/metasP/wayfinder-template --plan
+```
+
+หรือจะ clone มาก่อนก็ได้ ถ้าอยากอ่านของก่อนรัน:
+
+```bash
+git clone https://github.com/metasP/wayfinder-template ~/Documents/Git/wayfinder-template
 ```
 
 ```bash

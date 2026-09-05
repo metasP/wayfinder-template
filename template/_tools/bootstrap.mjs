@@ -191,6 +191,12 @@ const templateFiles = (await walk(SRC).catch(() => die(`ไม่มี ${SRC}`)
 const skillFiles = await walk(SKILLS_SRC).catch(() => [])
 const templateSha = await run('git', ['-C', REPO, 'rev-parse', 'HEAD'])
   .then((r) => r.stdout.trim(), () => null)
+// ติดตั้งผ่าน `npx` ไม่มี `.git` ให้อ่าน — npm clone แล้ว pack เหลือแต่ไฟล์ · ไม่มี sha
+// **ไม่ได้แปลว่า "ยังไม่ได้ commit"** ซึ่งเป็นคำที่ผิดความจริง ⇒ ถอยไปใช้ version ใน package.json
+const templateVersion = templateSha ? null
+  : await readFile(join(REPO, 'package.json'), 'utf8').then((t) => JSON.parse(t).version, () => null)
+const templateLabel = templateSha ? templateSha.slice(0, 8)
+  : templateVersion ? `v${templateVersion} · npx` : 'ไม่ทราบรุ่น'
 
 // 1c. สภาพเครื่อง
 const env = {
@@ -210,7 +216,7 @@ const hookWired = JSON.stringify(env.settings?.hooks?.PostToolUse ?? []).include
 const report = () => {
   log(`
 ── สถานะปัจจุบัน ────────────────────────────────────────────`)
-  log(`  template repo   ${REPO}${templateSha ? ` (${templateSha.slice(0, 8)})` : ' (ยังไม่ได้ commit)'}`)
+  log(`  template repo   ${REPO} (${templateLabel})`)
   log(`  ไฟล์ใน template ${templateFiles.length} ตัว · สกิล ${skillFiles.length} ไฟล์`)
   log(`  vault ปลายทาง   ${VAULT}  →  โหมด ${MODE.toUpperCase()}`)
   log(`  vault มีอยู่แล้ว  ${env.vaultExists ? 'มี' : 'ยังไม่มี'}${env.vaultIsRepo ? ' · เป็น git repo' : ''}`)
@@ -726,6 +732,7 @@ const STAMP = new Date().toISOString()
 const manifest = {
   schema: 1,
   template_sha: templateSha,
+  template_version: templateVersion,
   source_repo: REPO,
   vault: TARGET,                       // path ที่เรนเดอร์เข้า `__VAULT__` (resolve symlink แล้ว)
   vault_as_given: TARGET_RAW === TARGET ? undefined : TARGET_RAW,
@@ -883,7 +890,7 @@ if (parts.has('vault')) {
   if (dirty) {
     await runWrite('git', ['-C', TARGET, 'add', '-A'])
       .then(() => runWrite('git', ['-C', TARGET, 'commit', '-q', '-m',
-        `chore(vault): ${MODE} wayfinder template${templateSha ? ` ${templateSha.slice(0, 8)}` : ''}`]))
+        `chore(vault): ${MODE} wayfinder template ${templateLabel}`]))
       .then(() => log(`  ✅ commit ${MODE} ลง vault แล้ว`),
         (e) => log(`  ⚠️  commit ไม่ผ่าน: ${String(e.message).split('\n')[0]}`))
   }
