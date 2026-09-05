@@ -114,7 +114,7 @@ Dataview ship มาในตัว vault อยู่แล้ว (ดูหั
 | [`template/SETUP.md`](template/SETUP.md) | อัปเดตและตรวจสุขภาพ vault ที่ติดตั้งไปแล้ว |
 | [`template/_tools/`](template/_tools) | `bootstrap.mjs` (ติดตั้ง/อัปเดต) · `doctor.mjs` (ตรวจสุขภาพ + ลินต์ ticket ทุกใบ) · `autocommit.sh` (commit vault ให้เองทุกครั้งที่ agent แก้ ticket) |
 | [`template/example-repo/`](template/example-repo) | effort ตัวอย่างที่ใช้งานได้จริง วางให้ **ตอนติดตั้งเท่านั้น** เพื่อให้ dashboard มีของให้ดูตั้งแต่วันแรก · อ่านจบแล้วลบทิ้งได้ อัปเดตไม่ปลุกมันคืนมา |
-| [`skills/`](skills) | สกิล `/wayfinder` และ `/wayfinder-next` (อังกฤษ) · วางไว้ตรงที่คุณบอก installer |
+| [`skills/`](skills) | สกิล `/wayfinder` และ `/wayfinder-next` (อังกฤษ) · วางไว้ตรงที่คุณบอก installer · `/wayfinder` ดัดแปลงมาจาก [ชุดสกิลของ Matt Pocock](https://github.com/mattpocock/skills) — ดู [`THIRD-PARTY.md`](THIRD-PARTY.md) |
 | [`INSTALL.th.md`](INSTALL.th.md) | วิธีติดตั้งและอัปเดตแบบเต็ม (อังกฤษ: [`INSTALL.md`](INSTALL.md)) |
 | [`THIRD-PARTY.md`](THIRD-PARTY.md) | ของภายนอกชิ้นเดียวที่ ship ไปด้วย กับ license ของมัน |
 | [`LICENSE`](LICENSE) | MIT |
@@ -123,6 +123,12 @@ Dataview ship มาในตัว vault อยู่แล้ว (ดูหั
 
 MIT — ดู [`LICENSE`](LICENSE)
 
-repo นี้ ship ของภายนอกไปด้วยหนึ่งชิ้น: **Dataview 0.5.68** ของ Michael Brenan (`blacksmithgu`)
-สัญญาอนุญาต MIT · วางไว้ใน `template/.obsidian/` เพื่อให้ vault ที่เพิ่งติดตั้งสด ๆ **ครบอยู่บนดิสก์ก่อน**
-ที่ Obsidian จะเปิดมันครั้งแรก · รายละเอียดและตัวบท license เต็มอยู่ที่ [`THIRD-PARTY.md`](THIRD-PARTY.md)
+มีสองชิ้นใน repo นี้ที่ไม่ได้เขียนขึ้นที่นี่ และเป็น MIT ทั้งคู่:
+
+- **สกิล `/wayfinder`** ดัดแปลงมาจากสกิล `wayfinder` ใน
+  **[ชุดสกิลของ Matt Pocock](https://github.com/mattpocock/skills)** — เนื้อส่วนใหญ่ยังเป็นของเขา · ความคิดที่ repo ทั้งใบนี้
+  สร้างขึ้นรอบ ๆ มันเป็นของเขา สิ่งที่เพิ่มเข้ามาที่นี่คือ *ที่อยู่* ให้ map ไปลง
+- **Dataview 0.5.68** ของ Michael Brenan (`blacksmithgu`) ship มาใน `template/.obsidian/`
+  เพื่อให้ vault ที่เพิ่งติดตั้งสด ๆ **ครบอยู่บนดิสก์ก่อน** ที่ Obsidian จะเปิดมันครั้งแรก
+
+รายละเอียด สิ่งที่ถูกแก้ และตัวบท license เต็มอยู่ที่ [`THIRD-PARTY.md`](THIRD-PARTY.md)
