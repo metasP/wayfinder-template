@@ -1,26 +1,262 @@
 # Install & update
 
-> **🚧 Stub — this file is written by ticket `08-install-doc-bilingual`.**
-> It depends on `bootstrap.mjs` (ticket `03`), which is still being written. Do not
-> guess the command from this page — there isn't one here yet, on purpose.
+This page is written to be **followed literally by an agent**, and to be readable by the
+person sitting next to it. It covers a first install, an update, and what to do when
+something does not look right immediately afterwards.
 
-What this page will cover:
+It never quotes the contents of any file it installs. The files themselves are in
+`template/` and `skills/` in this repo — that is the only copy, on purpose.
 
-1. **Clone** this repo, then point an agent at it: *"install wayfinder from this repo"*.
-2. The installer asks before touching anything outside the vault — following the
-   5-step protocol: inspect → report → ask → act only on what you chose → verify and summarise.
-   It also asks **where to put the skills** (default `~/.claude/skills/`; if it finds a
-   symlink there it follows it and writes to the real destination).
-3. It creates `Wayfinder Config.md` and `Wayfinder Picks.md` — **your** files, never
-   touched again by any later update.
-4. It adds a wayfinder paragraph to `~/.claude/CLAUDE.md`. **This is the only thing that
-   tells `/wayfinder` where the vault is.** Skip it and the skill will follow whatever
-   issue-tracker convention the currently-open repo has, and your maps will not land in
-   the vault.
-5. **Update:** `git pull` here, then tell the agent *"update"*. `template/` is replaced
-   wholesale; your efforts and the two files above are not touched.
+Thai: [`INSTALL.th.md`](INSTALL.th.md) · Repo overview: [`README.md`](README.md)
 
-Health checks and troubleshooting for an already-installed vault live in the vault's own
-`SETUP.md` (shipped as `template/SETUP.md`).
+---
 
-Thai: [`INSTALL.th.md`](INSTALL.th.md)
+## Rules for the agent doing the install
+
+1. **Read this page to the end before running anything.** The five questions in step 3 are
+   not optional and the installer will not answer them for you.
+2. **macOS only.** If `uname -s` is not `Darwin`, stop and say so. **Do not guess paths for
+   another OS.**
+3. **Everything written outside the vault is user scope — ask before each piece.** If the
+   person declines one, skip that piece and carry on with the rest. **Do not abort the whole
+   process, and do not push back a second time.**
+4. **Never edit the skills.** They are copied from `skills/` byte for byte. Do not shorten,
+   reword, or translate them.
+5. **Never overwrite anything silently.** Say what you replaced, before you replace it.
+6. **Follow steps 1 → 5 in order.** If a step fails, stop and report what actually happened.
+   **Do not continue and then summarise it as a success.**
+
+## What you need
+
+- macOS, and **Node 18 or newer** (`node -v`)
+- `git`
+- Obsidian — optional at install time. The installer can register the vault for you only if
+  Obsidian has been opened at least once on this machine; see step 5.
+
+---
+
+## Install
+
+### Step 1 — Inspect. Write nothing yet.
+
+```bash
+git clone <this-repo-url> ~/Documents/Git/wayfinder-template
+```
+
+```bash
+cd ~/Documents/Git/wayfinder-template && node template/_tools/bootstrap.mjs --plan
+```
+
+`--plan` is steps 1–3 with **no writes at all**: it inspects, prints the report, prints the
+five questions, and exits 0. It creates nothing — not even the vault directory.
+
+> ⚠️ `--plan` is a dry run **only on a machine with no vault installed yet.** On a vault that
+> already has `.wayfinder-template.json`, the flag is ignored and the run performs a real
+> update. See [Update](#update).
+
+### Step 2 — Report before touching anything.
+
+Show the person the `--plan` output as it is. It tells them, for their machine:
+
+- which template repo was found, and its commit
+- which vault path is the target, and whether this will be an **install** or an **update**
+- whether the vault already exists, and whether it is a git repo
+- whether Obsidian is installed, and whether it is **currently running**
+- whether the commit hook is already wired
+- whether `~/.claude/CLAUDE.md` already has the wayfinder paragraph
+
+Do not propose a plan of action yet. This step is only "here is what is on your machine".
+
+### Step 3 — Ask the five questions. One at a time. Wait for each answer.
+
+**1. Where should the vault live?** → `--vault <path>`
+Default `~/Documents/Git/wayfinder-vault`. Any path works; it does not have to be inside
+`~/Documents/Git`. This is a local-only git repo — no remote, by design.
+
+**2. Which pieces should be installed?** → `--parts a,b,c` (several allowed; default is all)
+
+| Piece | What it does | Where it writes |
+|---|---|---|
+| `skills` | the `/wayfinder` and `/wayfinder-next` skills | outside the vault (see question 5) |
+| `vault` | the vault contents, `_tools/`, and `git init` | inside the vault |
+| `hook` | the auto-commit hook | `~/.claude/settings.json` |
+| `obsidian` | `.obsidian/` settings, the Dataview plugin, and registering the vault | inside the vault, plus Obsidian's own config |
+| `memory` | the wayfinder paragraph in `~/.claude/CLAUDE.md` | `~/.claude/CLAUDE.md` |
+
+> ⚠️ **Say this out loud when you ask about `memory`, then respect the answer and drop it.**
+>
+> That paragraph in `~/.claude/CLAUDE.md` is the **only** thing that tells `/wayfinder` where
+> the vault is. Without it, calling `/wayfinder` in any repo makes the skill fall back to
+> that repo's own issue-tracker convention (`docs/agents/issue-tracker.md` and the like) —
+> so the map gets written into the repo instead of the vault, and dies with the branch or
+> worktree it was written in. Declining is a legitimate choice; the cost is that the vault
+> path has to be spelled out by hand every single time.
+>
+> The installer prints this same consequence again if the piece is skipped. It does not ask
+> twice, and neither should you.
+
+**3. What should happen when a file is already there?** → `--on-conflict skip|backup`
+Default `skip` (leave the existing file alone). The alternative is `backup` — copy it to
+`<file>.bak`, then write. This answer applies to **install** only; see [Update](#update) for
+what happens to an installed vault.
+
+**4. May the installer run `brew install --cask obsidian`?** → `--allow-brew yes|no`
+**There is no default — this one has to be answered.** It only matters if `obsidian` was
+chosen in question 2 and the app is not installed yet. If the answer is missing in that
+situation, the installer stops rather than guessing.
+Dataview is not a question: it ships with this repo and is placed from here.
+
+**5. Where should the skills go?** → `--skills-dir <path>`
+Default `~/.claude/skills`. If `<dir>/<skill-name>` is already a **symlink**, the installer
+follows it and writes to the real destination, leaving the existing layout intact.
+
+> **Why the installer refuses to guess these:** in install mode, if standard input is not a
+> terminal — which is the case when an agent is driving — and no `--parts` or `--yes` was
+> given, the installer prints the questions and **exits 2**. That is the intended behaviour,
+> not a bug: it is the mechanism that stops an agent from installing across someone's machine
+> without asking. `--vault` on its own does not count as an answer; it answers question 1 and
+> nothing else.
+
+### Step 4 — Act on the answers, and only on those.
+
+Pass the answers as flags. Example, for someone who accepted every default and answered
+"no" to brew:
+
+```bash
+node template/_tools/bootstrap.mjs --vault ~/Documents/Git/wayfinder-vault --parts all --on-conflict skip --skills-dir ~/.claude/skills --allow-brew no
+```
+
+If they declined a piece, name only the pieces they accepted — for example
+`--parts skills,vault,hook` leaves `~/.claude/CLAUDE.md` and Obsidian untouched.
+
+`--yes` is shorthand for "they answered, and chose every default". Use it only when that is
+actually what happened.
+
+The run prints, as it goes: how many files were written versus skipped, where each skill was
+placed (including any symlink it followed), whether the hook was added or was already there,
+and what it recorded in the manifest. It makes a commit in the vault at the end, so the
+working tree is left clean.
+
+### Step 5 — Verify, then summarise honestly.
+
+```bash
+node ~/Documents/Git/wayfinder-vault/_tools/doctor.mjs
+```
+
+**Exit 0 means every check passed.** Lines marked `⚠️` are warnings, not failures — a fresh
+vault with no maps in it yet reports a couple of those, and that is correct. The installer
+runs `doctor.mjs` itself at the end, so its output is already on screen; run it again after
+finishing the manual steps below.
+
+Two results are worth expecting rather than being surprised by:
+
+- **The "Obsidian knows about this vault" check is red on a machine where Obsidian has never
+  been opened.** The installer can only register a vault by editing Obsidian's own config
+  file, and that file does not exist until the app has run once. Either fix works: open
+  Obsidian and use *Open folder as vault*, or open Obsidian once and re-run the installer.
+- **The hook needs Claude Code to reload its configuration** before it starts firing. See the
+  manual steps.
+
+Then report: what was installed, what was declined, what `doctor.mjs` said, and which manual
+steps are still outstanding.
+
+---
+
+## Manual steps the script cannot do for you
+
+1. Open Obsidian → **Open folder as vault** → choose the vault path.
+2. Settings → **Community plugins** → *Turn on community plugins*. Dataview itself, its
+   settings, and the Graph View colours all shipped with this repo — nothing to download.
+3. Open the notes **Wayfinder Dashboard** and **Wayfinder Efforts** and leave them open;
+   that is the working surface.
+4. If the hook was just wired: open `/hooks` in Claude Code once, or restart it, so the new
+   configuration is loaded.
+
+---
+
+## Update
+
+```bash
+cd ~/Documents/Git/wayfinder-template && git pull
+```
+
+```bash
+node ~/Documents/Git/wayfinder-vault/_tools/bootstrap.mjs --from ~/Documents/Git/wayfinder-template
+```
+
+**Update asks nothing.** The five answers from install are recorded in the vault's manifest
+(`.wayfinder-template.json` — which pieces, where the skills went, which vault path was
+rendered in) and are reused as they are. An update that asked again would be an update that
+could be answered differently by mistake.
+
+Running it from the repo side instead (`node template/_tools/bootstrap.mjs --vault <vault>`)
+does the same thing — the mode is decided by whether the vault already has a manifest, not by
+which copy of the script you ran.
+
+### What gets replaced
+
+The whole of `template/` — the three Wayfinder notes, `README.md`, `SETUP.md`, `_tools/`,
+and the Dataview plugin code — is replaced as **one unit**. Not file by file, and not
+optionally: those notes reference each other's constants and `doctor.mjs` checks that they
+agree, so a half-applied update produces a vault that fails its own health check with nobody
+having done anything wrong.
+
+Files this repo has **stopped shipping** are deleted from the vault too. That deletion is
+driven strictly by the previous manifest — a file that was never in the manifest can never
+enter that code path.
+
+### What is never touched
+
+| | |
+|---|---|
+| `<repo>/<effort>/` — every map, ticket, and asset | your actual work |
+| `Wayfinder Config.md` | your tuning: staleness thresholds, colours, status labels |
+| `Wayfinder Picks.md` | your own "what do I pick up next" rules |
+| `example-repo/` | placed on install only; once deleted it stays deleted |
+| your settings inside `.obsidian/` | the Dataview **plugin code** updates; your **settings** do not — overwriting them would silently switch off other plugins you enabled and lose Graph View colours you tuned |
+| anything you added yourself, anywhere | the updater walks the manifest, it does not sweep for strangers |
+
+So: tune values in `Wayfinder Config.md`, never inside the three notes' code blocks. Edits
+made in the three notes are gone at the next update, and that is deliberate.
+
+If you did edit a managed file, the update names it on screen and tells you it was replaced.
+
+### Undoing an update you do not like
+
+The vault is a git repo and the installer commits at the end of every run, so the previous
+state is in history:
+
+```bash
+cd ~/Documents/Git/wayfinder-vault && git log --oneline
+```
+
+Then `git revert <the "chore(vault): update wayfinder template …" commit>`. For a single
+file, `git log -p -- "<file>"` shows what it looked like before.
+
+Files written **outside** the vault get a copy next to themselves the first time they are
+modified, if they already existed: `~/.claude/settings.json.bak`, `~/.claude/CLAUDE.md.bak`,
+and Obsidian's `obsidian.json.bak`. (Nothing existed, nothing to back up — no `.bak`.)
+
+---
+
+## Running it again
+
+The installer is safe to run repeatedly — that is a property you should be able to rely on
+before you are willing to run it at all.
+
+- A second run on an installed vault **is an update**, whatever flags you pass. Files that
+  already match are skipped, nothing is written, and no empty commit is made.
+- The hook is added once. A repeat run finds both of its entries and skips them.
+- The `~/.claude/CLAUDE.md` paragraph is added once. A repeat run finds it and skips it.
+- Your `Wayfinder Config.md`, `Wayfinder Picks.md`, and efforts are untouched every time.
+
+The one thing **not** to assume: `--plan` does not protect an installed vault. It is a dry
+run for install only.
+
+---
+
+## After it is installed
+
+Health checks, troubleshooting, and how to keep an installed vault happy live in that vault's
+own `SETUP.md`, placed at the vault root by the installer. This page is only about getting
+the vault onto a machine and keeping it in step with this repo.
