@@ -40,7 +40,7 @@ Thai: [`INSTALL.th.md`](INSTALL.th.md) · Repo overview: [`README.md`](README.md
 ### Step 1 — Inspect. Write nothing yet.
 
 ```bash
-git clone <this-repo-url> ~/Documents/Git/wayfinder-template
+git clone https://github.com/metasP/wayfinder-template ~/Documents/Git/wayfinder-template
 ```
 
 ```bash
@@ -195,6 +195,13 @@ A migration is therefore two commands rather than one: install, then update.
 ---
 
 ## Update
+
+> **A vault that predates this repo cannot start here.** It has no manifest, and its own
+> `_tools/bootstrap.mjs` does not know `--from` — the second command below exits with an
+> unknown-flag error before it writes anything. Run
+> [Installing onto a vault you already have](#installing-onto-a-vault-you-already-have)
+> once first: that run replaces `_tools/` whatever you answered, and every update from then
+> on is the command below.
 
 ```bash
 cd ~/Documents/Git/wayfinder-template && git pull
