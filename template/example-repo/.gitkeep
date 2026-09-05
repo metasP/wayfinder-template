@@ -1,0 +1,4 @@
+ที่ว่างของ effort ตัวอย่าง — ใบ 06-example-effort เป็นคนเติม
+(getting-started/map.md + issues/ ที่ผ่าน `node _tools/doctor.mjs` จริง)
+
+ship ตอน install เท่านั้น · การอัปเดตไม่ปลุกคืนถ้าผู้ใช้ลบทิ้งไปแล้ว

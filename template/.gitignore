@@ -1,0 +1,28 @@
+# Obsidian per-machine UI state — เปลี่ยนทุกครั้งที่ขยับ pane
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache
+
+# plugin data — ปลั๊กอินบางตัวเก็บ API key / private key ไว้ในนี้
+.obsidian/plugins/*/data.json
+# ...ยกเว้นของ Dataview: ไม่มีความลับ มีแต่ค่าตั้ง และ enableDataviewJs ต้องเดินทางไปกับ repo
+# ไม่งั้นเครื่องใหม่จะเห็นบล็อก dataviewjs ใน [[Wayfinder Efforts]] เป็นโค้ดดิบ
+!.obsidian/plugins/dataview/data.json
+
+.trash/
+.DS_Store
+
+# worktree ของ Claude Code — มันถูกตัดไว้ **ใต้ vault เอง** (`.claude/worktrees/<ชื่อ>/`)
+# แต่ละอันเป็น working tree เต็มใบของ vault นี้ ⇒ ไม่ ignore แล้ว `autocommit.sh`
+# (`git add -A -uall`) จะลากทั้ง worktree เข้า commit ของ vault หลัก แล้วโดนปฏิเสธ/เละทั้งชุด
+#
+# **ต้องอยู่ในไฟล์นี้ ไม่ใช่ `.git/info/exclude`** — `info/exclude` ไม่ถูก track ⇒ ไม่เดินทางไปกับ
+# clone ⇒ เครื่องที่เพิ่ง clone มาจะเจออาการเดิมที่ทำให้แมปทั้งใบหายไป โดยที่ `2>/dev/null || true`
+# ใน settings.json กลืน error หมด (ดู README "ทำไมถึงอยู่นอก repo" + หัวไฟล์ `_tools/autocommit.sh`)
+.claude/worktrees/
+
+# harness-kit: payload เป็นของที่ build-kit.sh สร้างใหม่ได้เสมอ (bundle/tarball ~1.1 MB)
+_tools/harness-kit/payload/
+
+# cache ของ skill impeccable — เกิดตรงที่ cwd บังเอิญอยู่ตอนนั้น ไม่ใช่เนื้อ vault
+.impeccable/
