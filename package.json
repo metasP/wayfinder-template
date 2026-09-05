@@ -1,6 +1,6 @@
 {
   "name": "wayfinder-template",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Plan work too big for one agent session as a map of investigation tickets, in an Obsidian vault that lives outside your repos.",
   "license": "MIT",
   "author": "Metas Phongmetha",
