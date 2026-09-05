@@ -6,7 +6,7 @@
 //
 // ข้อที่ *ตรวจด้วยเครื่องไม่ได้* (ต้องเปิด Obsidian ดูเอง) จะขึ้นเป็น MANUAL ท้ายรายงาน
 
-import { readFile, readdir, stat } from 'node:fs/promises'
+import { readFile, readdir, stat, realpath } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { join, dirname, basename } from 'node:path'
@@ -32,6 +32,33 @@ const readJson = async (p) => JSON.parse(await readFile(p, 'utf8'))
 const exists = async (p) => stat(p).then(() => true, () => false)
 const git = (...args) => run('git', ['-C', VAULT, ...args]).then((r) => r.stdout.trim())
 
+// เทียบ path ต้องผ่าน realpath ทั้งสองฝั่งเสมอ — `import.meta.url` ของ ESM ผ่าน realpath มาแล้ว
+// ข้างเดียว ⇒ ถ้าอีกฝั่ง (settings.json / obsidian.json / manifest) จดตัวที่มี symlink คั่น
+// การเทียบสตริงตรง ๆ จะได้ ❌ ปลอมทั้งที่ติดตั้งถูกทุกอย่าง (ใบ 03) · path ที่ไม่มีอยู่จริง
+// ให้คืนตัวเดิม เพื่อให้ผลลัพธ์ยังเทียบได้แทนที่จะโยน
+const real = async (p) => realpath(p).catch(() => p)
+
+// frontmatter หนึ่งก้อน + ตัวอ่านฟิลด์ (ตัดคอมเมนต์ `# …` และเครื่องหมายคำพูดรอบค่า)
+const frontmatter = (raw) => {
+  if (!raw.startsWith('---\n')) return null
+  const fm = raw.slice(4, raw.indexOf('\n---', 4))
+  return {
+    text: fm,
+    get: (k) => fm.match(new RegExp(`^${k}:[ \t]*(.*)$`, 'm'))?.[1]
+      ?.replace(/\s+#.*$/, '').trim().replace(/^"(.*)"$/, '$1'),
+  }
+}
+
+// ── โทเคน `__VAULT__` ที่ installer เรนเดอร์เป็น path จริงตอนติดตั้ง ──────────
+// บรรทัดคอมเมนต์ข้างบนนี้คือ **ตัวล่อ** ของข้อ §10: `_tools/doctor.mjs` อยู่ใน `RENDER_EXEMPT`
+// ของ `bootstrap.mjs` ⇒ เขียนโทเคนไว้ที่นี่ได้ปลอดภัย ไม่ถูกเรนเดอร์ทับ · และถ้าวันหนึ่งมันหายไป
+// แปลว่า doctor **ถูกเรนเดอร์ทับแล้ว** = ตัวเรนเดอร์เสีย ⇒ update รอบถัดไปหยุดเรนเดอร์เงียบ ๆ (ใบ 03)
+//
+// ⚠️ ตัวแปรข้างล่าง **ประกอบจากสองท่อนโดยตั้งใจ** ห้ามรวบเป็นสตริงเดียว — ถ้าเขียนเต็ม ๆ แล้ววันหนึ่ง
+// ไฟล์นี้โดนเรนเดอร์ทับ ตัวค้นหาจะกลายเป็น path ไปพร้อมกับตัวล่อ ⇒ มัน "หาเจอ" ทุกครั้งและเขียว
+// ตลอดกาล · ข้อตรวจที่พังพร้อมกับสิ่งที่มันเฝ้า คือข้อตรวจที่ไม่มีอยู่จริง
+const VAULT_TOKEN = '__' + 'VAULT' + '__'
+
 // ── 1. git ──────────────────────────────────────────────────────────────────
 try {
   const commits = await git('rev-list', '--count', 'HEAD')
@@ -48,6 +75,20 @@ try {
   check(gi.includes('.obsidian/plugins/*/data.json'),
     '.gitignore กัน plugin data.json', 'ไฟล์นั้นเก็บ API key + RSA private key')
   check(gi.includes('.obsidian/workspace.json'), '.gitignore กัน workspace.json')
+
+  // กฎนี้ต้องอยู่ใน `.gitignore` ที่ **git track** ไม่ใช่ `.git/info/exclude` ที่เดินทางไปกับ clone
+  // ไม่ได้ — ไม่งั้นบนเครื่องคนอื่น `autocommit.sh` (`git add -A -uall`) จะลากทั้ง worktree เข้า
+  // commit ของ vault หลัก · เป็นอาการเดียวกับที่ทำให้ `wayfinder-vercel-ci` หายไป ซึ่งเป็นเหตุ
+  // ที่ vault นี้เกิดขึ้นแต่แรก (ใบ 02)
+  //
+  // ⚠️ เทียบ **ทั้งบรรทัดหลัง trim** ไม่ใช่ substring บนไฟล์ทั้งก้อน — เหนือกฎจริงมีคอมเมนต์
+  // อธิบายเหตุผลที่เขียน `.claude/worktrees/<ชื่อ>/` ไว้เต็ม ๆ ⇒ substring test จะเขียวจากคอมเมนต์
+  // นั้นตัวเดียว แม้กฎจริงถูกลบไปแล้ว (กับดัก "หาไม่เจอ = ผ่าน" ตัวเดิมของไฟล์นี้)
+  const giLines = gi.split('\n').map((l) => l.trim())
+  const wtRule = giLines.find((l) => l === '.claude/worktrees/' || l === '.claude/worktrees')
+  check(wtRule !== undefined, '.gitignore กัน .claude/worktrees/',
+    wtRule !== undefined ? `บรรทัด ${giLines.indexOf(wtRule) + 1}`
+      : 'ไม่มีกฎนี้เป็นบรรทัดของตัวเอง — คอมเมนต์ที่พูดถึงมันไม่นับ')
 }
 
 // ── 3. plugin ───────────────────────────────────────────────────────────────
@@ -90,8 +131,15 @@ try {
     `${froms.length} FROM`)
 
   const eff = await readFile(join(VAULT, 'Wayfinder Efforts.md'), 'utf8').catch(() => '')
-  check(eff.includes('```dataviewjs') && /const STALE_DAYS = \d+/.test(eff)
-    && /const PAUSED_STALE_DAYS = \d+/.test(eff),
+  // ⚠️ ยึด **หัวบรรทัด** ทั้งสองเส้น — ใบ 01 ตรวจแล้วว่ารูปเดิม (`/const STALE_DAYS = \d+/` ไม่มี
+  // `^`/`m`) กันได้แค่ "ลบตัวประกาศทิ้ง" ยังไม่กัน "เหลือแต่คอมเมนต์ที่เขียนรูปประกาศเต็ม ๆ" ซึ่งเป็น
+  // กับดักตัวเดียวกับที่ข้อ `LS_KEY` ข้างล่างจงใจ harden ไว้ตั้งแต่ต้น · ที่ผ่านมาไฟล์นี้รอดมาได้
+  // **แบบบังเอิญ** เพราะยังไม่มีใครเขียนคอมเมนต์รูปนั้นลงไป — ปลอดภัยแบบบังเอิญไม่ใช่ปลอดภัย
+  //
+  // สองบรรทัดนี้คือ **ค่าเริ่มต้น** ตัวจริงตอนไม่มีโน้ต Config (ใบ 01 ย้ายค่าที่ใช้จริงไปที่นั่น
+  // แล้วเก็บตัวประกาศไว้เป็น fallback) ⇒ หายเมื่อไหร่ vault ที่ไม่มี Config จะไม่เหลืออะไรให้ตกไปหา
+  check(eff.includes('```dataviewjs') && /^const STALE_DAYS = \d+/m.test(eff)
+    && /^const PAUSED_STALE_DAYS = \d+/m.test(eff),
     'Wayfinder Efforts มีบล็อก dataviewjs + เส้นแบ่งเวลาทั้งสองเส้น')
 
   // สถานะ map เป็นของ load-bearing ⇒ ทุก view ระดับใบต้องกรองด้วยมัน
@@ -177,7 +225,10 @@ try {
   // ⇒ detail โชว์ค่าที่ดึงมาได้จริงด้วย เพื่อให้เห็นทันทีถ้าวันหนึ่งมันคว้าผิดตัว
   const sharedConst = (body, name) =>
     body.match(new RegExp(`^const\\s+${name}\\s*=\\s*["']([^"']+)["']`, 'm'))?.[1] ?? null
-  for (const name of ['LS_KEY', 'SELECT_EVENT']) {
+  // `CONFIG_NOTE` เข้าลูปนี้ด้วยตั้งแต่ใบ 01 — สองหน้าอ่านค่าที่ผู้ใช้จูนจากโน้ตเดียวกัน
+  // แก้ชื่อข้างเดียว = หน้าหนึ่งอ่าน Config ไม่เจอแล้วตกไปใช้ค่าเริ่มต้น **เงียบ ๆ** ส่วนอีกหน้าไม่ตก
+  // ⇒ สองหน้าโชว์คนละค่าจากข้อมูลชุดเดียวกัน ซึ่งดูเหมือน "ข้อมูลมั่ว" มากกว่า "ของพัง"
+  for (const name of ['LS_KEY', 'SELECT_EVENT', 'CONFIG_NOTE']) {
     const a = sharedConst(eff, name)
     const b = sharedConst(tix, name)
     const same = a !== null && b !== null && a === b
@@ -341,6 +392,69 @@ try {
     'backtick ในเนื้อ CSS escape ครบทุกตัว',
     cssBad.length ? cssBad.join(' · ')
       : cssBodies.length ? cssOk.join(' · ') : 'ไม่พบ `const CSS = `` เลยสักหน้า')
+
+  // ── โน้ตของผู้ใช้: Wayfinder Config · Wayfinder Picks (ใบ 01) ────────────────
+  // ใบ 01 ย้ายค่าที่ผู้ใช้จูนออกจากสามหน้าไปไว้สองใบนี้ เพราะตัวอัปเดต **ทับสามหน้าทั้งชุดโดยไม่ถาม**
+  // ⇒ ตั้งแต่นั้น "จูนค่าแล้วไม่มีอะไรขยับ" กลายเป็นโหมดพังที่เงียบที่สุดของระบบ: ตัวอ่านถูกออกแบบให้
+  // **ห้าม throw** และตกไปใช้ค่าเริ่มต้น *เป็นราย ๆ คีย์* ⇒ ไม่มีกล่องแดง ไม่มี error ไม่มีอะไรบอกเลย
+  // ว่าค่าที่เพิ่งแก้ถูกทิ้ง · ผู้ใช้จะสรุปว่า *ฟีเจอร์พัง* แล้วไปไล่หาผิดทางทั้งเส้น
+  //
+  // ⚠️ รายชื่อคีย์ **ดึงจากตัวบล็อกจริง** ไม่ใช่ลิสต์ตัวที่สองใน doctor — เติมคีย์ใหม่ในบล็อกเมื่อไหร่
+  // ข้อนี้เรียกร้องให้โน้ต Config มีคีย์นั้นทันทีโดยไม่ต้องแก้ doctor และไม่มีลิสต์ไหนให้ drift
+  // (เหตุผลเดียวกับที่ข้อ `TICKETS_NOTE` เทียบกับสารบัญไฟล์จริง ไม่ใช่กับสตริงตัวที่สองใน doctor)
+  // **ดึงไม่ได้เลยสักคีย์ = ไม่ผ่าน** — regex ที่คว้าไม่โดนต้องแดง ไม่ใช่เขียวเพราะ "ไม่มีอะไรให้ตรวจ"
+  const CFG_CALL = /\bcfg(Num|Color|Label)\(\s*"([^"]+)"/g
+  const cfgWant = new Map()
+  for (const [, body] of NOTES) for (const m of body.matchAll(CFG_CALL)) cfgWant.set(m[2], m[1])
+  const cfgKeys = [...cfgWant.keys()].sort()
+
+  // ชื่อโน้ตมาจาก `CONFIG_NOTE` ในบล็อก (ข้อข้างบนบังคับให้สองหน้าประกาศตรงกันไปแล้ว)
+  // ⇒ ข้อนี้คือ *อีกฝั่งของสัญญา*: สตริงนั้นต้องสะกดตรงกับโน้ตที่มีอยู่จริง เหมือนข้อ `TICKETS_NOTE`
+  const configNote = sharedConst(eff, 'CONFIG_NOTE')
+  const cfgOnDisk = configNote !== null && rootNotes.includes(configNote)
+  const cfgFm = !cfgOnDisk ? null
+    : frontmatter(await readFile(join(VAULT, `${configNote}.md`), 'utf8').catch(() => ''))
+  const cfgMissing = cfgFm === null ? cfgKeys : cfgKeys.filter((k) => cfgFm.get(k) === undefined)
+  check(cfgOnDisk && cfgFm !== null && cfgKeys.length > 0 && cfgMissing.length === 0,
+    'Wayfinder Config มีอยู่จริง + frontmatter ครบทุกคีย์ที่บล็อกอ่าน',
+    configNote === null ? 'ไม่พบตัวประกาศ const CONFIG_NOTE ใน Wayfinder Efforts.md'
+      : !cfgOnDisk ? `"${configNote}" ไม่ตรงกับโน้ตรากไหนเลย (สแกน ${rootNotes.length} โน้ต)`
+        : cfgFm === null ? `${configNote}.md ไม่มี frontmatter`
+          : cfgKeys.length === 0 ? 'ดึงรายชื่อคีย์จากบล็อกไม่ได้เลยสักตัว — regex คว้าไม่โดน'
+            : cfgMissing.length ? `ขาด ${cfgMissing.length} คีย์: ${cfgMissing.join(' · ')}`
+              : `${cfgKeys.length} คีย์: ${cfgKeys.join(' · ')}`)
+
+  // คีย์ครบแต่ค่าใช้ไม่ได้ = โหมดพังเดียวกันเป๊ะ (ตกไปค่าเริ่มต้นเงียบ ๆ) ⇒ ต้องเป็นคนละข้อ ไม่รวบ
+  // ตัวตรวจสามตัวนี้เป็นสำเนาของกฎในบล็อก — แต่ **คีย์ไหนใช้ตัวไหนถูกดึงมาจากบล็อกเช่นกัน**
+  // (จากชื่อฟังก์ชัน `cfgNum`/`cfgColor`/`cfgLabel` ที่บล็อกเรียก) ⇒ ย้ายคีย์ข้ามชนิดแล้วข้อนี้ตามทันเอง
+  const CFG_OK = {
+    Num: (v) => Number.isFinite(Number(v)) && Number(v) > 0,
+    Color: (v) => /^#[0-9a-fA-F]{6}$/.test(v.trim()),
+    Label: (v) => v.trim() !== '' && !/[<>"]/.test(v),
+  }
+  const cfgBad = cfgFm === null ? [] : cfgKeys.filter((k) => {
+    const v = cfgFm.get(k)
+    return v !== undefined && !CFG_OK[cfgWant.get(k)](v)
+  })
+  check(cfgFm !== null && cfgBad.length === 0,
+    'ค่าทุกคีย์ใน Wayfinder Config ใช้ได้จริง (ไม่ตกไปค่าเริ่มต้นเงียบ ๆ)',
+    cfgFm === null ? 'อ่าน frontmatter ของโน้ต Config ไม่ได้ — ดูข้อบน'
+      : cfgBad.length
+        ? cfgBad.map((k) => `${k}="${cfgFm.get(k)}" ผ่าน cfg${cfgWant.get(k)}() ไม่ได้`).join(' · ')
+        : `ตรวจแล้ว ${cfgKeys.filter((k) => cfgFm.get(k) !== undefined).length} ค่า`)
+
+  // `Wayfinder Picks` — section `🎯 หยิบอันไหนต่อ` ที่ย้ายออกจากท้าย Dashboard (ใบ 01)
+  // Dashboard เป็นไฟล์ **managed** (update ทับทั้งชุด) และมันลิงก์มาที่โน้ตนี้ ⇒ โน้ตหายเมื่อไหร่
+  // ลิงก์บน Dashboard กลายเป็นลิงก์ตาย และ section ทั้งอันหายไปโดยไม่มีใครสังเกต
+  // ตรวจสองขาแยกกัน: **มีไฟล์จริง** (เทียบสารบัญราก ไม่ใช่ `exists()` — ดิสก์ mac เป็น
+  // case-insensitive ⇒ `stat()` เปิด "wayfinder picks" ผ่านหน้าเฉย) และ **Dashboard ยังลิงก์มา**
+  const PICKS = 'Wayfinder Picks'
+  const picksOnDisk = rootNotes.includes(PICKS)
+  const picksLinked = dash.includes(`[[${PICKS}]]`)
+  check(picksOnDisk && picksLinked, `${PICKS} มีอยู่จริง และ Dashboard ลิงก์ไปหา`,
+    picksOnDisk && picksLinked ? `${PICKS}.md`
+      : [picksOnDisk ? '' : `ไม่มี ${PICKS}.md ที่รากของ vault`,
+        picksLinked ? '' : `Dashboard ไม่มีลิงก์ [[${PICKS}]]`].filter(Boolean).join(' · '))
 }
 
 // ── 6. ticket ทุกใบ ─────────────────────────────────────────────────────────
@@ -349,17 +463,6 @@ const TYPES = ['research', 'prototype', 'grilling', 'task']
 const MAP_STATUS = ['active', 'draft', 'paused', 'done', 'dropped']
 const PENDING = ['open', 'claimed', 'waiting'] // ยังไม่ปิด = ยังนับเป็นของค้าง
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
-
-// frontmatter หนึ่งก้อน + ตัวอ่านฟิลด์ (ตัดคอมเมนต์ `# …` และเครื่องหมายคำพูดรอบค่า)
-const frontmatter = (raw) => {
-  if (!raw.startsWith('---\n')) return null
-  const fm = raw.slice(4, raw.indexOf('\n---', 4))
-  return {
-    text: fm,
-    get: (k) => fm.match(new RegExp(`^${k}:[ \t]*(.*)$`, 'm'))?.[1]
-      ?.replace(/\s+#.*$/, '').trim().replace(/^"(.*)"$/, '$1'),
-  }
-}
 
 // wikilink ใน frontmatter ชี้ได้สองแบบ: ชื่อไฟล์ในโฟลเดอร์เดียวกัน (blockers ของใบ)
 // หรือ path จากราก vault (blocked_by / superseded_by ของ map ที่ข้าม effort ได้)
@@ -539,7 +642,18 @@ const byEffort = new Map()
 
   const settings = await readJson(join(homedir(), '.claude/settings.json')).catch(() => ({}))
   // ต้องชี้มาที่ vault *นี้* — ไม่ใช่แค่มีคำว่า autocommit.sh ของ vault อื่น
-  const wired = JSON.stringify(settings.hooks?.PostToolUse ?? []).includes(script)
+  //
+  // เทียบสตริงก่อน แล้วค่อยตกมาที่ **realpath** เป็นทางที่สอง (ใบ 03): `import.meta.url` ของ ESM
+  // ผ่าน realpath มาแล้วเสมอ ⇒ `script` ที่นี่เป็น path จริงอยู่ข้างเดียว · ถ้า installer จด path
+  // ที่มี symlink คั่นลง settings.json ข้อนี้จะ ❌ ทั้งที่ hook ยิงอยู่จริงทุกครั้ง — แดงปลอมชนิดที่
+  // ไล่หาสาเหตุไม่เจอ เพราะทุกอย่างที่ตาเห็นถูกหมด
+  const hooksRaw = JSON.stringify(settings.hooks?.PostToolUse ?? [])
+  let wired = hooksRaw.includes(script)
+  if (!wired) {
+    const scriptReal = await real(script)
+    for (const m of hooksRaw.matchAll(/\/[^"\\\s]*_tools\/autocommit\.sh/g))
+      if (await real(m[0]) === scriptReal) { wired = true; break }
+  }
   check(wired, 'hook ต่อไว้ใน ~/.claude/settings.json แล้ว',
     wired ? '' : 'รัน bootstrap.mjs --wire-hook')
 
@@ -550,14 +664,136 @@ const byEffort = new Map()
   const wtAware = src.includes('WT_PREFIX')
   check(wtAware, 'autocommit.sh ตัวจริงรองรับ worktree',
     wtAware ? '' : 'ยังเป็นรุ่นที่ commit ได้แค่ vault หลัก — merge _tools/autocommit.sh เข้า main')
+
+  // ── `VAULT` ที่สคริปต์คำนวณได้ ต้องเป็น vault นี้จริง (ใบ 02 ฝากไว้) ────────
+  // ข้อข้างบนตรวจแค่ว่า *มี* `WT_PREFIX` ⇒ **จับ `__VAULT__` ที่ยังไม่ถูกเรนเดอร์ไม่ได้เลย**
+  // ซึ่งเป็นบั๊กที่ทำให้ hook ตายเงียบที่สุดเท่าที่วัดมา: `[ -e "$REPO/.git" ]` ไม่ผ่าน ⇒ `exit 0`
+  // **ไม่มี stdout ไม่มี stderr** ⇒ `2>/dev/null || true` ใน settings.json ไม่ได้กลืนอะไรเลย
+  // เพราะไม่มีอะไรให้กลืนตั้งแต่แรก ⇒ รู้ตัวได้ทางเดียวคือบังเอิญไปเห็นว่า `git log` หยุดเดิน
+  //
+  // ตรวจโดย **รันสองบรรทัดนั้นจริง** ไม่ใช่อ่านค่าแล้วจำลองตรรกะ fallback เอง — ไม่งั้น doctor
+  // ถือสำเนาที่สองของกฎไว้ แล้ว drift จากตัวจริงได้เงียบ ๆ (บั๊กชนิดเดียวกับที่ข้อนี้ตั้งใจจับพอดี)
+  // หยิบมาเฉพาะบรรทัดที่ตรงรูป `VAULT=` / `[ -d "$VAULT/.git" ] || VAULT=` ⇒ ไม่ได้ eval ทั้งไฟล์
+  // **หาบรรทัดไม่เจอ = ไม่ผ่าน** (สคริปต์เปลี่ยนรูปจนตรวจไม่ได้ ก็คือตรวจไม่ได้ ห้ามเขียว)
+  const vaultLines = src.split('\n').filter((l) =>
+    /^VAULT=/.test(l) || /^\[ -d "\$VAULT\/\.git" \][ \t]*\|\|[ \t]*VAULT=/.test(l))
+  const resolved = vaultLines.length
+    ? await run('bash', ['-c', `${vaultLines.join('\n')}\nprintf %s "$VAULT"`])
+      .then((r) => r.stdout, () => null)
+    : null
+  const hookVault = resolved === null ? null : await real(resolved)
+  const vaultOk = hookVault !== null && hookVault === await real(MAIN_VAULT)
+  check(vaultOk, 'VAULT ใน autocommit.sh ชี้มาที่ vault นี้จริง',
+    vaultLines.length === 0 ? 'หาบรรทัด VAULT= ในสคริปต์ไม่เจอ — รูปสคริปต์เปลี่ยนไปแล้ว'
+      : resolved === null ? 'รันบรรทัด VAULT= ไม่ผ่าน'
+        : vaultOk ? hookVault
+          : `ได้ "${resolved}" แต่ vault อยู่ที่ ${MAIN_VAULT}`
+            + (resolved.includes(VAULT_TOKEN) ? ` — โทเคน ${VAULT_TOKEN} ยังไม่ถูกเรนเดอร์` : ''))
 }
 
 // ── 9. Obsidian รู้จัก vault นี้ ─────────────────────────────────────────────
 {
   const p = join(homedir(), 'Library/Application Support/obsidian/obsidian.json')
   const o = await readJson(p).catch(() => ({ vaults: {} }))
-  const known = Object.values(o.vaults ?? {}).some((v) => v.path === MAIN_VAULT)
+  // เทียบ realpath ด้วยเหมือน §8 — Obsidian จดตาม path ที่ผู้ใช้ลากเข้าไป ซึ่งอาจมี symlink คั่น
+  // ⇒ เทียบสตริงตรง ๆ อย่างเดียวจะบอกว่า "ยังไม่ลงทะเบียน" ทั้งที่เปิด vault นี้อยู่ (ใบ 03)
+  const vaultPaths = Object.values(o.vaults ?? {}).map((v) => v?.path).filter(Boolean)
+  let known = vaultPaths.includes(MAIN_VAULT)
+  if (!known) {
+    const mainReal = await real(MAIN_VAULT)
+    for (const v of vaultPaths) if (await real(v) === mainReal) { known = true; break }
+  }
   check(known, 'Obsidian ลงทะเบียน vault นี้ไว้แล้ว')
+}
+
+// ── 10. ติดตั้งจากเทมเพลต — manifest · โทเคนที่ต้องถูกเรนเดอร์ ───────────────
+// vault ที่ติดตั้งจาก public template มี `.wayfinder-template.json` เป็นสัญญาว่า *ไฟล์ไหนเป็นของ
+// template* · หมวดนี้ตรวจฝั่ง "ติดตั้งครบและยังครบอยู่ไหม" ซึ่ง §1-§7 ไม่ได้มองเลย (ใบ 03)
+{
+  const MANIFEST = '.wayfinder-template.json'
+  const man = await readJson(join(VAULT, MANIFEST)).catch(() => null)
+
+  // vault ที่ยังไม่เคยผ่าน installer **ไม่ใช่ความผิดพลาด** — vault ที่มีมาก่อน template ก็หน้าตาแบบนี้
+  // ⇒ ⚠️ ไม่ใช่ ❌ (แบบเดียวกับ "มี ticket ใน vault") · และข้อที่ขึ้นกับ manifest จะ **ไม่ถูก
+  // ลงทะเบียนเลย** แทนที่จะลงทะเบียนแบบเขียวโดยไม่ได้ตรวจอะไร — ตัวเลข `N/M` จะได้ไม่โกหกว่า
+  // ตรวจครบแล้ว · บรรทัด ⚠️ นี้คือสิ่งที่บอกว่าทำไม M ถึงน้อยลง
+  warn(man !== null, `มี ${MANIFEST} (vault นี้ติดตั้งจากเทมเพลต)`,
+    man ? `template_sha ${String(man.template_sha ?? '?').slice(0, 12)}`
+      + ` · ติดตั้ง ${String(man.installed_at ?? '?').slice(0, 10)}`
+      + ` · อัปเดต ${String(man.updated_at ?? '?').slice(0, 10)}`
+      : 'ยังไม่ได้ติดตั้งจากเทมเพลต ⇒ ข้อที่ขึ้นกับ manifest ยังไม่ถูกตรวจ (node _tools/bootstrap.mjs --plan)')
+
+  if (man !== null) {
+    const files = man.files && typeof man.files === 'object' ? Object.keys(man.files) : []
+    const skillFiles = Object.keys(man.skills ?? {})
+    check(man.schema === 1 && files.length > 0, `${MANIFEST} อ่านได้และมีรายชื่อไฟล์`,
+      `schema=${man.schema} · managed ${files.length}`
+      + ` · seed ${Object.keys(man.seeded_once ?? {}).length} · สกิล ${skillFiles.length}`)
+
+    // manifest จด path ที่ **เรนเดอร์ลงไปในไฟล์แล้ว** ⇒ ย้าย/ก็อบ vault ไปที่อื่นโดยยังไม่รัน update
+    // = ทุก path ที่เรนเดอร์ไว้ (hook · สกิล) ยังชี้กลับไปที่เดิม ทั้งที่ vault ไม่ได้อยู่ตรงนั้นแล้ว
+    // เทียบ realpath ทั้งสองฝั่งเหมือน §8/§9 · เทียบกับ `MAIN_VAULT` เพราะ path ที่เรนเดอร์คือของ
+    // vault หลักเสมอ ไม่ใช่ของ worktree ที่ doctor บังเอิญถูกรันอยู่
+    const manVault = await real(String(man.vault ?? ''))
+    const here = await real(MAIN_VAULT)
+    check(manVault === here, `${MANIFEST} จด path ตรงกับที่ vault อยู่จริง`,
+      manVault === here ? here : `manifest จด "${man.vault}" แต่ vault อยู่ที่ ${MAIN_VAULT}`)
+
+    // ไฟล์ระบบหายไปหนึ่งตัวแล้ววินิจฉัยไม่ได้ว่าหายตอนไหน ⇒ ต้องมีอะไรฟ้อง
+    // ⚠️ **เฉพาะ `files` ไม่รวม `seeded_once`** — ของชั้น seed ผู้ใช้ลบทิ้งได้ตามสิทธิ์ (ตัวอย่าง
+    // ชัดที่สุดคือ `example-repo/` ที่สเปกข้อ 9 บอกเองว่า "ลบแล้วต้องลบขาด" update ไม่ปลุกคืน)
+    // ⇒ เอา `seeded_once` มาตรวจเมื่อไหร่ = แดงใส่คนที่ทำถูกตามสเปกเป๊ะ ๆ
+    const missing = []
+    for (const rel of files) if (!(await exists(join(VAULT, rel)))) missing.push(rel)
+    check(missing.length === 0, 'ไฟล์ใน manifest ยังอยู่ครบทุกตัว',
+      missing.length ? `หาย ${missing.length}: ${missing.slice(0, 5).join(' · ')}`
+        : `${files.length} ไฟล์`)
+
+    // ── โทเคนค้าง — `__VAULT__` ที่ไม่ถูกเรนเดอร์ ────────────────────────────
+    // ขอบเขต = **สิ่งที่ตัวเรนเดอร์รับผิดชอบ** (managed + สกิลที่ติดตั้งไว้) ไม่ใช่ "ทุกไฟล์ใน vault"
+    // ตั้งใจ: effort ของผู้ใช้เขียนถึงโทเคนตัวนี้ได้ตามปกติ (ใบของ effort นี้เองก็เขียน) ⇒ กวาดทั้ง
+    // vault เมื่อไหร่ = แดงใส่ prose ของตัวเอง แล้วคนจะเลิกอ่าน doctor ซึ่งแย่กว่าตัวบั๊ก
+    //
+    // `RENDER_EXEMPT` ของ bootstrap ถูกยกเว้นตรงนี้เพราะทั้งสามตัว *พูดถึง* โทเคนโดยตั้งใจ —
+    // ฝั่งที่เฝ้าสามตัวนั้นคือข้อ §8 (`autocommit.sh` resolve ได้ถูกไหม) กับข้อกลับด้านข้างล่าง
+    const EXEMPT = new Set(['_tools/autocommit.sh', '_tools/bootstrap.mjs', '_tools/doctor.mjs'])
+    const leftover = []
+    for (const rel of files) {
+      if (EXEMPT.has(rel)) continue
+      const t = await readFile(join(VAULT, rel), 'utf8').catch(() => null)
+      if (t !== null && t.includes(VAULT_TOKEN)) leftover.push(rel)
+    }
+    // สกิลอยู่ **นอก vault** (`~/.claude/skills/` หรือปลายทางของ symlink) ⇒ ต้องตามไปจาก manifest
+    // ตรงนี้คือที่ที่บั๊ก "ตัวเรนเดอร์เรนเดอร์ตัวเอง" โผล่ให้เห็นครั้งแรกในใบ 03 — สกิลกลับมามีโทเคน
+    // หลัง update รอบสอง · รับ `<VAULT>` ด้วยตามภาคผนวก J ของใบ 03
+    for (const rel of skillFiles) {
+      const cut = rel.indexOf('/')
+      const base = cut < 0 ? null : man.skills_targets?.[rel.slice(0, cut)]
+      if (!base) continue
+      const t = await readFile(join(base, rel.slice(cut + 1)), 'utf8').catch(() => null)
+      if (t !== null && (t.includes(VAULT_TOKEN) || t.includes('<VAULT>'))) leftover.push(`skills/${rel}`)
+    }
+    check(leftover.length === 0, `ไม่เหลือ ${VAULT_TOKEN} ค้างในไฟล์ที่ติดตั้ง`,
+      leftover.length ? `${leftover.length} ไฟล์: ${leftover.slice(0, 5).join(' · ')}`
+        : `สแกน managed ${files.length - [...EXEMPT].filter((e) => files.includes(e)).length} + สกิล ${skillFiles.length} ไฟล์`)
+  }
+
+  // ── ข้อ **กลับด้าน**: ตัวเรนเดอร์ต้องยังถือโทเคนไว้เอง (ใบ 03) ───────────────
+  // ข้อข้างบนตรวจ *ผลลัพธ์* — ข้อนี้ตรวจว่า *เครื่องมือยังทำงานอยู่ไหม* และสองอย่างนี้ไม่ครอบกัน
+  // เคสจริง: `bootstrap.mjs` มี `text.split('__VAULT__')` อยู่ในตัวเอง ⇒ install เรนเดอร์ตัวเอง
+  // ⇒ สำเนาใน vault กลายเป็น `text.split('<path>')` ⇒ **update รอบถัดไปหยุดเรนเดอร์ทุกไฟล์เงียบ
+  // สนิท** โดยตัวกวาด "ไม่เหลือ placeholder ค้าง" ยังเขียวสวยงาม เพราะรอบนั้นไม่มีอะไรค้างจริง ๆ
+  //
+  // ไม่ขึ้นกับ manifest โดยตั้งใจ — vault ที่ยังไม่ติดตั้ง (เช่นตัวที่กำลังจะย้ายเข้าเทมเพลต) ก็ต้อง
+  // รู้ตัวว่าเครื่องมือของมันยังใช้การได้อยู่ก่อนจะเริ่ม
+  const holders = ['_tools/bootstrap.mjs', '_tools/doctor.mjs']
+  const lost = []
+  for (const rel of holders) {
+    const t = await readFile(join(VAULT, rel), 'utf8').catch(() => null)
+    if (t === null || !t.includes(VAULT_TOKEN)) lost.push(rel)
+  }
+  check(lost.length === 0, `ตัวเรนเดอร์ยังถือโทเคน ${VAULT_TOKEN} ไว้เอง`,
+    lost.length ? `ถูกเรนเดอร์ทับ/หายไปแล้ว: ${lost.join(' · ')}` : holders.join(' · '))
 }
 
 // ── รายงาน ──────────────────────────────────────────────────────────────────

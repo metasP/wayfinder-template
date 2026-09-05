@@ -1,152 +1,649 @@
 #!/usr/bin/env node
-// ต่อ wayfinder-vault ที่ copy/clone มาแล้ว เข้ากับเครื่องนี้ — idempotent รันซ้ำได้ไม่พัง
+// ติดตั้ง / อัปเดต wayfinder vault จาก template repo — idempotent รันซ้ำได้ไม่พัง
 //
-// ทำอะไรบ้าง:
-//   1. เช็คว่าไฟล์ใน vault ครบ — ขาดแล้วหยุด (สร้างแทนให้ไม่ได้ ต้อง copy/clone มาให้ครบ)
-//   2. git init + commit แรก ถ้ายังไม่เป็น repo
-//   3. chmod +x autocommit.sh
-//   4. --wire-hook    ต่อ PostToolUse hook เข้า ~/.claude/settings.json
-//   5. --wire-memory  ใส่กติกา wayfinder-vault ลง ~/.claude/CLAUDE.md (user scope)
-//   6. พิมพ์ขั้นตอนที่ต้องทำมือ แล้วรัน doctor
+// เมื่อก่อนไฟล์นี้ประกาศตัวเองว่า *"ไม่มีหน้าที่สร้างไฟล์เนื้อหาใด ๆ"* เพราะสมมติว่าเนื้อ vault
+// มากับ git อยู่แล้ว — พอ template repo ไม่ใช่ vault ของใคร สมมติฐานนั้นพังทั้งอัน
+// ⇒ ตอนนี้มันเป็นคน copy เนื้อเข้ามาจริง ๆ เรนเดอร์ path ติดตั้งสกิล และจดว่าวางอะไรไว้บ้าง
+//
+// ── สองโหมด (ตัดสินจาก `.wayfinder-template.json` ที่ราก vault ปลายทาง) ──────────────────
+//   install  ยังไม่มี manifest  ถาม 5 ข้อ → วางทั้งชุด → seed Config/Picks/example → เขียน manifest
+//   update   มี manifest แล้ว   ทับเฉพาะไฟล์ที่ manifest ครอบ · ลบไฟล์ที่ template เลิกใช้แล้ว
+//                               · ไม่แตะอะไรที่ไม่เคยอยู่ใน manifest
+//
+// ── ของสามชั้น: ทุกไฟล์อยู่ชั้นใดชั้นหนึ่งเท่านั้น ────────────────────────────────────────
+//   managed    ของ template — ทับได้เสมอ และถูกลบจริงเมื่อ template เลิกใช้ (อยู่ใน `files`)
+//   seed-once  วางตอน install ครั้งเดียว **แล้วไม่แตะอีกเลย** ทั้งไม่ทับ ไม่ลบ ไม่ปลุกคืน
+//              = `Wayfinder Config.md` · `Wayfinder Picks.md` · `example-repo/` · ค่าตั้งใน `.obsidian/`
+//   unknown    ไม่เคยอยู่ใน manifest ⇒ **ของผู้ใช้** — `_tools/harness-kit/`, `<repo>/<effort>/`
+//              ห้ามแตะไม่ว่ากรณีใด · การลบขับด้วย manifest เก่าเท่านั้น ไม่ใช่การ "กวาดของแปลกปลอม"
 //
 // ใช้:
-//   node _tools/bootstrap.mjs --wire-hook --wire-memory
+//   node template/_tools/bootstrap.mjs --plan          ← ขั้น 1-3: ตรวจ → รายงาน → พิมพ์คำถาม 5 ข้อ
+//   node template/_tools/bootstrap.mjs --vault ~/Documents/Git/wayfinder-vault \
+//        --parts all --on-conflict skip --skills-dir ~/.claude/skills --allow-brew no
+//   node <vault>/_tools/bootstrap.mjs --from ~/Documents/Git/wayfinder-template   ← update
 //
-// ทั้งสองแฟล็กเป็น opt-in เพราะมันแก้ config ระดับ global — ต้องพิมพ์เองถึงจะทำ ไม่ทำเงียบ ๆ
-//
-// เนื้อหาของ vault (Dashboard, Efforts, README, .gitignore, สี Graph View, ตัวปลั๊กอิน Dataview)
-// **track อยู่ใน git ทั้งหมด** ⇒ clone มาก็ได้ครบ สคริปต์นี้จึงไม่มีหน้าที่สร้างไฟล์เนื้อหาใด ๆ
+// `--wire-hook` / `--wire-memory` ยัง opt-in เหมือนเดิม (ใช้กับ vault ที่ติดตั้งอยู่แล้ว)
+// — ในโหมด install ทั้งสองชิ้นมาจากคำตอบข้อ 2 (`hook` / `memory`) แทน
 
-import { readFile, writeFile, chmod, stat, copyFile } from 'node:fs/promises'
+import { readFile, writeFile, chmod, stat, lstat, readlink, realpath, mkdir, readdir, rm, rmdir, copyFile } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { join, dirname } from 'node:path'
+import { createHash } from 'node:crypto'
+import { join, dirname, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
+import { createInterface } from 'node:readline/promises'
 
 const run = promisify(execFile)
-const VAULT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const CLAUDE = join(homedir(), '.claude')
-const args = process.argv.slice(2)
-const has = (f) => args.includes(f)
+const HOME = homedir()
+const SELF_DIR = dirname(fileURLToPath(import.meta.url))
+const CLAUDE = join(HOME, '.claude')
 
-const log = (s) => console.log(s)
-const exists = (p) => stat(p).then(() => true, () => false)
+const MANIFEST = '.wayfinder-template.json'
+const DEFAULT_VAULT = join(HOME, 'Documents/Git/wayfinder-vault')
+const DEFAULT_SKILLS = join(CLAUDE, 'skills')
+const ALL_PARTS = ['skills', 'vault', 'hook', 'obsidian', 'memory']
 
-const HOOK_CMD = `${VAULT}/_tools/autocommit.sh 2>/dev/null || true`
-
-const REQUIRED = [
-  '_tools/autocommit.sh',
-  '_tools/doctor.mjs',
-  'Wayfinder Dashboard.md',
-  'Wayfinder Efforts.md',
-  'README.md',
-  'SETUP.md',
-  '.gitignore',
+// ── ชั้น seed-once — เหตุผลติดไว้ทีละข้อ เพราะย้ายไฟล์ผิดชั้น = ลบของผู้ใช้เงียบ ๆ ─────────
+//  · `Wayfinder Config.md` / `Wayfinder Picks.md` — ใบ 01 ย้ายค่าที่ผู้ใช้จูนเอง (STALE_DAYS,
+//    COLORS, section "🎯 หยิบอันไหนต่อ") มาไว้สองใบนี้ ⇒ manifest ครอบเมื่อไหร่ update ลบโน้ตทิ้ง
+//  · `example-repo/` — ship ตอน install เท่านั้น update ไม่ปลุกคืน (ลบแล้วต้องลบขาด)
+//  · `.obsidian/` — เป็น "ค่าตั้ง" ของเครื่องเขา ยกเว้นตัวปลั๊กอิน Dataview ที่เป็น "โค้ด"
+//    เส้นแบ่งคือ **โค้ดอัปเดตได้ ค่าตั้งอัปเดตไม่ได้**: ทับ `community-plugins.json` เมื่อไหร่
+//    ปลั๊กอินอื่นที่เขาเปิดไว้จะถูกปิดเงียบ ๆ · ทับ `graph.json` = สีที่เขาปรับเองหาย
+const OBSIDIAN_MANAGED = [
+  '.obsidian/plugins/dataview/main.js',
+  '.obsidian/plugins/dataview/manifest.json',
+  '.obsidian/plugins/dataview/styles.css',
 ]
-
-// ── 1. ไฟล์ครบไหม ───────────────────────────────────────────────────────────
-{
-  const missing = []
-  for (const f of REQUIRED) if (!(await exists(join(VAULT, f)))) missing.push(f)
-  if (missing.length) {
-    console.error(`❌ ไฟล์หายไป ${missing.length} ตัว: ${missing.join(', ')}`)
-    console.error('   สร้างแทนให้ไม่ได้ — copy/clone vault มาให้ครบก่อน แล้วรันใหม่')
-    process.exit(1)
-  }
-  log(`✅ ไฟล์ครบ ${REQUIRED.length} ตัว`)
+const isSeed = (rel) => {
+  if (rel === 'Wayfinder Config.md' || rel === 'Wayfinder Picks.md') return true
+  if (rel === 'example-repo' || rel.startsWith('example-repo/')) return true
+  if (rel.startsWith('.obsidian/')) return !OBSIDIAN_MANAGED.includes(rel)
+  return false
 }
 
-// ── 2. git ──────────────────────────────────────────────────────────────────
-{
-  const isRepo = await run('git', ['-C', VAULT, 'rev-parse', '--git-dir']).then(() => true, () => false)
-  if (!isRepo) {
-    await run('git', ['-C', VAULT, 'init', '-q', '-b', 'main'])
-    await run('git', ['-C', VAULT, 'add', '-A'])
-    await run('git', ['-C', VAULT, 'commit', '-q', '-m', 'chore: init wayfinder vault'])
-    log('✅ git init + commit แรก')
+const SKIP_NAMES = new Set(['.DS_Store', '.git', 'workspace.json', 'workspace-mobile.json'])
+
+// ── helper ──────────────────────────────────────────────────────────────────
+const log = (s = '') => console.log(s)
+const exists = (p) => stat(p).then(() => true, () => false)
+const sha = (buf) => createHash('sha256').update(buf).digest('hex')
+const expand = (p) => (p.startsWith('~/') ? join(HOME, p.slice(2)) : p)
+const readJson = (p) => readFile(p, 'utf8').then(JSON.parse, () => null)
+const isText = (buf) => !buf.includes(0)
+
+const walk = async (root, base = root, acc = []) => {
+  for (const e of await readdir(root, { withFileTypes: true })) {
+    if (SKIP_NAMES.has(e.name)) continue
+    const abs = join(root, e.name)
+    if (e.isDirectory()) await walk(abs, base, acc)
+    else if (e.isFile()) acc.push(relative(base, abs).split(sep).join('/'))
+  }
+  return acc
+}
+
+// ── args ────────────────────────────────────────────────────────────────────
+const argv = process.argv.slice(2)
+const flags = new Map()
+const bare = new Set()
+for (let i = 0; i < argv.length; i++) {
+  const a = argv[i]
+  if (!a.startsWith('--')) continue
+  const eq = a.indexOf('=')
+  if (eq !== -1) { flags.set(a.slice(2, eq), a.slice(eq + 1)); continue }
+  const next = argv[i + 1]
+  if (next !== undefined && !next.startsWith('--')) { flags.set(a.slice(2), next); i++ }
+  else bare.add(a.slice(2))
+}
+const opt = (k) => flags.get(k)
+const has = (k) => bare.has(k) || flags.has(k)
+
+const die = (msg, code = 1) => { console.error(`❌ ${msg}`); process.exit(code) }
+
+// ── ขั้นที่ 1 — ตรวจ (ยังไม่เขียนอะไร) ──────────────────────────────────────
+// 1a. หา template repo: `<repo>/{template,skills,LICENSE}` คือลายเซ็นของราก repo
+//     ใช้ของที่ repo มีอยู่แล้วเป็นตัวชี้ ไม่ต้องมีไฟล์ marker เพิ่ม
+const isRepoRoot = async (d) =>
+  (await exists(join(d, 'template'))) && (await exists(join(d, 'skills'))) && (await exists(join(d, 'LICENSE')))
+
+const findRepo = async () => {
+  if (has('from')) {
+    const d = resolve(expand(opt('from')))
+    if (await isRepoRoot(d)) return d
+    if (await isRepoRoot(dirname(d))) return dirname(d) // ชี้มาที่ `template/` ก็รับ
+    die(`--from ${d} ไม่ใช่ราก template repo (ต้องมี template/ · skills/ · LICENSE)`)
+  }
+  let d = dirname(SELF_DIR)                    // `<x>/_tools/..` = `<x>`
+  for (let i = 0; i < 4; i++) {
+    if (await isRepoRoot(d)) return d
+    const up = dirname(d)
+    if (up === d) break
+    d = up
+  }
+  return null
+}
+
+// 1b. หา vault ปลายทาง
+const selfVault = dirname(SELF_DIR)
+const vaultArg = has('vault') ? resolve(expand(opt('vault'))) : null
+const runningInsideVault = await exists(join(selfVault, MANIFEST))
+const VAULT = vaultArg ?? (runningInsideVault ? selfVault : DEFAULT_VAULT)
+
+const oldManifest = await readJson(join(VAULT, MANIFEST))
+const MODE = oldManifest ? 'update' : 'install'
+
+let REPO = await findRepo()
+if (!REPO && oldManifest?.source_repo && await isRepoRoot(oldManifest.source_repo)) REPO = oldManifest.source_repo
+if (!REPO) {
+  die(`หา template repo ไม่เจอ — สคริปต์นี้ต้องรันจาก <repo>/template/_tools/bootstrap.mjs
+   หรือส่ง --from <path ของ repo ที่ clone มา> มาให้ตรง ๆ`)
+}
+const SRC = join(REPO, 'template')
+const SKILLS_SRC = join(REPO, 'skills')
+
+const templateFiles = await walk(SRC).catch(() => die(`ไม่มี ${SRC}`))
+const skillFiles = await walk(SKILLS_SRC).catch(() => [])
+const templateSha = await run('git', ['-C', REPO, 'rev-parse', 'HEAD'])
+  .then((r) => r.stdout.trim(), () => null)
+
+// 1c. สภาพเครื่อง
+const env = {
+  darwin: process.platform === 'darwin',
+  node: process.version,
+  obsidianApp: await exists('/Applications/Obsidian.app'),
+  obsidianRunning: await run('pgrep', ['-x', 'Obsidian']).then(() => true, () => false),
+  brew: await run('brew', ['--version']).then(() => true, () => false),
+  vaultExists: await exists(VAULT),
+  vaultIsRepo: await run('git', ['-C', VAULT, 'rev-parse', '--git-dir']).then(() => true, () => false),
+  claudeMd: await readFile(join(CLAUDE, 'CLAUDE.md'), 'utf8').catch(() => ''),
+  settings: await readJson(join(CLAUDE, 'settings.json')),
+}
+const hookWired = JSON.stringify(env.settings?.hooks?.PostToolUse ?? []).includes('autocommit.sh')
+
+// ── ขั้นที่ 2 — รายงานก่อนแตะอะไร ───────────────────────────────────────────
+const report = () => {
+  log(`
+── สถานะปัจจุบัน ────────────────────────────────────────────`)
+  log(`  template repo   ${REPO}${templateSha ? ` (${templateSha.slice(0, 8)})` : ' (ยังไม่ได้ commit)'}`)
+  log(`  ไฟล์ใน template ${templateFiles.length} ตัว · สกิล ${skillFiles.length} ไฟล์`)
+  log(`  vault ปลายทาง   ${VAULT}  →  โหมด ${MODE.toUpperCase()}`)
+  log(`  vault มีอยู่แล้ว  ${env.vaultExists ? 'มี' : 'ยังไม่มี'}${env.vaultIsRepo ? ' · เป็น git repo' : ''}`)
+  log(`  Obsidian        ${env.obsidianApp ? 'ลงแล้ว' : 'ยังไม่ลง'}${env.obsidianRunning ? ' · ⚠️ เปิดค้างอยู่' : ''}`)
+  log(`  hook            ${hookWired ? 'ต่อไว้แล้ว' : 'ยังไม่ต่อ'}`)
+  log(`  ~/.claude/CLAUDE.md  ${env.claudeMd.includes('Wayfinder maps live in') ? 'มีย่อหน้าแล้ว' : 'ยังไม่มีย่อหน้า'}`)
+  if (!env.darwin) log(`  ⚠️  ไม่ใช่ macOS — ข้อ Obsidian/brew ใช้ไม่ได้`)
+}
+
+// ── ขั้นที่ 3 — คำถาม 5 ข้อ ─────────────────────────────────────────────────
+// สคริปต์ **ไม่เดาคำตอบให้** — ในโหมด install ถ้าไม่มีคำตอบมาทาง flag และ stdin ไม่ใช่ TTY
+// (= agent เป็นคนรัน) มันจะพิมพ์คำถามแล้วออกด้วย code 2 ให้ agent เอาไปถามเจ้าของเครื่องทีละข้อ
+// ตามโปรโตคอลขั้นที่ 3 ของ setup — ไม่ใช่ตอบแทนเขาเงียบ ๆ
+const QUESTIONS = `
+── ขั้นที่ 3: ถาม 5 ข้อ (ถามทีละข้อ รอคำตอบ) ────────────────────────────────
+
+  1. vault จะวางที่ path ไหน?                    --vault <path>
+     ค่าเริ่มต้น ${DEFAULT_VAULT}
+
+  2. จะติดตั้งชิ้นไหนบ้าง? (เลือกได้หลายข้อ · ค่าเริ่มต้น = ทุกข้อ)   --parts a,b,c
+     skills   สกิล /wayfinder + /wayfinder-next        (นอก vault)
+     vault    เนื้อ vault + _tools + git               (ใน vault)
+     hook     hook commit อัตโนมัติ                    (~/.claude/settings.json)
+     obsidian ค่าตั้ง .obsidian + Dataview + ลงทะเบียน vault
+     memory   ย่อหน้ากติกาใน ~/.claude/CLAUDE.md
+
+     ⚠️ ต้องบอกตรง ๆ ตอนถามข้อ memory แล้วเคารพคำตอบ ไม่ตื๊อ:
+        ย่อหน้าใน CLAUDE.md เป็นที่ **เดียว** ที่บอก /wayfinder ว่า vault อยู่ไหน
+        ไม่เติม = เรียก /wayfinder แล้วมันจะไปทำตาม docs/agents/issue-tracker.md
+        ของ repo ที่เปิดอยู่แทน ⇒ map ไม่ลงใน vault ต้องพิมพ์ path บอกเองทุกครั้ง
+
+  3. เจอของเดิมอยู่แล้วเอายังไง?                  --on-conflict skip|backup
+     ค่าเริ่มต้น skip (ข้าม ไม่ทับ) · อีกทาง backup (สำรอง .bak แล้วทับ)
+
+  4. อนุญาต \`brew install --cask obsidian\` ไหม?  --allow-brew yes|no
+     **ไม่มีค่าเริ่มต้น ต้องตอบเอง** (ถามเฉพาะตอนเลือก obsidian และยังไม่มีแอป)
+     Dataview ไม่ต้องถาม — ship มากับ repo แล้ว
+
+  5. สกิลจะวางที่ไหน?                             --skills-dir <path>
+     ค่าเริ่มต้น ${DEFAULT_SKILLS}
+     ถ้า <dir>/<ชื่อสกิล> เป็น symlink อยู่แล้ว จะเดินตามไปทับที่ปลายทาง ไม่ทำลาย layout เดิม
+
+  ตอบครบแล้วรันด้วย flag ข้างบน · หรือ --yes ถ้าเอาค่าเริ่มต้นทุกข้อ
+`
+
+const ask = async () => {
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  const q = async (text, def) => {
+    const a = (await rl.question(`${text}${def ? ` [${def}]` : ''} `)).trim()
+    return a || def
+  }
+  const a = {}
+  a.vault = resolve(expand(await q('1. vault path?', DEFAULT_VAULT)))
+  a.parts = (await q(`2. ติดตั้งชิ้นไหน? (${ALL_PARTS.join(',')})`, 'all'))
+  a.onConflict = await q('3. เจอของเดิม? (skip/backup)', 'skip')
+  a.skillsDir = resolve(expand(await q('5. สกิลวางที่ไหน?', DEFAULT_SKILLS)))
+  a.allowBrew = 'no'
+  rl.close()
+  return a
+}
+
+let answers
+if (MODE === 'update') {
+  // map ข้อ 3: update ทับทั้งชุด **ไม่ต้องถาม** — คำตอบเดิมอยู่ใน manifest แล้ว
+  answers = {
+    vault: VAULT,
+    parts: (oldManifest.parts ?? ALL_PARTS).join(','),
+    onConflict: 'overwrite',
+    skillsDir: oldManifest.skills_dir ?? DEFAULT_SKILLS,
+    allowBrew: 'no',
+  }
+} else if (has('plan')) {
+  report(); log(QUESTIONS); process.exit(0)
+} else if (has('parts') || has('yes')) {
+  // `--parts` / `--yes` คือสัญญาณว่า **ถาม 5 ข้อมาแล้ว** — `--vault` เดี่ยว ๆ ตอบแค่ข้อ 1
+  // ไม่ใช่ใบอนุญาตให้เดาอีกสี่ข้อที่เหลือ
+  answers = {
+    vault: VAULT,
+    parts: opt('parts') ?? 'all',
+    onConflict: opt('on-conflict') ?? 'skip',
+    skillsDir: resolve(expand(opt('skills-dir') ?? DEFAULT_SKILLS)),
+    allowBrew: opt('allow-brew') ?? null,
+  }
+} else if (process.stdin.isTTY) {
+  report(); log(QUESTIONS); answers = await ask()
+} else {
+  report(); log(QUESTIONS)
+  console.error(`❌ ยังไม่มีคำตอบ 5 ข้อ — ถามเจ้าของเครื่องทีละข้อก่อน แล้วรันใหม่พร้อม --parts …
+   (--yes = เขาตอบว่าเอาค่าเริ่มต้นทุกข้อ · --vault เดี่ยว ๆ ตอบแค่ข้อ 1 ไม่นับว่าตอบครบ)`)
+  process.exit(2)
+}
+
+const parts = new Set(
+  answers.parts === 'all' ? ALL_PARTS
+  : answers.parts === 'none' ? []
+  : answers.parts.split(',').map((s) => s.trim()).filter(Boolean)
+)
+for (const p of parts) if (!ALL_PARTS.includes(p)) die(`ไม่รู้จักชิ้น "${p}" — เลือกจาก ${ALL_PARTS.join(', ')}`)
+// path ของ vault ต้องเป็น path ที่ **resolve symlink แล้ว** ก่อนเอาไปเรนเดอร์ที่ไหนก็ตาม
+// `import.meta.url` ของ ESM ผ่าน realpath เสมอ ⇒ `doctor.mjs`/`autocommit.sh` มองเห็นตัวเองเป็น
+// path จริงเสมอ · ถ้า installer จด path ที่ยังมี symlink คั่นลง settings.json แทน มันจะเทียบกับ
+// ตัวเองไม่ตรง ⇒ hook "ต่อแล้วแต่ doctor บอกว่ายังไม่ต่อ" และ `WT_PREFIX` ไม่ match — เงียบทั้งคู่
+const TARGET_RAW = answers.vault
+if (parts.has('vault') || parts.has('obsidian')) await mkdir(TARGET_RAW, { recursive: true })
+const TARGET = await realpath(TARGET_RAW).catch(() => TARGET_RAW)
+const SKILLS_DIR = answers.skillsDir
+const CONFLICT = answers.onConflict
+
+// ข้อ 4 ไม่มีค่าเริ่มต้น — ถ้ายังจำเป็นแล้วยังไม่ตอบ ห้ามเดา
+const needBrew = parts.has('obsidian') && !env.obsidianApp
+if (MODE === 'install' && needBrew && answers.allowBrew == null) {
+  die('ข้อ 4 (brew install --cask obsidian) ไม่มีค่าเริ่มต้น — ต้องได้คำตอบก่อน (--allow-brew yes|no)', 2)
+}
+
+// ── ขั้นที่ 4 — ลงมือ ────────────────────────────────────────────────────────
+report()
+log(`
+── ลงมือ ────────────────────────────────────────────────────`)
+log(`  ชิ้นที่เลือก: ${[...parts].join(' · ') || '(ไม่มี)'}`)
+if (TARGET !== TARGET_RAW) log(`  ↪️  vault path มี symlink คั่น — ใช้ path จริง ${TARGET}`)
+
+const partOf = (rel) => (rel.startsWith('.obsidian/') ? 'obsidian' : 'vault')
+const wanted = templateFiles.filter((rel) => parts.has(partOf(rel)))
+
+// ── 4a. เรนเดอร์ `__VAULT__` ─────────────────────────────────────────────────
+// สองสูตร ไม่ใช่สูตรเดียว — เอาผิดสูตรแล้วพังคนละแบบ:
+//   · `_tools/autocommit.sh` → แทน **ทั้งบรรทัด** `^VAULT=` เท่านั้น
+//     แทนแบบโทเคนทั่วไฟล์จะไปโดนคอมเมนต์ที่อธิบาย placeholder และบรรทัด fallback
+//     `[ -d "$VAULT/.git" ] || VAULT="$HOME/…"` ซึ่งเป็นกันชนของ render ที่ล้มเหลว — ต้องรอด
+//   · ไฟล์อื่น → แทนโทเคน `__VAULT__` ตรง ๆ (ในไฟล์สกิลรับ `<VAULT>` ด้วย ตามภาคผนวก J)
+// placeholder ที่ค้างไม่ได้ทำให้ error — hook `exit 0` เงียบสนิท ไม่มี output ให้ `2>/dev/null`
+// กลืนด้วยซ้ำ ⇒ ต้องกวาดตรวจหลังเขียน ไม่ใช่เชื่อว่า sed ทำงานแล้ว
+const AUTOCOMMIT = '_tools/autocommit.sh'
+
+// สคริปต์ที่ **พูดถึง** โทเคน ไม่ใช่ **ใช้** โทเคน — แทนโทเคนในนี้ = ทำลายกลไกทิ้ง
+// เคสจริงที่เจอตอนเขียนใบนี้: `bootstrap.mjs` มีบรรทัด `text.split('__VAULT__')` อยู่ในตัวเอง
+// ⇒ install เรนเดอร์ตัวเองไปด้วย ⇒ สำเนาที่อยู่ใน vault กลายเป็น `text.split('<path ของ vault>')`
+// ⇒ **update รอบถัดไปหยุดเรนเดอร์ทุกไฟล์เงียบ ๆ** และตัวกวาดตรวจก็มองไม่เห็น เพราะมันเทียบ
+// ผลลัพธ์ ไม่ได้เทียบว่าโค้ดที่ทำงานอยู่ยังเป็นตัวเดิมไหม
+const RENDER_EXEMPT = new Set([AUTOCOMMIT, '_tools/bootstrap.mjs', '_tools/doctor.mjs'])
+
+const renderVault = (rel, text, isSkill = false) => {
+  // `autocommit.sh` แทน **ทั้งบรรทัด** อย่างเดียว — บรรทัด fallback ข้างล่างต้องรอด
+  if (rel === AUTOCOMMIT) return text.replace(/^VAULT=.*$/m, `VAULT="${TARGET}"`)
+  if (RENDER_EXEMPT.has(rel)) return text
+  const out = text.split('__VAULT__').join(TARGET)
+  return isSkill ? out.split('<VAULT>').join(TARGET) : out
+}
+
+// ── 4b. copy ────────────────────────────────────────────────────────────────
+const files = {}          // managed: rel → sha ของไฟล์ที่เขียนลงไปจริง
+const seeded = {}         // seed-once: rel → sha ตอน install (update ไม่แตะ)
+const rendered = []
+const stats = { written: 0, skipped: 0, seeded: 0, keptSeed: 0, localEdits: [] }
+
+const place = async (src, dest, rel, { isSkill = false, seed = false } = {}) => {
+  const raw = await readFile(src)
+  let buf = raw
+  if (isText(raw)) {
+    const text = raw.toString('utf8')
+    const out = renderVault(rel, text, isSkill)
+    if (out !== text) { buf = Buffer.from(out, 'utf8'); rendered.push(rel) }
+  }
+  const digest = sha(buf)
+  const already = await readFile(dest).then((b) => sha(b), () => null)
+
+  if (already === digest) { stats.skipped++; return digest }
+  if (already !== null) {
+    // ของเดิมอยู่ตรงนั้นแล้วและเนื้อไม่ตรง — ตัดสินตามคำตอบข้อ 3 (install) หรือทับ (update)
+    if (CONFLICT === 'skip') { stats.skipped++; return already }
+    if (CONFLICT === 'backup') await copyFile(dest, `${dest}.bak`)
+    // update: ทับตรง ๆ ตามข้อ 3 ของ map (all-or-nothing) แต่จดไว้ว่าเขาเคยแก้ ⇒ กู้จาก git ได้
+    if (CONFLICT === 'overwrite') {
+      const prev = isSkill ? oldManifest?.skills?.[rel]
+        : seed ? oldManifest?.seeded_once?.[rel]
+        : oldManifest?.files?.[rel]
+      if (prev !== already) stats.localEdits.push(rel)
+    }
+  }
+  await mkdir(dirname(dest), { recursive: true })
+  await writeFile(dest, buf)
+  if (rel.endsWith('.sh')) await chmod(dest, 0o755)
+  stats.written++
+  return digest
+}
+
+for (const rel of wanted) {
+  const dest = join(TARGET, rel)
+  if (isSeed(rel)) {
+    // seed-once: install วางให้ · update **ไม่แตะเลย** ทั้งที่ยังอยู่และที่เขาลบไปแล้ว
+    if (MODE === 'update') {
+      const carried = oldManifest.seeded_once?.[rel]
+      if (carried) { seeded[rel] = carried; stats.keptSeed++ }
+      continue
+    }
+    seeded[rel] = await place(join(SRC, rel), dest, rel, { seed: true })
+    stats.seeded++
   } else {
-    log('✅ เป็น git repo อยู่แล้ว')
+    files[rel] = await place(join(SRC, rel), dest, rel)
+  }
+}
+// update: ชิ้นที่คราวนี้ไม่ได้เลือก (หรือ part หายไป) ยังต้องอยู่ใน manifest ไม่งั้นจะโดนลบ
+if (MODE === 'update') {
+  for (const [rel, digest] of Object.entries(oldManifest.files ?? {}))
+    if (!(rel in files) && !parts.has(partOf(rel))) files[rel] = digest
+  for (const [rel, digest] of Object.entries(oldManifest.seeded_once ?? {}))
+    if (!(rel in seeded)) seeded[rel] = digest
+}
+
+log(`  ✅ ไฟล์ template  เขียน ${stats.written} · เหมือนเดิม/ข้าม ${stats.skipped}` +
+    (stats.seeded ? ` · seed ${stats.seeded}` : '') + (stats.keptSeed ? ` · ไม่แตะ seed ${stats.keptSeed}` : ''))
+
+// ── 4c. สกิล — เดินตาม symlink ไปทับปลายทาง ─────────────────────────────────
+const skillTargets = { ...(oldManifest?.skills_targets ?? {}) }
+const skills = {}
+if (parts.has('skills') && skillFiles.length) {
+  const dirFor = async (name) => {
+    if (skillTargets[name] && await exists(skillTargets[name])) return skillTargets[name]
+    const p = join(SKILLS_DIR, name)
+    const st = await lstat(p).catch(() => null)
+    if (st?.isSymbolicLink()) {
+      const real = await realpath(p).catch(async () => resolve(SKILLS_DIR, await readlink(p)))
+      log(`  ↪️  ${name} เป็น symlink → ทับที่ ${real}`)
+      return real
+    }
+    return p
+  }
+  const cache = new Map()
+  for (const rel of skillFiles) {
+    const name = rel.split('/')[0]
+    if (!cache.has(name)) cache.set(name, await dirFor(name))
+    skillTargets[name] = cache.get(name)
+    const dest = join(cache.get(name), rel.slice(name.length + 1))
+    skills[rel] = await place(join(SKILLS_SRC, rel), dest, rel, { isSkill: true })
+  }
+  log(`  ✅ สกิล ${cache.size} ตัว → ${SKILLS_DIR}`)
+} else if (MODE === 'update') {
+  Object.assign(skills, oldManifest.skills ?? {})
+}
+
+// ── 4d. ลบไฟล์ที่ template เลิกใช้แล้ว ───────────────────────────────────────
+// ขับด้วย **manifest เก่าเท่านั้น** — ของที่ไม่เคยอยู่ใน manifest (harness-kit, effort ของผู้ใช้)
+// ไม่มีทางเข้ามาถึงลูปนี้ได้เลย และ seed-once ก็ไม่เข้าเพราะอยู่คนละคีย์
+const dropped = []
+if (MODE === 'update') {
+  const guard = (rel) => !isSeed(rel) && rel in (oldManifest.files ?? {})
+  for (const rel of Object.keys(oldManifest.files ?? {})) {
+    if (rel in files || !guard(rel)) continue
+    const p = join(TARGET, rel)
+    if (!(await exists(p))) continue
+    await rm(p)
+    dropped.push(rel)
+    for (let d = dirname(p); d !== TARGET; d = dirname(d))
+      if (!(await rmdir(d).then(() => true, () => false))) break
+  }
+  for (const rel of Object.keys(oldManifest.skills ?? {})) {
+    if (rel in skills) continue
+    const name = rel.split('/')[0]
+    const base = skillTargets[name]
+    if (!base) continue
+    await rm(join(base, rel.slice(name.length + 1))).catch(() => {})
+    dropped.push(`skills/${rel}`)
+  }
+  if (dropped.length) log(`  🗑  ลบไฟล์ที่ template เลิกใช้ ${dropped.length} ตัว: ${dropped.join(' · ')}`)
+  if (stats.localEdits.length)
+    log(`  ⚠️  ทับไฟล์ที่คุณเคยแก้ไว้ ${stats.localEdits.length} ตัว (กู้ได้: git log -p -- <ไฟล์>)\n     ${stats.localEdits.join(' · ')}`)
+}
+
+// ── 4e. git ─────────────────────────────────────────────────────────────────
+if (parts.has('vault')) {
+  await chmod(join(TARGET, AUTOCOMMIT), 0o755).catch(() => {})
+  if (!(await run('git', ['-C', TARGET, 'rev-parse', '--git-dir']).then(() => true, () => false))) {
+    await run('git', ['-C', TARGET, 'init', '-q', '-b', 'main'])
+    log('  ✅ git init (vault เป็น local อย่างเดียว ไม่มี remote โดยตั้งใจ)')
   }
 }
 
-// ── 3. chmod ────────────────────────────────────────────────────────────────
-await chmod(join(VAULT, '_tools/autocommit.sh'), 0o755)
-log('✅ autocommit.sh execute ได้')
-
-// ── 4. hook ─────────────────────────────────────────────────────────────────
-if (has('--wire-hook')) {
+// ── 4f. hook — สองเส้น Write|Edit และ Bash ──────────────────────────────────
+// เส้น `Bash` ขาดไม่ได้: agent แก้ไฟล์ใน vault ด้วย sed/python3 บ่อย ซึ่ง payload ไม่มี `file_path`
+// ⇒ มีแต่เส้นแรก การแก้แบบนั้นจะไม่ถูก commit เลย
+if (parts.has('hook') || has('wire-hook')) {
   const p = join(CLAUDE, 'settings.json')
-  const raw = await readFile(p, 'utf8').catch(() => '{}')
-  const settings = JSON.parse(raw)
-
+  const settings = (await readJson(p)) ?? {}
   settings.hooks ??= {}
   settings.hooks.PostToolUse ??= []
-
-  const already = JSON.stringify(settings.hooks.PostToolUse).includes('autocommit.sh')
-  if (already) {
-    log('✅ hook ต่อไว้อยู่แล้ว (ข้าม)')
-  } else {
-    if (await exists(p)) await copyFile(p, `${p}.bak`)
-    const entry = {
-      type: 'command',
-      command: HOOK_CMD,
-      timeout: 15,
-      statusMessage: 'Committing wayfinder-vault...',
-    }
-    const block = settings.hooks.PostToolUse.find((b) => b.matcher === 'Write|Edit')
+  const cmd = `${TARGET}/_tools/autocommit.sh 2>/dev/null || true`
+  let added = 0
+  for (const matcher of ['Write|Edit', 'Bash']) {
+    const block = settings.hooks.PostToolUse.find((b) => b.matcher === matcher)
+    if (JSON.stringify(block?.hooks ?? []).includes(cmd)) continue
+    const entry = { type: 'command', command: cmd, timeout: 15, statusMessage: 'Committing wayfinder-vault...' }
     if (block) block.hooks.push(entry)
-    else settings.hooks.PostToolUse.push({ matcher: 'Write|Edit', hooks: [entry] })
-
-    await writeFile(p, JSON.stringify(settings, null, 2) + '\n')
-    log(`✅ ต่อ hook เข้า ~/.claude/settings.json แล้ว (สำรองไว้ที่ settings.json.bak)`)
+    else settings.hooks.PostToolUse.push({ matcher, hooks: [entry] })
+    added++
   }
-} else {
-  log('⏭  ข้าม hook — เติม --wire-hook ถ้าต้องการ')
-}
+  if (added) {
+    if (await exists(p)) await copyFile(p, `${p}.bak`)
+    await writeFile(p, JSON.stringify(settings, null, 2) + '\n')
+    log(`  ✅ ต่อ hook ${added} เส้นเข้า ~/.claude/settings.json (สำรองไว้ที่ settings.json.bak)`)
+    log('     ⚠️ ต้องรีสตาร์ต Claude Code หรือเปิด /hooks หนึ่งครั้ง config ถึงจะโหลดใหม่')
+  } else log('  ✅ hook ต่อไว้ครบทั้งสองเส้นแล้ว (ข้าม)')
+} else log('  ⏭  ข้าม hook')
 
-// ── 5. memory / กติกา user scope ────────────────────────────────────────────
+// ── 4g. ย่อหน้าใน ~/.claude/CLAUDE.md ───────────────────────────────────────
 const MEMORY_BLOCK = `
 ## Wayfinder maps live in \`wayfinder-vault\`, never in a repo
 
-ทุก \`/wayfinder\` map และ ticket อยู่ที่ **\`${VAULT}\`** ไม่ว่าจะทำงานอยู่ repo ไหน
-vault นี้มี git ของตัวเอง — การอยู่นอก repo คือประเด็นทั้งหมด: map ที่เก็บใน \`docs/plan/\`
-จะตายไปพร้อม worktree และ commit ไม่ได้ (ดูกติกา *Never commit implementation-plan docs*)
+Every \`/wayfinder\` map and ticket goes in **\`${TARGET}\`**, whatever repo the workspace
+happens to be. That vault has its own git — being outside the repo is the whole point:
+a map stored in \`docs/plan/\` dies with the worktree and can never be committed.
 
-- Layout: \`wayfinder-vault/<repo>/<effort>/map.md\` + \`…/<effort>/issues/NN-<slug>.md\`
-- Ticket ใช้ **YAML frontmatter** — \`repo\`, \`effort\`, \`type\`
-  (research|prototype|grilling|task), \`status\` (open|claimed|resolved) และ
-  \`blockers\` เป็น list ของ **\`[[wikilinks]]\`** ไม่ใช่เลข; map ใช้ \`repo\`/\`effort\`/\`kind: map\`
-  Dataview และ Graph View อ่านค่าพวกนี้ — ticket ที่ไม่มี frontmatter จะหายไปจาก dashboard
-- สองหน้าที่เปิดค้างไว้: **Wayfinder Dashboard** (ระดับใบ) · **Wayfinder Efforts** (ระดับแมป)
-- \`_tools/\` เก็บสคริปต์ของ vault เอง ทุก Dataview query กรองด้วย \`FROM "" AND -"_tools"\`
-- **ห้าม commit vault ด้วยมือ** — PostToolUse hook \`autocommit.sh\` commit ให้ทุก Write/Edit
-- **ห้าม sync/copy map ไป-กลับระหว่าง repo กับ vault** — มีที่เดียว ก็อบปี้เดียว
-- ตรวจสุขภาพ setup: \`node ${VAULT}/_tools/doctor.mjs\`
-- อ่าน \`wayfinder-vault/README.md\` ก่อนเริ่ม map ใหม่
+- **Never sync, mirror, or copy** a map between a repo and the vault. One copy, one place.
+  If you find a map under \`docs/plan/wayfinder/\`, it drifted — move it into the vault
+  rather than syncing it.
+- Layout: \`${TARGET}/<repo>/<effort>/map.md\` + \`…/<effort>/issues/NN-<slug>.md\`
+  (\`<repo>\` = the repo the work targets).
+- Tickets carry **YAML frontmatter** — \`repo\`, \`effort\`, \`type\`
+  (research|prototype|grilling|task), \`status\` (open|claimed|resolved), and \`blockers\` as
+  a list of **\`[[wikilinks]]\`**, not numbers. Maps carry \`repo\`/\`effort\`/\`kind: map\`, plus
+  \`runs:\` once \`/wayfinder-next\` has used them. Dataview and Graph View both read these,
+  so a ticket without frontmatter is invisible on the dashboard.
+- Two notes stay open while working: **\`Wayfinder Dashboard\`** (ticket level — what's
+  pickable, what's blocked, who's holding) and **\`Wayfinder Efforts\`** (map level — how far
+  each effort got, what's gone stale).
+- \`_tools/\` holds the vault's own scripts; every Dataview query filters \`FROM -"_tools"\`.
+  Leave it alone.
+- **Don't commit the vault by hand** — the \`autocommit.sh\` PostToolUse hook commits it on
+  every Write/Edit.
+- Read \`${TARGET}/README.md\` before charting a new map; it is the source of truth for the
+  format.
 `
-
-if (has('--wire-memory')) {
+if (parts.has('memory') || has('wire-memory')) {
   const p = join(CLAUDE, 'CLAUDE.md')
   const cur = await readFile(p, 'utf8').catch(() => '')
-  if (cur.includes('wayfinder-vault')) {
-    log('✅ ~/.claude/CLAUDE.md พูดถึง wayfinder-vault อยู่แล้ว (ข้าม)')
+  if (cur.includes('Wayfinder maps live in') || cur.includes(TARGET)) {
+    log('  ✅ ~/.claude/CLAUDE.md มีย่อหน้าอยู่แล้ว (ข้าม)')
   } else {
     if (cur) await copyFile(p, `${p}.bak`)
     await writeFile(p, `${cur.trimEnd()}\n${MEMORY_BLOCK}`)
-    log('✅ เติมกติกา wayfinder-vault ลง ~/.claude/CLAUDE.md แล้ว')
+    log('  ✅ เติมย่อหน้า wayfinder ลง ~/.claude/CLAUDE.md แล้ว')
   }
 } else {
-  log('⏭  ข้าม memory — เติม --wire-memory ถ้าต้องการ')
+  log(`  ⏭  ข้ามย่อหน้าใน ~/.claude/CLAUDE.md
+     ⚠️ นี่คือที่ **เดียว** ที่บอก /wayfinder ว่า vault อยู่ไหน — ไม่เติมแล้วมันจะไปทำตาม
+        docs/agents/issue-tracker.md ของ repo ที่เปิดอยู่แทน ⇒ ต้องพิมพ์ path บอกเองทุกครั้ง`)
 }
 
-// ── 6. ขั้นตอนที่ต้องทำมือ ──────────────────────────────────────────────────
+// ── 4h. Obsidian ────────────────────────────────────────────────────────────
+if (parts.has('obsidian')) {
+  if (env.obsidianRunning)
+    log(`  ⚠️  Obsidian เปิดค้างอยู่ — ตอนแอปเปิด ไฟล์ใน .obsidian/ เป็น *output* ของมัน
+     มันจะ flush ทับค่าที่เพิ่งเขียน ⇒ ปิดให้สนิทแล้วรันซ้ำถ้า Graph View ไม่มีสี`)
+  if (!env.obsidianApp) {
+    if (answers.allowBrew === 'yes' && env.brew) {
+      await run('brew', ['install', '--cask', 'obsidian']).then(
+        () => log('  ✅ brew install --cask obsidian'),
+        (e) => log(`  ❌ brew ล้ม: ${String(e.message).split('\n')[0]}`))
+    } else log('  ⏭  ยังไม่มี Obsidian — โหลดเองจาก obsidian.md แล้ว "Open folder as vault" ที่ vault นี้')
+  }
+  const p = join(HOME, 'Library/Application Support/obsidian/obsidian.json')
+  const o = await readJson(p)
+  if (!o) log('  ⏭  ยังไม่มี obsidian.json — เปิดแอปครั้งแรกแล้วใช้ "Open folder as vault"')
+  else if (Object.values(o.vaults ?? {}).some((v) => v.path === TARGET)) log('  ✅ Obsidian รู้จัก vault นี้แล้ว')
+  else {
+    await copyFile(p, `${p}.bak`)
+    o.vaults ??= {}
+    let key
+    do { key = [...Array(16)].map(() => Math.floor(Math.random() * 16).toString(16)).join('') } while (o.vaults[key])
+    o.vaults[key] = { path: TARGET, ts: Date.now() }
+    await writeFile(p, JSON.stringify(o, null, 2) + '\n')
+    log('  ✅ ลงทะเบียน vault กับ Obsidian แล้ว (สำรองไว้ที่ obsidian.json.bak)')
+  }
+} else log('  ⏭  ข้าม Obsidian')
+
+// ── 4i. manifest ────────────────────────────────────────────────────────────
+// `files` = ของที่ update ทับ/ลบได้ · `seeded_once` = ของที่วางครั้งเดียวแล้วไม่แตะอีก
+// สองคีย์นี้ **ห้ามซ้อนกันเด็ดขาด** — ไฟล์ที่หลุดจาก seeded_once ไป files คือโน้ตของผู้ใช้ที่จะโดนลบ
+const overlap = Object.keys(files).filter((f) => f in seeded)
+if (overlap.length) die(`บั๊ก: ไฟล์อยู่ทั้ง files และ seeded_once — ${overlap.join(', ')}`)
+
+const STAMP = new Date().toISOString()
+const manifest = {
+  schema: 1,
+  template_sha: templateSha,
+  source_repo: REPO,
+  vault: TARGET,                       // path ที่เรนเดอร์เข้า `__VAULT__` (resolve symlink แล้ว)
+  vault_as_given: TARGET_RAW === TARGET ? undefined : TARGET_RAW,
+  rendered: [...new Set(rendered)].sort(),
+  installed_at: oldManifest?.installed_at ?? STAMP,
+  updated_at: oldManifest?.updated_at ?? STAMP,
+  parts: [...parts],
+  skills_dir: SKILLS_DIR,
+  skills_targets: skillTargets,
+  files: Object.fromEntries(Object.entries(files).sort(([a], [b]) => a.localeCompare(b))),
+  skills: Object.fromEntries(Object.entries(skills).sort(([a], [b]) => a.localeCompare(b))),
+  seeded_once: Object.fromEntries(Object.entries(seeded).sort(([a], [b]) => a.localeCompare(b))),
+}
+// update ที่ไม่มีอะไรเปลี่ยนต้องไม่ขยับ `updated_at` — ไม่งั้น "ตรวจว่ามีของใหม่ไหม" หนึ่งครั้ง
+// = commit เปล่าหนึ่งใบใน vault ทุกครั้ง
+const flat = (m) => JSON.stringify({ ...m, updated_at: null })
+if (!oldManifest || flat(oldManifest) !== flat(manifest)) manifest.updated_at = STAMP
+await mkdir(TARGET, { recursive: true })
+await writeFile(join(TARGET, MANIFEST), JSON.stringify(manifest, null, 2) + '\n')
+log(`  ✅ เขียน ${MANIFEST} — managed ${Object.keys(files).length} · seed ${Object.keys(seeded).length} · สกิล ${Object.keys(skills).length}`)
+
+// ── ขั้นที่ 5 — ตรวจแล้วสรุป ────────────────────────────────────────────────
+log(`
+── ตรวจ ─────────────────────────────────────────────────────`)
+let bad = 0
+const verify = (ok, label, detail = '') => { if (!ok) bad++; log(`  ${ok ? '✅' : '❌'} ${label}${detail ? `  ${detail}` : ''}`) }
+
+// 5a. placeholder ค้าง = hook ตายเงียบสนิท ⇒ ต้องกวาดจริง ไม่ใช่เชื่อว่า sed ทำงานแล้ว
+{
+  const leftover = []
+  for (const rel of [...Object.keys(files), ...Object.keys(seeded)]) {
+    if (RENDER_EXEMPT.has(rel)) continue      // ไฟล์พวกนี้พูดถึงโทเคนโดยตั้งใจ
+    const buf = await readFile(join(TARGET, rel)).catch(() => null)
+    if (buf && isText(buf) && buf.toString('utf8').includes('__VAULT__')) leftover.push(rel)
+  }
+  for (const rel of Object.keys(skills)) {
+    const name = rel.split('/')[0]
+    const buf = await readFile(join(skillTargets[name] ?? '', rel.slice(name.length + 1))).catch(() => null)
+    const t = buf && isText(buf) ? buf.toString('utf8') : ''
+    if (t.includes('__VAULT__') || t.includes('<VAULT>')) leftover.push(`skills/${rel}`)
+  }
+  verify(leftover.length === 0, 'ไม่เหลือ placeholder ค้าง', leftover.join(' · '))
+}
+
+// 5a2. กลับด้าน: ตัวเรนเดอร์ต้องยัง **มี** โทเคนอยู่ ไม่งั้น update รอบหน้าจะเงียบทั้งกระดาน
+for (const rel of RENDER_EXEMPT) {
+  if (!(rel in files)) continue
+  const src = await readFile(join(TARGET, rel), 'utf8').catch(() => '')
+  const srcT = await readFile(join(SRC, rel), 'utf8').catch(() => '')
+  if (!srcT.includes('__VAULT__')) continue
+  // ถูกเรนเดอร์ทับเมื่อไหร่ = update รอบหน้าเลิกเรนเดอร์ทุกไฟล์โดยไม่มีอะไรเตือน
+  verify(src.includes('__VAULT__'), `${rel}: โทเคน __VAULT__ ในตัวสคริปต์ยังอยู่`)
+}
+
+// 5b. autocommit.sh — บรรทัด VAULT= ต้องชี้มาที่นี่ **และ** บรรทัด fallback ต้องรอด
+if (AUTOCOMMIT in files) {
+  const src = await readFile(join(TARGET, AUTOCOMMIT), 'utf8').catch(() => '')
+  const line = src.match(/^VAULT=.*$/m)?.[0] ?? ''
+  verify(line === `VAULT="${TARGET}"`, 'autocommit.sh: บรรทัด VAULT= เรนเดอร์แล้ว', line)
+  // fallback คือกันชนของ render ที่ล้มเหลว — ห้ามให้ sed กินไปด้วย (ใบ 02 · ใบ 09)
+  verify(/\|\|\s*VAULT="\$HOME\//.test(src), 'autocommit.sh: บรรทัด fallback รอด')
+  const st = await stat(join(TARGET, AUTOCOMMIT)).catch(() => null)
+  verify(st !== null && (st.mode & 0o111) !== 0, 'autocommit.sh execute ได้')
+}
+
+// 5c. ของที่ไม่ใช่ของ template ต้องรอด
+verify(!Object.keys(files).some(isSeed), 'manifest ไม่ครอบ Config/Picks/example-repo/.obsidian ส่วนตัว')
+
+// 5d. สกิลที่ยังฝัง path ปลอมอยู่ = /wayfinder ไปเขียน map ผิดที่โดยไม่มีอะไรเตือน
+for (const rel of Object.keys(skills)) {
+  const name = rel.split('/')[0]
+  const t = await readFile(join(skillTargets[name] ?? '', rel.slice(name.length + 1)), 'utf8').catch(() => '')
+  if (TARGET !== DEFAULT_VAULT && t.includes('Documents/Git/wayfinder-vault'))
+    log(`  ⚠️  ${rel} ยังพูดถึง ~/Documents/Git/wayfinder-vault ทั้งที่ vault คุณอยู่ ${TARGET}
+     — ใส่ __VAULT__ ตรงนั้นใน repo แล้ว installer จะเรนเดอร์ให้`)
+}
+
+// git commit ปิดท้าย — ให้ working tree สะอาดตามที่ doctor ตรวจ
+if (parts.has('vault')) {
+  const dirty = await run('git', ['-C', TARGET, 'status', '--porcelain']).then((r) => r.stdout.trim(), () => '')
+  if (dirty) {
+    await run('git', ['-C', TARGET, 'add', '-A'])
+      .then(() => run('git', ['-C', TARGET, 'commit', '-q', '-m',
+        `chore(vault): ${MODE} wayfinder template${templateSha ? ` ${templateSha.slice(0, 8)}` : ''}`]))
+      .then(() => log(`  ✅ commit ${MODE} ลง vault แล้ว`),
+        (e) => log(`  ⚠️  commit ไม่ผ่าน: ${String(e.message).split('\n')[0]}`))
+  }
+}
+
 log(`
 ────────────────────────────────────────────────────────────
-ที่เหลือต้องทำมือ (ผมทำแทนไม่ได้):
-
-  1. ติดตั้ง Obsidian แล้ว "Open folder as vault" ที่
-     ${VAULT}
+ที่เหลือต้องทำมือ (สคริปต์ทำแทนไม่ได้):
+  1. เปิด Obsidian → "Open folder as vault" ที่ ${TARGET}
   2. Settings → Community plugins → Turn on
      (ตัวปลั๊กอิน Dataview + ค่าตั้ง + สี Graph View มากับ repo แล้ว ไม่ต้องโหลดใหม่)
   3. เปิดโน้ต "Wayfinder Dashboard" กับ "Wayfinder Efforts"
@@ -154,6 +651,7 @@ log(`
 ────────────────────────────────────────────────────────────
 `)
 
-// ── 7. doctor ───────────────────────────────────────────────────────────────
-const { stdout } = await run('node', [join(VAULT, '_tools/doctor.mjs')]).catch((e) => e)
+const { stdout } = await run('node', [join(TARGET, '_tools/doctor.mjs')]).catch((e) => e)
 log(stdout ?? '')
+
+if (bad) { console.error(`❌ ${MODE} ยังไม่ผ่าน — ${bad} ข้อข้างบนเป็นสีแดง`); process.exit(1) }

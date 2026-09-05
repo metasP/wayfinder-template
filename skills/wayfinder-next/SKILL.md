@@ -124,7 +124,7 @@ Respect the answer literally. "สร้างทั้งหมดอยู่�
 
 ## Workflow
 
-1. **Find the active map.** Wayfinder maps live in `~/Documents/Git/wayfinder-vault/<repo>/<effort>/map.md`. Use the map from the current conversation if known; else list `wayfinder-vault/*/*/map.md` and pick the one meant (ask if ambiguous).
+1. **Find the active map.** Wayfinder maps live in `__VAULT__/<repo>/<effort>/map.md`. Use the map from the current conversation if known; else list `__VAULT__/*/*/map.md` and pick the one meant (ask if ambiguous).
 2. **Resolve the requested tickets** per [Picking tickets](#picking-tickets). Read the map's own `status:` first (a map that is not `active` flags every ticket under it), then `ls` the map's `issues/` and read the `status:`/`type:`/`blockers:` frontmatter of the candidates **and of their blockers**.
    With **no argument**, read the frontmatter of **every** ticket (that is the whole blocker graph in one pass), plus the `## Answer` of the most recently resolved ones and the map's Decisions-so-far — signals 1 and 2 live there and nowhere else.
 3. **Validate + confirm** per the section above. Drop or keep flagged tickets according to the answer.
