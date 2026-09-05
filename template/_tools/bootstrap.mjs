@@ -22,11 +22,19 @@
 //   node template/_tools/bootstrap.mjs --vault ~/Documents/Git/wayfinder-vault \
 //        --parts all --on-conflict skip --skills-dir ~/.claude/skills --allow-brew no
 //   node <vault>/_tools/bootstrap.mjs --from ~/Documents/Git/wayfinder-template   ← update
+//   …คำสั่งไหนก็ได้ + `--plan` = รอบเดิมทุกอย่างโดยตัวเขียนถูกปิด แล้วรายงานว่า *จะ* ทำอะไร
+//     (บน vault ที่ติดตั้งแล้ว = dry run ของ update · บนเครื่องเปล่าที่ยังไม่ตอบ 5 ข้อ = คำถาม 5 ข้อ)
 //
 // `--wire-hook` / `--wire-memory` ยัง opt-in เหมือนเดิม (ใช้กับ vault ที่ติดตั้งอยู่แล้ว)
 // — ในโหมด install ทั้งสองชิ้นมาจากคำตอบข้อ 2 (`hook` / `memory`) แทน
 
-import { readFile, writeFile, chmod, stat, lstat, readlink, realpath, mkdir, readdir, rm, rmdir, copyFile } from 'node:fs/promises'
+// ตัวที่ **เขียน** เข้ามาด้วยชื่อ `fs*` แล้วถูกห่อใหม่ที่เดียวข้างล่าง (จุดเดียวที่ `--plan` ปิดได้)
+// ตัวที่อ่านอย่างเดียวเข้ามาตรง ๆ — แยกสองกลุ่มตั้งแต่บรรทัด import เพื่อให้ "จุดที่เขียนได้" นับด้วยตาเปล่าได้
+import { readFile, stat, lstat, readlink, realpath, readdir } from 'node:fs/promises'
+import {
+  writeFile as fsWriteFile, chmod as fsChmod, mkdir as fsMkdir,
+  rm as fsRm, rmdir as fsRmdir, copyFile as fsCopyFile,
+} from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createHash } from 'node:crypto'
@@ -101,6 +109,34 @@ const opt = (k) => flags.get(k)
 const has = (k) => bare.has(k) || flags.has(k)
 
 const die = (msg, code = 1) => { console.error(`❌ ${msg}`); process.exit(code) }
+
+// ── `--plan` = dry run · **จุดเดียวที่ตัดสินว่าเขียนได้ไหม** ────────────────────────────────
+// เมื่อก่อนธงนี้ถูกอ่านที่สาขา `else if (has('plan'))` ซึ่งอยู่ **หลัง** `if (MODE === 'update')`
+// ⇒ vault ที่มี manifest แล้วแปลงเป็น update ก่อน แล้ว `--plan` ไม่มีวันถูกอ่าน: รอบที่ตั้งใจให้
+// "ดูก่อน" กลับเขียนจริงและ commit จริง — **ตายสนิทตรงที่เดียวที่ dry run มีความหมาย** (ใบ 12)
+// ตระกูลเดียวกับ `--on-conflict skip` ของใบ 09 ที่ไม่เคยถูกเรียกใช้จริงสักครั้ง
+//
+// ทางแก้ไม่ใช่การเติม `if (!PLAN)` ไล่ทีละจุด — จุดที่เขียนจริงมีสิบกว่าจุด (`place()` · ลูปลบ ·
+// git init · settings.json · CLAUDE.md · brew · obsidian.json · manifest · commit) **ตกไปจุดเดียว
+// = dry run ที่เขียนจริง ซึ่งคือบั๊กเดิมเป๊ะ ๆ** ⇒ ปิดที่ทางออกร่วมแทน: ตัวเขียนของ fs ถูกห่อตรงนี้
+// ที่เดียว และคำสั่งที่เปลี่ยนเครื่อง (git/brew) ต้องผ่าน `runWrite` เท่านั้น
+// · ข้อ 5p ท้ายไฟล์เฝ้าสมมติฐานนี้อีกชั้น — ถ้าวันหลังมีใครเรียก `fsWriteFile`/`run` ตรง ๆ มันดัง
+const PLAN = has('plan')
+const nop = async () => {}
+const writeFile = PLAN ? nop : fsWriteFile
+const chmod = PLAN ? nop : fsChmod
+const mkdir = PLAN ? nop : fsMkdir
+const rm = PLAN ? nop : fsRm
+const copyFile = PLAN ? nop : fsCopyFile
+// `rmdir` ต้อง **ล้มเหลว** ไม่ใช่เงียบ — คนเรียกอ่านผลลัพธ์เป็น "ลบโฟลเดอร์ว่างได้ไหม" แล้วเดินขึ้นต่อ
+// ตอบว่าสำเร็จในโหมด plan = รายงานว่าลบโฟลเดอร์ที่ไม่ได้ลบ
+const rmdir = PLAN ? async () => { throw new Error('plan') } : fsRmdir
+// คำสั่งที่เปลี่ยนเครื่อง (git init · git add/commit · brew install) — `run` เปล่า ๆ ยังใช้อ่านได้ตามปกติ
+const runWrite = PLAN ? async () => ({ stdout: '', stderr: '' }) : run
+
+// คำพูดของ log: โหมด plan พูดว่า "จะ…" ไม่ใช่ "…แล้ว" — บรรทัดเดียวกัน ต่างกันแค่กาล
+const MARK = PLAN ? '📋' : '✅'
+const WILL = PLAN ? 'จะ' : ''
 
 // ── ขั้นที่ 1 — ตรวจ (ยังไม่เขียนอะไร) ──────────────────────────────────────
 // 1a. หา template repo: `<repo>/{template,skills,LICENSE}` คือลายเซ็นของราก repo
@@ -240,8 +276,6 @@ if (MODE === 'update') {
     skillsDir: oldManifest.skills_dir ?? DEFAULT_SKILLS,
     allowBrew: 'no',
   }
-} else if (has('plan')) {
-  report(); log(QUESTIONS); process.exit(0)
 } else if (has('parts') || has('yes')) {
   // `--parts` / `--yes` คือสัญญาณว่า **ถาม 5 ข้อมาแล้ว** — `--vault` เดี่ยว ๆ ตอบแค่ข้อ 1
   // ไม่ใช่ใบอนุญาตให้เดาอีกสี่ข้อที่เหลือ
@@ -252,6 +286,12 @@ if (MODE === 'update') {
     skillsDir: resolve(expand(opt('skills-dir') ?? DEFAULT_SKILLS)),
     allowBrew: opt('allow-brew') ?? null,
   }
+} else if (PLAN) {
+  // install ที่ยังไม่มีคำตอบ 5 ข้อ: **แผนของ install คือคำถาม** ไม่ใช่รายการไฟล์ — ยังไม่รู้ vault
+  // path, parts, หรือคำตอบข้อ 3 ก็คำนวณไม่ได้ว่าจะแตะอะไร ⇒ พฤติกรรมเดิมทุกอย่าง (report + คำถาม
+  // + exit 0 + ไม่สร้างแม้แต่โฟลเดอร์ vault) · สาขานี้ย้ายลงมาอยู่ **หลัง** `--parts`/`--yes` แล้ว
+  // ⇒ `--plan --parts …` บนเครื่องเปล่ากลายเป็น dry run ของ install เต็มรูปแบบ ไม่ใช่คำถามซ้ำ
+  report(); log(QUESTIONS); process.exit(0)
 } else if (process.stdin.isTTY) {
   report(); log(QUESTIONS); answers = await ask()
 } else {
@@ -285,8 +325,34 @@ if (MODE === 'install' && needBrew && answers.allowBrew == null) {
 
 // ── ขั้นที่ 4 — ลงมือ ────────────────────────────────────────────────────────
 report()
+
+// ลายนิ้วมือ "ก่อน" ของทุกอย่างที่ตัวเขียนของสคริปต์นี้เอื้อมถึง — เก็บก่อนขั้น 4 เทียบท้ายไฟล์ (ข้อ 5p)
+// **จำกัดที่ของที่ manifest/template ครอบเท่านั้น** ไม่ใช่กวาดทั้ง vault: effort ของผู้ใช้เปลี่ยนได้
+// ตลอดเวลาจาก session อื่น (hook `autocommit.sh` commit ทุก Write/Edit) ⇒ กวาดกว้างไป = เตือนหมาป่า
+const skillDest = (rel) => {
+  const name = rel.split('/')[0]
+  const base = oldManifest?.skills_targets?.[name] ?? join(answers.skillsDir, name)
+  return join(base, rel.slice(name.length + 1))
+}
+const fingerprint = async () => {
+  const out = new Map()
+  const at = async (key, abs) => out.set(key, await readFile(abs).then(sha, () => 'ø'))
+  const vaultRels = new Set([MANIFEST, ...templateFiles,
+    ...Object.keys(oldManifest?.files ?? {}), ...Object.keys(oldManifest?.seeded_once ?? {})])
+  for (const rel of [...vaultRels].sort()) await at(`vault/${rel}`, join(TARGET, rel))
+  for (const rel of [...new Set([...skillFiles, ...Object.keys(oldManifest?.skills ?? {})])].sort())
+    await at(`skills/${rel}`, skillDest(rel))
+  await at('~/.claude/settings.json', join(CLAUDE, 'settings.json'))
+  await at('~/.claude/CLAUDE.md', join(CLAUDE, 'CLAUDE.md'))
+  await at('obsidian.json', join(HOME, 'Library/Application Support/obsidian/obsidian.json'))
+  out.set('git HEAD ของ vault', await run('git', ['-C', TARGET, 'rev-parse', 'HEAD']).then((r) => r.stdout.trim(), () => 'ø'))
+  return out
+}
+const before = PLAN ? await fingerprint() : null
+
 log(`
-── ลงมือ ────────────────────────────────────────────────────`)
+── ${PLAN ? 'แผน — dry run ไม่เขียนอะไรเลยสักไบต์' : 'ลงมือ'} ────────────────────────────────────`)
+if (PLAN) log(`  ทุกบรรทัดข้างล่างคือสิ่งที่ ${MODE.toUpperCase()} **จะ** ทำถ้ารันจริง — ยังไม่มีอะไรถูกแตะ`)
 log(`  ชิ้นที่เลือก: ${[...parts].join(' · ') || '(ไม่มี)'}`)
 if (TARGET !== TARGET_RAW) log(`  ↪️  vault path มี symlink คั่น — ใช้ path จริง ${TARGET}`)
 
@@ -349,7 +415,7 @@ const renderVault = (rel, text, isSkill = false) => {
 const files = {}          // managed: rel → sha ของไฟล์ที่เขียนลงไปจริง
 const seeded = {}         // seed-once: rel → sha ตอน install (update ไม่แตะ)
 const rendered = []
-const stats = { written: 0, skipped: 0, seeded: 0, keptSeed: 0, localEdits: [], replaced: [] }
+const stats = { written: 0, skipped: 0, seeded: 0, keptSeed: 0, localEdits: [], replaced: [], created: [], overwritten: [] }
 
 // คำตอบข้อ 3 ตัดสินชะตาของ **เอกสาร** ไม่ใช่ของ **โปรแกรม** (ใบ 09)
 // เจอตอน dogfood: install ลง vault ที่มีอยู่ก่อนแล้วด้วยค่าเริ่มต้น `skip` เขียนได้ **ไฟล์เดียว**
@@ -392,6 +458,7 @@ const place = async (src, dest, rel, { isSkill = false, seed = false } = {}) => 
       stats.replaced.push(isSkill ? `skills/${rel}` : rel)
     }
   }
+  ;(already === null ? stats.created : stats.overwritten).push(isSkill ? `skills/${rel}` : rel)
   await mkdir(dirname(dest), { recursive: true })
   await writeFile(dest, buf)
   if (rel.endsWith('.sh')) await chmod(dest, 0o755)
@@ -438,8 +505,12 @@ if (MODE === 'update') {
     if (!(rel in seeded)) seeded[rel] = digest
 }
 
-log(`  ✅ ไฟล์ template  เขียน ${stats.written} · เหมือนเดิม/ข้าม ${stats.skipped}` +
-    (stats.seeded ? ` · seed ${stats.seeded}` : '') + (stats.keptSeed ? ` · ไม่แตะ seed ${stats.keptSeed}` : ''))
+log(`  ${MARK} ไฟล์ template  ${WILL}เขียน ${stats.written}` +
+    ` (ใหม่ ${stats.created.length} · ทับของเดิม ${stats.overwritten.length})` +
+    ` · เหมือนเดิม/ข้าม ${stats.skipped}` +
+    (stats.seeded ? ` · ${WILL}seed ${stats.seeded}` : '') + (stats.keptSeed ? ` · ไม่แตะ seed ${stats.keptSeed}` : ''))
+if (PLAN && stats.created.length) log(`     ใหม่:  ${stats.created.join(' · ')}`)
+if (PLAN && stats.overwritten.length) log(`     ทับ:   ${stats.overwritten.join(' · ')}`)
 
 // ── 4c. สกิล — เดินตาม symlink ไปทับปลายทาง ─────────────────────────────────
 const skillTargets = { ...(oldManifest?.skills_targets ?? {}) }
@@ -464,7 +535,7 @@ if (parts.has('skills') && skillFiles.length) {
     const dest = join(cache.get(name), rel.slice(name.length + 1))
     skills[rel] = await place(join(SKILLS_SRC, rel), dest, rel, { isSkill: true })
   }
-  log(`  ✅ สกิล ${cache.size} ตัว → ${SKILLS_DIR}`)
+  log(`  ${MARK} ${WILL}วางสกิล ${cache.size} ตัว → ${SKILLS_DIR}`)
 } else if (MODE === 'update') {
   Object.assign(skills, oldManifest.skills ?? {})
 }
@@ -498,17 +569,17 @@ if (MODE === 'update') {
     await rm(join(base, rel.slice(name.length + 1))).catch(() => {})
     dropped.push(`skills/${rel}`)
   }
-  if (dropped.length) log(`  🗑  ลบไฟล์ที่ template เลิกใช้ ${dropped.length} ตัว: ${dropped.join(' · ')}`)
+  if (dropped.length) log(`  🗑  ${WILL}ลบไฟล์ที่ template เลิกใช้ ${dropped.length} ตัว: ${dropped.join(' · ')}`)
   if (stats.localEdits.length)
-    log(`  ⚠️  ทับไฟล์ที่คุณเคยแก้ไว้ ${stats.localEdits.length} ตัว (กู้ได้: git log -p -- <ไฟล์>)\n     ${stats.localEdits.join(' · ')}`)
+    log(`  ⚠️  ${WILL}ทับไฟล์ที่คุณเคยแก้ไว้ ${stats.localEdits.length} ตัว (กู้ได้: git log -p -- <ไฟล์>)\n     ${stats.localEdits.join(' · ')}`)
 }
 
 // ── 4e. git ─────────────────────────────────────────────────────────────────
 if (parts.has('vault')) {
   await chmod(join(TARGET, AUTOCOMMIT), 0o755).catch(() => {})
   if (!(await run('git', ['-C', TARGET, 'rev-parse', '--git-dir']).then(() => true, () => false))) {
-    await run('git', ['-C', TARGET, 'init', '-q', '-b', 'main'])
-    log('  ✅ git init (vault เป็น local อย่างเดียว ไม่มี remote โดยตั้งใจ)')
+    await runWrite('git', ['-C', TARGET, 'init', '-q', '-b', 'main'])
+    log(`  ${MARK} ${WILL}git init (vault เป็น local อย่างเดียว ไม่มี remote โดยตั้งใจ)`)
   }
 }
 
@@ -533,7 +604,7 @@ if (parts.has('hook') || has('wire-hook')) {
   if (added) {
     if (await exists(p)) await copyFile(p, `${p}.bak`)
     await writeFile(p, JSON.stringify(settings, null, 2) + '\n')
-    log(`  ✅ ต่อ hook ${added} เส้นเข้า ~/.claude/settings.json (สำรองไว้ที่ settings.json.bak)`)
+    log(`  ${MARK} ${WILL}ต่อ hook ${added} เส้นเข้า ~/.claude/settings.json (สำรองไว้ที่ settings.json.bak)`)
     log('     ⚠️ ต้องรีสตาร์ต Claude Code หรือเปิด /hooks หนึ่งครั้ง config ถึงจะโหลดใหม่')
   } else log('  ✅ hook ต่อไว้ครบทั้งสองเส้นแล้ว (ข้าม)')
 } else log('  ⏭  ข้าม hook')
@@ -574,7 +645,7 @@ if (parts.has('memory') || has('wire-memory')) {
   } else {
     if (cur) await copyFile(p, `${p}.bak`)
     await writeFile(p, `${cur.trimEnd()}\n${MEMORY_BLOCK}`)
-    log('  ✅ เติมย่อหน้า wayfinder ลง ~/.claude/CLAUDE.md แล้ว')
+    log(`  ${MARK} ${WILL}เติมย่อหน้า wayfinder ลง ~/.claude/CLAUDE.md`)
   }
 } else {
   log(`  ⏭  ข้ามย่อหน้าใน ~/.claude/CLAUDE.md
@@ -589,8 +660,8 @@ if (parts.has('obsidian')) {
      มันจะ flush ทับค่าที่เพิ่งเขียน ⇒ ปิดให้สนิทแล้วรันซ้ำถ้า Graph View ไม่มีสี`)
   if (!env.obsidianApp) {
     if (answers.allowBrew === 'yes' && env.brew) {
-      await run('brew', ['install', '--cask', 'obsidian']).then(
-        () => log('  ✅ brew install --cask obsidian'),
+      await runWrite('brew', ['install', '--cask', 'obsidian']).then(
+        () => log(`  ${MARK} ${WILL}brew install --cask obsidian`),
         (e) => log(`  ❌ brew ล้ม: ${String(e.message).split('\n')[0]}`))
     } else log('  ⏭  ยังไม่มี Obsidian — โหลดเองจาก obsidian.md แล้ว "Open folder as vault" ที่ vault นี้')
   }
@@ -605,7 +676,7 @@ if (parts.has('obsidian')) {
     do { key = [...Array(16)].map(() => Math.floor(Math.random() * 16).toString(16)).join('') } while (o.vaults[key])
     o.vaults[key] = { path: TARGET, ts: Date.now() }
     await writeFile(p, JSON.stringify(o, null, 2) + '\n')
-    log('  ✅ ลงทะเบียน vault กับ Obsidian แล้ว (สำรองไว้ที่ obsidian.json.bak)')
+    log(`  ${MARK} ${WILL}ลงทะเบียน vault กับ Obsidian (สำรองไว้ที่ obsidian.json.bak)`)
   }
 } else log('  ⏭  ข้าม Obsidian')
 
@@ -614,6 +685,16 @@ if (parts.has('obsidian')) {
 // สองคีย์นี้ **ห้ามซ้อนกันเด็ดขาด** — ไฟล์ที่หลุดจาก seeded_once ไป files คือโน้ตของผู้ใช้ที่จะโดนลบ
 const overlap = Object.keys(files).filter((f) => f in seeded)
 if (overlap.length) die(`บั๊ก: ไฟล์อยู่ทั้ง files และ seeded_once — ${overlap.join(', ')}`)
+
+// `rendered` = บันทึกว่าไฟล์ที่ **วางอยู่** ตัวไหนถูกแทนโทเคนตอนเขียน · มันถูกเติมใน `place()` ที่เดียว
+// แต่ของที่รอบนี้ไม่ได้เดินผ่าน `place()` (seed-once ที่ update ไม่แตะ · part ที่ไม่ได้เลือก) ยังวางอยู่
+// จริงและยัง **ถูกเรนเดอร์แล้ว** อยู่ดี ⇒ ไม่ยกบันทึกเก่ามา รายการจะหดทุกครั้งที่ update แล้ว manifest
+// เปลี่ยนทั้งที่ไม่มีอะไรใหม่ ⇒ `flat()` ตอบว่า "มีของใหม่" ⇒ **commit เปล่าหนึ่งใบทุก update แรก**
+// ซึ่งค้านสัญญาข้อ "รันซ้ำแล้วไม่เกิด commit เปล่า" ของ `INSTALL.md` ตรง ๆ
+// (เจอตอนทดสอบ `--plan` ของใบ 12 เอง: แผนบอก "จะเขียน 0 · จะลบ 0" แต่ "จะ commit: มี")
+if (MODE === 'update')
+  for (const rel of oldManifest.rendered ?? [])
+    if (rel in files || rel in seeded || rel in skills) rendered.push(rel)
 
 const STAMP = new Date().toISOString()
 const manifest = {
@@ -636,9 +717,55 @@ const manifest = {
 // = commit เปล่าหนึ่งใบใน vault ทุกครั้ง
 const flat = (m) => JSON.stringify({ ...m, updated_at: null })
 if (!oldManifest || flat(oldManifest) !== flat(manifest)) manifest.updated_at = STAMP
+const manifestText = JSON.stringify(manifest, null, 2) + '\n'
+const manifestChanged = (await readFile(join(TARGET, MANIFEST), 'utf8').catch(() => null)) !== manifestText
 await mkdir(TARGET, { recursive: true })
-await writeFile(join(TARGET, MANIFEST), JSON.stringify(manifest, null, 2) + '\n')
-log(`  ✅ เขียน ${MANIFEST} — managed ${Object.keys(files).length} · seed ${Object.keys(seeded).length} · สกิล ${Object.keys(skills).length}`)
+await writeFile(join(TARGET, MANIFEST), manifestText)
+log(`  ${MARK} ${WILL}เขียน ${MANIFEST} — managed ${Object.keys(files).length} · seed ${Object.keys(seeded).length} · สกิล ${Object.keys(skills).length}${PLAN && !manifestChanged ? ' (เนื้อเท่าเดิม)' : ''}`)
+
+// ── ขั้นที่ 5p — เฉพาะ `--plan`: สรุปแผน แล้วพิสูจน์ว่าไม่ได้แตะอะไรจริง ─────────────────────
+// อยู่ **ก่อน** ขั้นที่ 5 แล้ว `exit` ทิ้ง เพราะขั้นที่ 5 ทั้งขั้นอ่าน *ผลของการเขียน* ที่ยังไม่เกิด
+// ⇒ ในโหมด plan มันจะแดงมั่วทุกข้อ แล้วไปกลบข้อเดียวที่แผนต้องตอบจริง ๆ คือ "ไม่มีอะไรถูกแตะ"
+// (ออกตรงนี้ = ขั้นที่ 5 กับ git commit ท้ายไฟล์ **เอื้อมไม่ถึง** ในโหมด plan เชิงโครงสร้าง
+//  ไม่ต้องพึ่ง `if (!PLAN)` ที่เติมไว้ถูกทุกจุด)
+if (PLAN) {
+  const dirtyBefore = await run('git', ['-C', TARGET, 'status', '--porcelain']).then((r) => r.stdout.trim(), () => '')
+  const mine = stats.written > 0 || dropped.length > 0 || manifestChanged
+  log(`
+── สรุปแผน ──────────────────────────────────────────────────`)
+  log(`  จะเขียน ${stats.written} · จะลบ ${dropped.length} · เหมือนเดิม/ข้าม ${stats.skipped}` +
+      (stats.keptSeed ? ` · ไม่แตะ seed ${stats.keptSeed}` : ''))
+  log(`  ไม่แตะเด็ดขาด: effort ของคุณ · _tools/harness-kit/ · ทุกอย่างที่ไม่เคยอยู่ใน manifest`)
+  if (parts.has('vault')) {
+    // ⚠️ commit ปิดท้ายขับด้วย `git status` **ทั้ง working tree** ไม่ใช่เฉพาะไฟล์ที่ installer แตะ
+    // ⇒ vault ที่สกปรกอยู่ก่อนแล้วจะถูก commit ไปด้วยแม้ update จะไม่เปลี่ยนอะไรเลย — แผนต้องบอก
+    if (mine) log(`  จะ commit ลง vault: มี (${MODE})`)
+    else if (dirtyBefore) log(`  จะ commit ลง vault: มี — **แต่ไม่ใช่ของ update** · vault สกปรกอยู่ก่อนแล้ว
+     ${dirtyBefore.split('\n').length} รายการ แล้ว commit ปิดท้ายกวาด \`git add -A\` ทั้ง tree`)
+    else log(`  จะ commit ลง vault: ไม่มี (ไม่มีอะไรเปลี่ยน)`)
+  }
+
+  // ตรวจว่าที่พูดมาทั้งหมดเป็นจริง — ตัวกัน `--plan` อยู่ที่ตัวห่อ fs/`runWrite` จุดเดียว แต่ "จุดเดียว"
+  // เป็นจริงได้ก็ต่อเมื่อไม่มีใครเผลอเรียกของเดิมตรง ๆ ในอนาคต ⇒ ข้อนี้เฝ้าสมมติฐานนั้นแทนคอมเมนต์เตือน
+  // **บั๊กที่ใบนี้แก้ เกิดจากธงที่ไม่เคยมีใครตรวจว่ามันทำงานจริงไหม — จะไม่ซ้ำรอยด้วยธงที่ไม่มีใครตรวจอีกอัน**
+  const after = await fingerprint()
+  const moved = [...after.keys()].filter((k) => before.get(k) !== after.get(k))
+  log(`
+── ตรวจว่า dry run ไม่ได้เขียนจริง ───────────────────────────`)
+  if (moved.length) {
+    log(`  ❌ มี ${moved.length} จุดขยับระหว่าง --plan: ${moved.join(' · ')}`)
+    console.error(`❌ \`--plan\` เขียนของจริง — นี่คือบั๊กของตัวกัน dry run เอง ไม่ใช่ของ vault คุณ
+   มีคนเรียก fsWriteFile/fsRm/fsMkdir/run ตรง ๆ แทนตัวห่อที่หัวไฟล์ (หรือ \`runWrite\`)
+   กู้ของที่ขยับ: git -C ${TARGET} log -p -1`)
+    process.exit(1)
+  }
+  log(`  ✅ ไม่มีไบต์ไหนขยับ — เทียบ ${after.size} จุด (ไฟล์ที่ manifest/template ครอบ · สกิล ·
+     ~/.claude/settings.json · ~/.claude/CLAUDE.md · obsidian.json · git HEAD ของ vault)`)
+  log(`
+รันจริงด้วยคำสั่งเดิมโดย **ตัด \`--plan\` ออก**
+`)
+  process.exit(0)
+}
 
 // ── ขั้นที่ 5 — ตรวจแล้วสรุป ────────────────────────────────────────────────
 log(`
@@ -728,8 +855,8 @@ for (const rel of Object.keys(skills)) {
 if (parts.has('vault')) {
   const dirty = await run('git', ['-C', TARGET, 'status', '--porcelain']).then((r) => r.stdout.trim(), () => '')
   if (dirty) {
-    await run('git', ['-C', TARGET, 'add', '-A'])
-      .then(() => run('git', ['-C', TARGET, 'commit', '-q', '-m',
+    await runWrite('git', ['-C', TARGET, 'add', '-A'])
+      .then(() => runWrite('git', ['-C', TARGET, 'commit', '-q', '-m',
         `chore(vault): ${MODE} wayfinder template${templateSha ? ` ${templateSha.slice(0, 8)}` : ''}`]))
       .then(() => log(`  ✅ commit ${MODE} ลง vault แล้ว`),
         (e) => log(`  ⚠️  commit ไม่ผ่าน: ${String(e.message).split('\n')[0]}`))

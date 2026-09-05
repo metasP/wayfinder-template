@@ -50,9 +50,11 @@ cd ~/Documents/Git/wayfinder-template && node template/_tools/bootstrap.mjs --pl
 `--plan` is steps 1–3 with **no writes at all**: it inspects, prints the report, prints the
 five questions, and exits 0. It creates nothing — not even the vault directory.
 
-> ⚠️ `--plan` is a dry run **only on a machine with no vault installed yet.** On a vault that
-> already has `.wayfinder-template.json`, the flag is ignored and the run performs a real
-> update. See [Update](#update).
+`--plan` never writes, whichever mode the run is in. On a vault that already has a manifest
+it turns into a dry run of the **update** instead — see [Plan an update before you run
+it](#plan-an-update-before-you-run-it). Every run under `--plan` ends by re-reading everything
+the installer can reach and proving that not one byte moved; if something did, it says so and
+exits non-zero, because a dry run that quietly writes is worse than no dry run at all.
 
 ### Step 2 — Report before touching anything.
 
@@ -211,6 +213,28 @@ Running it from the repo side instead (`node template/_tools/bootstrap.mjs --vau
 does the same thing — the mode is decided by whether the vault already has a manifest, not by
 which copy of the script you ran.
 
+### Plan an update before you run it
+
+Add `--plan` to either command above and you get the same run with every writer switched off:
+
+```bash
+node ~/Documents/Git/wayfinder-vault/_tools/bootstrap.mjs --from ~/Documents/Git/wayfinder-template --plan
+```
+
+It reports what the update **would** do, computed by the same code that would do it — which
+files it would write, which of those are new and which overwrite something, which ones you
+have edited locally, **which files it would delete**, what it would leave alone, and whether a
+commit would land in your vault. Then it re-reads everything it can reach and confirms nothing
+moved, and prints the count it checked.
+
+Two answers here are worth the run on their own:
+
+- **which files it would delete.** Deletion is the one step you cannot eyeball afterwards.
+- **whether it would commit.** The closing commit runs `git add -A` across the whole working
+  tree, not just the files the installer touched. If your vault was already dirty, that work
+  gets swept into the installer's commit even when the update itself changes nothing — the
+  plan says so in as many words.
+
 ### What gets replaced
 
 The whole of `template/` — the three Wayfinder notes, `README.md`, `SETUP.md`, `_tools/`,
@@ -262,14 +286,15 @@ and Obsidian's `obsidian.json.bak`. (Nothing existed, nothing to back up — no 
 The installer is safe to run repeatedly — that is a property you should be able to rely on
 before you are willing to run it at all.
 
-- A second run on an installed vault **is an update**, whatever flags you pass. Files that
-  already match are skipped, nothing is written, and no empty commit is made.
+- A second run on an installed vault **is an update** — the only flag that changes that is
+  `--plan`, which makes it a dry run. Files that already match are skipped, nothing is
+  written, and no empty commit is made.
 - The hook is added once. A repeat run finds both of its entries and skips them.
 - The `~/.claude/CLAUDE.md` paragraph is added once. A repeat run finds it and skips it.
 - Your `Wayfinder Config.md`, `Wayfinder Picks.md`, and efforts are untouched every time.
 
-The one thing **not** to assume: `--plan` does not protect an installed vault. It is a dry
-run for install only.
+And `--plan` holds on an installed vault, not just a fresh one — that is the run where
+looking first is worth anything.
 
 ---
 
