@@ -104,7 +104,9 @@ The full walkthrough, including every question it asks and how to answer, is in
 > paragraph to `~/.claude/CLAUDE.md`. **That paragraph is the only thing that tells
 > `/wayfinder` where your vault is.** Decline it and the skill falls back to whatever
 > issue-tracker convention the repo you happen to have open describes — your maps land
-> somewhere else entirely, and nothing warns you that they did.
+> somewhere else entirely, and nothing warns you that they did. The paragraph itself is
+> short: it points the skills at the vault README's § Wayfinding operations, which holds
+> the format.
 
 ## Update
 
