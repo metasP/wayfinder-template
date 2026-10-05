@@ -1,7 +1,14 @@
 # Changelog
 
 Each version is the `version` in [`package.json`](package.json); an `npx` install records it in
-the vault manifest as `template_version`. Releases up to v0.2.5 are also git tags.
+the vault manifest as `template_version`. Every release is a git tag `vX.Y.Z` (there was never a
+0.2.3).
+
+Releases after 0.4.0 are cut by [release-please](https://github.com/googleapis/release-please):
+it reads the conventional-commit messages merged to `main`, keeps a release PR open that bumps
+`package.json` and adds the next section here, and merging that PR tags the release and drafts its
+GitHub release notes. `feat` bumps the minor version, `fix` the patch, and while the version is
+below 1.0.0 a breaking change (`feat!`) bumps the minor too.
 
 ## 0.4.0 — 2026-10-05
 

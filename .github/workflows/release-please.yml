@@ -1,0 +1,28 @@
+# Keeps a release PR open on main: it bumps package.json and adds the next
+# CHANGELOG.md section from the conventional commits merged since the last
+# release. Merging it tags vX.Y.Z and creates a draft GitHub release to
+# review and publish. Config: release-please-config.json.
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      # v4.4.1, pinned by commit
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
