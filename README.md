@@ -136,6 +136,10 @@ git pull
 The updater works from a manifest recorded at install time, so it only ever overwrites — or
 removes — files it put there itself. Anything else you keep in the vault is invisible to it.
 
+What each version changed is in [`CHANGELOG.md`](CHANGELOG.md). **Updating to 0.4.0:** the
+installer now refuses a flag it does not know instead of running anyway — `--help` prints usage,
+and a typo like `--pln` exits 2 having touched nothing.
+
 ## Requirements
 
 - **macOS**, and **Node 18 or newer** (`node -v`) — the installer is one Node script
@@ -160,6 +164,7 @@ Obsidian's plugin browser and no restart to sit through.
 | [`skills/`](skills) | The `/wayfinder-next` skill (English), placed wherever you tell the installer to put it. `/wayfinder` is not here: it is [Matt Pocock's](https://github.com/mattpocock/skills), installed from his plugin — a prerequisite, see [`INSTALL.md`](INSTALL.md). |
 | [`package.json`](package.json) | Declares `template/_tools/bootstrap.mjs` as the `bin`, which is what makes the `npx` one-liner above work. Not published to npm. |
 | [`INSTALL.md`](INSTALL.md) | Installing and updating, in full. |
+| [`CHANGELOG.md`](CHANGELOG.md) | What changed in each version. |
 | [`THIRD-PARTY.md`](THIRD-PARTY.md) | The one vendored component and its license. |
 | [`LICENSE`](LICENSE) | MIT. |
 

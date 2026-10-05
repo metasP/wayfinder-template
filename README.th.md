@@ -121,6 +121,9 @@ git pull
 ตัวอัปเดตทำงานจาก manifest ที่จดไว้ตอนติดตั้ง ⇒ มันทับหรือลบได้เฉพาะไฟล์ที่ตัวมันเองเป็นคนวาง ·
 ของอื่นที่คุณเก็บไว้ใน vault มันมองไม่เห็นเลย
 
+แต่ละรุ่นเปลี่ยนอะไรดูที่ [`CHANGELOG.md`](CHANGELOG.md) (อังกฤษ) · **อัปเดตเป็น 0.4.0:** installer
+ไม่ยอมรัน flag ที่มันไม่รู้จักแล้ว — `--help` พิมพ์วิธีใช้ · พิมพ์ผิดอย่าง `--pln` ได้ exit 2 โดยไม่แตะอะไรเลย
+
 ## ต้องมีอะไรบ้าง
 
 - **macOS** และ **Node 18 ขึ้นไป** (`node -v`) — installer เป็นสคริปต์ Node ใบเดียว
@@ -144,6 +147,7 @@ Dataview ship มาในตัว vault อยู่แล้ว (ดูหั
 | [`template/example-repo/`](template/example-repo) | effort ตัวอย่างที่ใช้งานได้จริง วางให้ **ตอนติดตั้งเท่านั้น** เพื่อให้ dashboard มีของให้ดูตั้งแต่วันแรก · อ่านจบแล้วลบทิ้งได้ อัปเดตไม่ปลุกมันคืนมา |
 | [`skills/`](skills) | สกิล `/wayfinder-next` (อังกฤษ) · วางไว้ตรงที่คุณบอก installer · `/wayfinder` ไม่ได้อยู่ที่นี่ — เป็นของ [Matt Pocock](https://github.com/mattpocock/skills) ติดตั้งจาก plugin ของเขา ซึ่งเป็นของที่ต้องมีก่อน ดู [`INSTALL.th.md`](INSTALL.th.md) |
 | [`INSTALL.th.md`](INSTALL.th.md) | วิธีติดตั้งและอัปเดตแบบเต็ม (อังกฤษ: [`INSTALL.md`](INSTALL.md)) |
+| [`CHANGELOG.md`](CHANGELOG.md) | แต่ละรุ่นเปลี่ยนอะไร (อังกฤษ) |
 | [`THIRD-PARTY.md`](THIRD-PARTY.md) | ของภายนอกชิ้นเดียวที่ ship ไปด้วย กับ license ของมัน |
 | [`LICENSE`](LICENSE) | MIT |
 
