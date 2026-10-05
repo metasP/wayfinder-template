@@ -299,6 +299,14 @@ try {
     GONE.filter((g) => body.includes(g)).map((g) => `${f} -> ${g}`))
   check(stale.length === 0, 'เอกสารไม่อ้างสคริปต์ที่ลบไปแล้ว', stale.join(' · '))
 
+  // `/wayfinder` หา tracker doc จาก **ชื่อหัวข้อ** `Wayfinding operations` และย่อหน้าใน
+  // ~/.claude/CLAUDE.md ชี้มาที่สองหัวข้อนี้ด้วยชื่อ ⇒ เปลี่ยนชื่อหัวข้อเมื่อไหร่ ตัวชี้หลุดเงียบ ๆ
+  // แล้ว skill กลับไปทำตาม GitHub issue / `.scratch/` ของตัวเอง โดยไม่มีอะไรแดงสักข้อ
+  const TRACKER_HEADINGS = ['Wayfinding operations', 'Spec & ticket operations']
+  const missingH = TRACKER_HEADINGS.filter((h) => !new RegExp(`^## ${h}[ \\t]*$`, 'm').test(docs['README.md']))
+  check(missingH.length === 0, 'README มีหัวข้อที่ /wayfinder และ CLAUDE.md ชี้มา',
+    missingH.length ? `ไม่เจอ: ${missingH.map((h) => `## ${h}`).join(' · ')}` : TRACKER_HEADINGS.join(' · '))
+
   // ── บล็อก dataviewjs ต้องเป็น JS ที่ parse ได้ ───────────────────────────────
   // ใบ 11 ตกกับดักนี้ **สองครั้งในใบเดียว**: `CSS` เป็น template literal ⇒ backtick ที่พิมพ์ลง
   // คอมเมนต์ CSS ตามนิสัยมาร์กดาวน์ (`/* `paint-order: stroke` วาดขอบก่อนตัวอักษร */`)
