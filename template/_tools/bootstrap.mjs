@@ -209,6 +209,10 @@ const env = {
   vaultIsRepo: await run('git', ['-C', VAULT, 'rev-parse', '--git-dir']).then(() => true, () => false),
   claudeMd: await readFile(join(CLAUDE, 'CLAUDE.md'), 'utf8').catch(() => ''),
   settings: await readJson(join(CLAUDE, 'settings.json')),
+  // `/wayfinder` เป็นของปลั๊กอิน `mattpocock-skills` — template ไม่ ship สกิลนี้เองแล้ว (เคย fork ไว้
+  // แต่ fork ไม่มีอะไรเกี่ยวกับ vault เลย เป็นแค่ upstream รุ่นเก่าที่ตามไม่ทัน) ⇒ เป็น prerequisite
+  wayfinderPlugin: Object.keys((await readJson(join(CLAUDE, 'plugins/installed_plugins.json')))?.plugins ?? {})
+    .some((k) => k.startsWith('mattpocock-skills@')),
 }
 const hookWired = JSON.stringify(env.settings?.hooks?.PostToolUse ?? []).includes('autocommit.sh')
 
@@ -222,6 +226,8 @@ const report = () => {
   log(`  vault มีอยู่แล้ว  ${env.vaultExists ? 'มี' : 'ยังไม่มี'}${env.vaultIsRepo ? ' · เป็น git repo' : ''}`)
   log(`  Obsidian        ${env.obsidianApp ? 'ลงแล้ว' : 'ยังไม่ลง'}${env.obsidianRunning ? ' · ⚠️ เปิดค้างอยู่' : ''}`)
   log(`  hook            ${hookWired ? 'ต่อไว้แล้ว' : 'ยังไม่ต่อ'}`)
+  log(`  /wayfinder      ${env.wayfinderPlugin ? 'ปลั๊กอิน mattpocock-skills ลงแล้ว'
+    : '⚠️ ไม่เจอปลั๊กอิน mattpocock-skills — ลงก่อนใช้ (INSTALL § What you need) · ลงทางอื่นแล้วข้ามได้'}`)
   log(`  ~/.claude/CLAUDE.md  ${env.claudeMd.includes('Wayfinder maps live in') ? 'มีย่อหน้าแล้ว' : 'ยังไม่มีย่อหน้า'}`)
   if (!env.darwin) log(`  ⚠️  ไม่ใช่ macOS — ข้อ Obsidian/brew ใช้ไม่ได้`)
 }
@@ -237,7 +243,7 @@ const QUESTIONS = `
      ค่าเริ่มต้น ${DEFAULT_VAULT}
 
   2. จะติดตั้งชิ้นไหนบ้าง? (เลือกได้หลายข้อ · ค่าเริ่มต้น = ทุกข้อ)   --parts a,b,c
-     skills   สกิล /wayfinder + /wayfinder-next        (นอก vault)
+     skills   สกิล /wayfinder-next                     (นอก vault · /wayfinder มาจากปลั๊กอิน)
      vault    เนื้อ vault + _tools + git               (ใน vault)
      hook     hook commit อัตโนมัติ                    (~/.claude/settings.json)
      obsidian ค่าตั้ง .obsidian + Dataview + ลงทะเบียน vault
@@ -575,15 +581,28 @@ if (MODE === 'update') {
     for (let d = dirname(p); d !== TARGET; d = dirname(d))
       if (!(await rmdir(d).then(() => true, () => false))) break
   }
+  // สกิลอยู่นอก git ⇒ ลบเฉพาะไฟล์ที่ยังเป็นไบต์เดียวกับที่ installer วางไว้ (sha ตรง manifest)
+  // ตัวอย่างจริง: `skills/wayfinder` เลิก ship แล้วให้ลงจากปลั๊กอิน `mattpocock-skills` แทน — ถ้าเขา
+  // ลงสกิลนั้นทางอื่นมาทับที่เดิมไว้ (`npx skills add` = symlink ที่ชื่อเดียวกัน) ห้ามลบของเขาทิ้ง
+  const keptSkills = []
   for (const rel of Object.keys(oldManifest.skills ?? {})) {
     if (rel in skills) continue
     const name = rel.split('/')[0]
     const base = skillTargets[name]
     if (!base) continue
-    await rm(join(base, rel.slice(name.length + 1))).catch(() => {})
+    const p = join(base, rel.slice(name.length + 1))
+    const now = await readFile(p).then(sha, () => null)
+    if (now === null) continue
+    if (now !== oldManifest.skills[rel]) { keptSkills.push(p); continue }
+    await rm(p)
     dropped.push(`skills/${rel}`)
+    for (let d = dirname(p); d !== dirname(base); d = dirname(d))
+      if (!(await rmdir(d).then(() => true, () => false))) break
   }
   if (dropped.length) log(`  🗑  ${WILL}ลบไฟล์ที่ template เลิกใช้ ${dropped.length} ตัว: ${dropped.join(' · ')}`)
+  if (keptSkills.length)
+    log(`  ↪️  ไม่ลบสกิลที่ template เลิก ship แต่เนื้อไม่ตรงกับที่เคยวาง (คุณแก้หรือลงทับเอง) ${keptSkills.length} ตัว
+     เลิกติดตามใน manifest แล้ว ไม่ต้องการก็ลบเอง: ${keptSkills.join(' · ')}`)
   if (stats.localEdits.length)
     log(`  ⚠️  ${WILL}ทับไฟล์ที่คุณเคยแก้ไว้ ${stats.localEdits.length} ตัว (กู้ได้: git log -p -- <ไฟล์>)\n     ${stats.localEdits.join(' · ')}`)
 }
@@ -741,7 +760,10 @@ const manifest = {
   updated_at: oldManifest?.updated_at ?? STAMP,
   parts: [...parts],
   skills_dir: SKILLS_DIR,
-  skills_targets: skillTargets,
+  // ตัดชื่อสกิลที่ไม่เหลือไฟล์ใน `skills` แล้ว — ไม่งั้นสกิลที่เลิก ship (เช่น `wayfinder`) ค้างใน
+  // manifest ตลอดไป แล้ว `doctor.mjs` ใช้ path เก่านั้นต่อ
+  skills_targets: Object.fromEntries(Object.entries(skillTargets)
+    .filter(([name]) => Object.keys(skills).some((rel) => rel.startsWith(`${name}/`)))),
   files: Object.fromEntries(Object.entries(files).sort(([a], [b]) => a.localeCompare(b))),
   skills: Object.fromEntries(Object.entries(skills).sort(([a], [b]) => a.localeCompare(b))),
   seeded_once: Object.fromEntries(Object.entries(seeded).sort(([a], [b]) => a.localeCompare(b))),
