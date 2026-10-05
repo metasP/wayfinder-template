@@ -228,7 +228,9 @@ const report = () => {
   log(`  hook            ${hookWired ? 'ต่อไว้แล้ว' : 'ยังไม่ต่อ'}`)
   log(`  /wayfinder      ${env.wayfinderPlugin ? 'ปลั๊กอิน mattpocock-skills ลงแล้ว'
     : '⚠️ ไม่เจอปลั๊กอิน mattpocock-skills — ลงก่อนใช้ (INSTALL § What you need) · ลงทางอื่นแล้วข้ามได้'}`)
-  log(`  ~/.claude/CLAUDE.md  ${env.claudeMd.includes('Wayfinder maps live in') ? 'มีย่อหน้าแล้ว' : 'ยังไม่มีย่อหน้า'}`)
+  log(`  ~/.claude/CLAUDE.md  ${env.claudeMd.includes('Wayfinding operations') ? 'มีย่อหน้าแล้ว'
+    : env.claudeMd.includes('Wayfinder maps live in') ? '⚠️ มีย่อหน้ารุ่นเก่า (ยังไม่ชี้ไป § Wayfinding operations)'
+    : 'ยังไม่มีย่อหน้า'}`)
   if (!env.darwin) log(`  ⚠️  ไม่ใช่ macOS — ข้อ Obsidian/brew ใช้ไม่ได้`)
 }
 
@@ -661,38 +663,41 @@ if (parts.has('hook') || has('wire-hook')) {
 } else log('  ⏭  ข้าม hook')
 
 // ── 4g. ย่อหน้าใน ~/.claude/CLAUDE.md ───────────────────────────────────────
+// ย่อหน้านี้เป็น **ตัวชี้** ไม่ใช่ตัว format — layout · frontmatter · operation อยู่ใน README ของ vault
+// ที่ update ตามได้ · ข้อความที่ก๊อปลง CLAUDE.md คือสำเนาที่สองซึ่งไม่มีใคร update ให้ (รุ่นก่อนลิสต์
+// `status` ไว้แค่ 3 ค่า แล้วตกรุ่นทันทีที่ vault มี `waiting`) ⇒ เหลือแค่ที่อยู่ + ชื่อหัวข้อที่ต้องอ่าน
 const MEMORY_BLOCK = `
-## Wayfinder maps live in \`wayfinder-vault\`, never in a repo
+## Wayfinder maps, specs, and build tickets live in the vault, never in a repo
 
-Every \`/wayfinder\` map and ticket goes in **\`${TARGET}\`**, whatever repo the workspace
-happens to be. That vault has its own git — being outside the repo is the whole point:
-a map stored in \`docs/plan/\` dies with the worktree and can never be committed.
+The tracker for \`/wayfinder\` and the build skills after it (\`/to-spec\`, \`/to-tickets\`,
+\`/implement\`, \`/implement-spec\`) is the vault at **\`${TARGET}\`**, whatever repo the
+session runs in — in place of \`.scratch/\`, GitHub issues, or a repo's
+\`docs/agents/issue-tracker.md\`. Before any tracker operation, read its \`README.md\`:
 
-- **Never sync, mirror, or copy** a map between a repo and the vault. One copy, one place.
-  If you find a map under \`docs/plan/wayfinder/\`, it drifted — move it into the vault
-  rather than syncing it.
-- Layout: \`${TARGET}/<repo>/<effort>/map.md\` + \`…/<effort>/issues/NN-<slug>.md\`
-  (\`<repo>\` = the repo the work targets).
-- Tickets carry **YAML frontmatter** — \`repo\`, \`effort\`, \`type\`
-  (research|prototype|grilling|task), \`status\` (open|claimed|resolved), and \`blockers\` as
-  a list of **\`[[wikilinks]]\`**, not numbers. Maps carry \`repo\`/\`effort\`/\`kind: map\`, plus
-  \`runs:\` once \`/wayfinder-next\` has used them. Dataview and Graph View both read these,
-  so a ticket without frontmatter is invisible on the dashboard.
-- Two notes stay open while working: **\`Wayfinder Dashboard\`** (ticket level — what's
-  pickable, what's blocked, who's holding) and **\`Wayfinder Efforts\`** (map level — how far
-  each effort got, what's gone stale).
-- \`_tools/\` holds the vault's own scripts; every Dataview query filters \`FROM -"_tools"\`.
-  Leave it alone.
-- **Don't commit the vault by hand** — the \`autocommit.sh\` PostToolUse hook commits it on
-  every Write/Edit.
-- Read \`${TARGET}/README.md\` before charting a new map; it is the source of truth for the
-  format.
+- **§ Wayfinding operations** — maps and tickets: chart, claim, resolve, frontier.
+- **§ Spec & ticket operations** — specs and build tickets, on top of the above.
+
+Those sections own the layout, frontmatter, and operations, and win where a skill's
+own text disagrees.
+
+- Write to the vault by absolute path. A map in a repo's \`docs/plan/\` dies with the
+  worktree and can never be committed.
+- **One copy, one place** — no sync or mirror between a repo and the vault. A map found
+  under a repo's \`docs/plan/wayfinder/\` has drifted: move it into the vault, and only
+  when no other session is working that map.
+- The \`autocommit.sh\` PostToolUse hook commits the vault on every Write/Edit — leave
+  committing to it.
 `
 if (parts.has('memory') || has('wire-memory')) {
   const p = join(CLAUDE, 'CLAUDE.md')
   const cur = await readFile(p, 'utf8').catch(() => '')
-  if (cur.includes('Wayfinder maps live in') || cur.includes(TARGET)) {
+  if (cur.includes('Wayfinding operations')) {
     log('  ✅ ~/.claude/CLAUDE.md มีย่อหน้าอยู่แล้ว (ข้าม)')
+  } else if (cur.includes('Wayfinder maps live in') || cur.includes(TARGET)) {
+    // ย่อหน้ารุ่นก่อน (หรือที่เจ้าของเขียนเอง) — ไม่แก้ CLAUDE.md ของเขาเอง แต่ห้ามเงียบ
+    log(`  ⚠️  ~/.claude/CLAUDE.md มีย่อหน้า wayfinder อยู่แล้ว แต่ยังไม่ชี้ไป README § Wayfinding operations
+     กับ § Spec & ticket operations ⇒ ไม่มีอะไรบอก /wayfinder · /to-spec · /to-tickets ว่าให้เชื่อ vault
+     มากกว่าตัว skill · ลบย่อหน้าเดิมทิ้งแล้วรัน --wire-memory ซ้ำ installer จะเติมรุ่นใหม่ให้`)
   } else {
     if (cur) await copyFile(p, `${p}.bak`)
     await writeFile(p, `${cur.trimEnd()}\n${MEMORY_BLOCK}`)

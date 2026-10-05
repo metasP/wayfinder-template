@@ -112,6 +112,11 @@ Default `~/Documents/Git/wayfinder-vault`. Any path works; it does not have to b
 > worktree it was written in. Declining is a legitimate choice; the cost is that the vault
 > path has to be spelled out by hand every single time.
 >
+> The paragraph is a pointer, not a copy of the format: it sends `/wayfinder` and the build
+> skills after it (`/to-spec`, `/to-tickets`, `/implement`, `/implement-spec`) to the vault
+> README's **§ Wayfinding operations** and **§ Spec & ticket operations**, which own the
+> layout and the frontmatter and win where a skill's own text disagrees.
+>
 > The installer prints this same consequence again if the piece is skipped. It does not ask
 > twice, and neither should you.
 
@@ -335,6 +340,8 @@ before you are willing to run it at all.
   written, and no empty commit is made.
 - The hook is added once. A repeat run finds both of its entries and skips them.
 - The `~/.claude/CLAUDE.md` paragraph is added once. A repeat run finds it and skips it.
+  A paragraph from v0.3.0 or earlier (it does not mention § Wayfinding operations) is left
+  alone with a warning — delete it and run again with `--wire-memory` to get the pointer.
 - Your `Wayfinder Config.md`, `Wayfinder Picks.md`, and efforts are untouched every time.
 
 And `--plan` holds on an installed vault, not just a fresh one — that is the run where
