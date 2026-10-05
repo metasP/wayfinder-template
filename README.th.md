@@ -15,8 +15,9 @@
 map เป็น **ดัชนี ไม่ใช่ที่เก็บของ** — คำตอบแต่ละข้ออยู่ใน ticket ของมันที่เดียว map แค่สรุปหนึ่งบรรทัด
 แล้วลิงก์ไป · session มาแล้วก็ไป **สิ่งที่อยู่รอดคือ map**
 
-สกิลที่ ship มาด้วยมีสองตัว: `/wayfinder` ชาร์ต map แล้วไล่ปิด ticket · `/wayfinder-next` หยิบใบที่
-*หยิบได้ตอนนี้จริง ๆ* มาทำเป็น chip กดครั้งเดียวเปิด session ถัดไป
+สกิลที่เกี่ยวข้องมีสองตัว: `/wayfinder` ชาร์ต map แล้วไล่ปิด ticket — เป็นสกิลของ Matt Pocock
+ติดตั้งจาก plugin ของเขา (ดู [ต้องมีอะไรบ้าง](#ต้องมีอะไรบ้าง)) · ส่วน `/wayfinder-next` ที่ ship มากับ repo นี้
+หยิบใบที่ *หยิบได้ตอนนี้จริง ๆ* มาทำเป็น chip กดครั้งเดียวเปิด session ถัดไป
 
 ส่วน**รูปแบบ**ของ map กับ ticket เอง — frontmatter · สถานะ · blockers · สามหน้า dashboard ที่อ่านมัน —
 เขียนไว้ที่เดียวคือ [`template/README.md`](template/README.md) ซึ่งจะถูกติดตั้งเป็น README ของ vault คุณ
@@ -124,6 +125,9 @@ git pull
 - **macOS** และ **Node 18 ขึ้นไป** (`node -v`) — installer เป็นสคริปต์ Node ใบเดียว
 - **[Obsidian](https://obsidian.md)** — คนอ่าน vault · สามหน้า dashboard คือโน้ตของ Obsidian
 - **[Claude Code](https://claude.com/claude-code)** — คนรันสกิล wayfinder
+- **plugin `mattpocock-skills` ของ Matt Pocock** — ตัวที่ให้ `/wayfinder` · ติดตั้งใน Claude Code:
+  `/plugin marketplace add mattpocock/skills` แล้วตามด้วย `/plugin install mattpocock-skills@mattpocock`
+  · installer จะรายงานว่าเจอมันไหม แต่ไม่ติดตั้งให้เอง
 
 Dataview ship มาในตัว vault อยู่แล้ว (ดูหัวข้อ [License](#license)) ⇒ ไม่ต้องไปโหลดจาก plugin browser
 ของ Obsidian และไม่ต้องรีสตาร์ตกลางคัน
@@ -137,7 +141,7 @@ Dataview ship มาในตัว vault อยู่แล้ว (ดูหั
 | [`template/SETUP.md`](template/SETUP.md) | อัปเดตและตรวจสุขภาพ vault ที่ติดตั้งไปแล้ว |
 | [`template/_tools/`](template/_tools) | `bootstrap.mjs` (ติดตั้ง/อัปเดต) · `doctor.mjs` (ตรวจสุขภาพ + ลินต์ ticket ทุกใบ) · `autocommit.sh` (commit vault ให้เองทุกครั้งที่ agent แก้ ticket) |
 | [`template/example-repo/`](template/example-repo) | effort ตัวอย่างที่ใช้งานได้จริง วางให้ **ตอนติดตั้งเท่านั้น** เพื่อให้ dashboard มีของให้ดูตั้งแต่วันแรก · อ่านจบแล้วลบทิ้งได้ อัปเดตไม่ปลุกมันคืนมา |
-| [`skills/`](skills) | สกิล `/wayfinder` และ `/wayfinder-next` (อังกฤษ) · วางไว้ตรงที่คุณบอก installer · `/wayfinder` ดัดแปลงมาจาก [ชุดสกิลของ Matt Pocock](https://github.com/mattpocock/skills) — ดู [`THIRD-PARTY.md`](THIRD-PARTY.md) |
+| [`skills/`](skills) | สกิล `/wayfinder-next` (อังกฤษ) · วางไว้ตรงที่คุณบอก installer · `/wayfinder` ไม่ได้อยู่ที่นี่ — เป็นของ [Matt Pocock](https://github.com/mattpocock/skills) ติดตั้งจาก plugin ของเขา ซึ่งเป็นของที่ต้องมีก่อน ดู [`INSTALL.th.md`](INSTALL.th.md) |
 | [`INSTALL.th.md`](INSTALL.th.md) | วิธีติดตั้งและอัปเดตแบบเต็ม (อังกฤษ: [`INSTALL.md`](INSTALL.md)) |
 | [`THIRD-PARTY.md`](THIRD-PARTY.md) | ของภายนอกชิ้นเดียวที่ ship ไปด้วย กับ license ของมัน |
 | [`LICENSE`](LICENSE) | MIT |
@@ -146,12 +150,12 @@ Dataview ship มาในตัว vault อยู่แล้ว (ดูหั
 
 MIT — ดู [`LICENSE`](LICENSE)
 
-มีสองชิ้นใน repo นี้ที่ไม่ได้เขียนขึ้นที่นี่ และเป็น MIT ทั้งคู่:
+มีสองสิ่งที่ repo นี้สร้างอยู่บนของที่ไม่ได้เขียนขึ้นที่นี่ และเป็น MIT ทั้งคู่:
 
-- **สกิล `/wayfinder`** ดัดแปลงมาจากสกิล `wayfinder` ใน
-  **[ชุดสกิลของ Matt Pocock](https://github.com/mattpocock/skills)** — เนื้อส่วนใหญ่ยังเป็นของเขา · ความคิดที่ repo ทั้งใบนี้
+- **สกิล `/wayfinder`** เป็นของ **[Matt Pocock](https://github.com/mattpocock/skills)**
+  ใช้ตามที่เป็นจาก plugin `mattpocock-skills` ของเขา — repo นี้ไม่ได้รวมมันมาด้วย · ความคิดที่ repo ทั้งใบนี้
   สร้างขึ้นรอบ ๆ มันเป็นของเขา สิ่งที่เพิ่มเข้ามาที่นี่คือ *ที่อยู่* ให้ map ไปลง
 - **Dataview 0.5.68** ของ Michael Brenan (`blacksmithgu`) ship มาใน `template/.obsidian/`
   เพื่อให้ vault ที่เพิ่งติดตั้งสด ๆ **ครบอยู่บนดิสก์ก่อน** ที่ Obsidian จะเปิดมันครั้งแรก
 
-รายละเอียด สิ่งที่ถูกแก้ และตัวบท license เต็มอยู่ที่ [`THIRD-PARTY.md`](THIRD-PARTY.md)
+รายละเอียดและตัวบท license เต็มอยู่ที่ [`THIRD-PARTY.md`](THIRD-PARTY.md)

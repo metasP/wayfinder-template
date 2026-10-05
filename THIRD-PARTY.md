@@ -1,12 +1,12 @@
 # Third-party components
 
-This repository carries two things it did not write, in two different ways.
+This repository builds on two things it did not write, in two different ways.
 
 **Dataview** is *vendored*: a released binary, shipped byte-for-byte inside `template/`
 so that a fresh vault is complete on disk **before** Obsidian first opens it.
 
-**The `/wayfinder` skill** is *adapted*: a document by Matt Pocock, edited to fit a vault
-that lives outside the repo it plans for. Most of its text is still his.
+**The `/wayfinder` skill** is *credited, not bundled*: it is Matt Pocock's, and it is
+installed from his `mattpocock-skills` plugin rather than carried here.
 
 > Why vendored instead of "install it from the plugin browser": Obsidian reads
 > `.obsidian/` when it adopts a folder as a vault. A plugin added afterwards needs a
@@ -76,26 +76,23 @@ those notices travel with it.
 
 ## `/wayfinder` skill
 
-`skills/wayfinder/SKILL.md` is **adapted from** the `wayfinder` skill in Matt Pocock's
-skills collection. Roughly 87% of its non-blank lines are unchanged from his original.
+The `wayfinder` skill is Matt Pocock's. This repo **does not bundle it**: it is installed
+from his Claude Code plugin, inside Claude Code:
+
+```
+/plugin marketplace add mattpocock/skills
+/plugin install mattpocock-skills@mattpocock
+```
 
 | | |
 |---|---|
-| **Source** | `skills/engineering/wayfinder/SKILL.md` |
 | **Author** | Matt Pocock |
 | **License** | MIT |
 | **Upstream** | https://github.com/mattpocock/skills |
 
-What was changed, and why:
-
-- **"decision tickets" → "investigation tickets".** Upstream frames a ticket as a question
-  whose resolution is a decision. This vault also carries research and prototype tickets whose
-  resolution is a *finding*, so the wider word is the honest one here.
-- **Research tickets resolve into a linked markdown asset** rather than a `/research`
-  subagent, and the charting step no longer fans subagents out in parallel — this vault stores
-  findings as files next to the ticket, where the next session can read them.
-- **The "never resolve more than one ticket per session" rule lost its research exception.**
-- Emphasis markers normalised from `_x_` to `*x*`.
+Versions up to 0.2.x did bundle an adapted copy, at `skills/wayfinder/SKILL.md`, under that
+same MIT license. The copy has since been removed, but those published versions remain in
+git history, and the notice below still applies to them.
 
 `skills/wayfinder-next/SKILL.md` has no upstream counterpart — it is original work.
 

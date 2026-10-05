@@ -28,6 +28,17 @@ English: [`INSTALL.md`](INSTALL.md) · ภาพรวม repo: [`README.th.md`]
 - `git`
 - Obsidian — ตอนติดตั้งยังไม่มีก็ได้ · แต่ installer จะลงทะเบียน vault ให้ได้ก็ต่อเมื่อ
   เครื่องนี้เคยเปิด Obsidian มาแล้วอย่างน้อยหนึ่งครั้ง (ดูขั้นที่ 5)
+- plugin **`mattpocock-skills`** ของ Matt Pocock สำหรับ Claude Code — `/wayfinder` มาจากที่นี่
+  repo นี้ไม่ได้ ship สกิลตัวนั้นมาให้ · ติดตั้งใน Claude Code:
+
+  ```
+  /plugin marketplace add mattpocock/skills
+  /plugin install mattpocock-skills@mattpocock
+  ```
+
+  installer จะรายงานว่าเจอ plugin นี้ไหม (เป็นแค่คำเตือน ไม่ทำให้ล้ม · และมัน **ไม่ติดตั้งให้เอง**)
+  การติดตั้งนี้เป็น user scope ⇒ ตามกติกาข้อ 3 **agent ต้องถามก่อนติดตั้ง** · สกิลชุดนี้เป็นผลงานของ
+  Matt Pocock — [github.com/mattpocock/skills](https://github.com/mattpocock/skills) (MIT)
 
 ---
 
@@ -80,7 +91,7 @@ cd ~/Documents/Git/wayfinder-template && node template/_tools/bootstrap.mjs --pl
 
 | ชิ้น | ทำอะไร | เขียนที่ไหน |
 |---|---|---|
-| `skills` | สกิล `/wayfinder` และ `/wayfinder-next` | นอก vault (ดูข้อ 5) |
+| `skills` | สกิล `/wayfinder-next` (`/wayfinder` มาจาก plugin ข้างบน) | นอก vault (ดูข้อ 5) |
 | `vault` | เนื้อ vault · `_tools/` · `git init` | ใน vault |
 | `hook` | hook commit อัตโนมัติ | `~/.claude/settings.json` |
 | `obsidian` | ค่าตั้ง `.obsidian/` · ตัวปลั๊กอิน Dataview · ลงทะเบียน vault | ใน vault + config ของ Obsidian เอง |
@@ -237,6 +248,17 @@ node ~/Documents/Git/wayfinder-vault/_tools/bootstrap.mjs --from ~/Documents/Git
 
 ไฟล์ที่ repo นี้ **เลิก ship แล้ว** จะถูกลบออกจาก vault จริง ๆ ด้วย · การลบนั้นขับด้วย
 **manifest รอบก่อนอย่างเดียว** — ไฟล์ที่ไม่เคยอยู่ใน manifest ไม่มีทางเดินเข้าลูปลบนั้นได้เลย
+
+มีไฟล์หนึ่งที่เข้าข่ายนี้: รุ่นถึง 0.2.x ก็อบสกิล `/wayfinder` ไปวางใน skills directory ของคุณ
+(`<skills-dir>/wayfinder/SKILL.md`) · ตอนนี้มันมาจาก plugin แทน · update จะลบสำเนาเก่านั้น — และลบโฟลเดอร์ด้วย
+ถ้าเหลือว่าง — **เฉพาะเมื่อไฟล์ยังตรงกับที่ installer วางไว้ทุกไบต์** · ถ้าคุณเคยแก้ หรือเอาอย่างอื่นมาวางทับ
+มันจะถูกปล่อยไว้ที่เดิม installer บอกไว้บนจอ แล้วเลิกติดตามไฟล์นั้น · สกิลส่วนตัวชื่อ `wayfinder`
+อาจมีลำดับเหนือ `/wayfinder` ของ plugin ⇒ ถ้าไม่ใช่ตัวที่ต้องการ ให้ลบเองด้วยมือ
+
+> **ข้อควรระวังสำหรับ update รอบนี้รอบเดียว** — ถ้ารันผ่าน `_tools/bootstrap.mjs --from <repo>` ของ
+> *vault เอง* ที่เป็นรุ่นเก่า update จะใช้ installer รุ่นก่อน ซึ่งลบสำเนาเก่าโดยไม่เช็คแบบข้างบน
+> และอาจทิ้งโฟลเดอร์ `wayfinder/` ว่างไว้ · รอบนี้ให้ใช้คำสั่ง `npx` หรือ `template/_tools/bootstrap.mjs`
+> ของ repo เอง
 
 ### อะไรที่ไม่ถูกแตะ
 

@@ -16,9 +16,10 @@ someone can go and build the thing.
 The map is an **index, not a store**: every decision lives in exactly one ticket, and the map
 only gists it and links. Sessions come and go — the map is what survives them.
 
-Two skills ship here. `/wayfinder` charts a map and works its tickets; `/wayfinder-next`
-takes the tickets that are takeable *right now* and turns them into one-click chips that
-start the next session.
+Two skills are involved. `/wayfinder` charts a map and works its tickets — it is Matt Pocock's
+skill, installed from his plugin (see [Requirements](#requirements)). `/wayfinder-next`, which
+ships here, takes the tickets that are takeable *right now* and turns them into one-click
+chips that start the next session.
 
 The format itself — frontmatter, statuses, blockers, and the three dashboards that read them
 — is documented once, in [`template/README.md`](template/README.md), which installs into your
@@ -138,6 +139,9 @@ removes — files it put there itself. Anything else you keep in the vault is in
 - **macOS**, and **Node 18 or newer** (`node -v`) — the installer is one Node script
 - **[Obsidian](https://obsidian.md)** — reads the vault; the three dashboards are Obsidian notes
 - **[Claude Code](https://claude.com/claude-code)** — runs the wayfinder skills
+- **Matt Pocock's `mattpocock-skills` plugin** — provides `/wayfinder`. Inside Claude Code:
+  `/plugin marketplace add mattpocock/skills`, then `/plugin install mattpocock-skills@mattpocock`.
+  The installer reports whether it finds it; it does not install it for you.
 
 Dataview ships inside the vault (see [License](#license)), so there is nothing to install from
 Obsidian's plugin browser and no restart to sit through.
@@ -151,7 +155,7 @@ Obsidian's plugin browser and no restart to sit through.
 | [`template/SETUP.md`](template/SETUP.md) | Updating and health-checking a vault you already have. |
 | [`template/_tools/`](template/_tools) | `bootstrap.mjs` (install/update), `doctor.mjs` (health check + lint of every ticket), `autocommit.sh` (commits the vault whenever an agent edits a ticket). |
 | [`template/example-repo/`](template/example-repo) | A worked example effort, seeded **on install only**, so the dashboards have something real to show on day one. Delete it when you're done — no update brings it back. |
-| [`skills/`](skills) | The `/wayfinder` and `/wayfinder-next` skills (English), placed wherever you tell the installer to put them. `/wayfinder` is adapted from [Matt Pocock's skills collection](https://github.com/mattpocock/skills) — see [`THIRD-PARTY.md`](THIRD-PARTY.md). |
+| [`skills/`](skills) | The `/wayfinder-next` skill (English), placed wherever you tell the installer to put it. `/wayfinder` is not here: it is [Matt Pocock's](https://github.com/mattpocock/skills), installed from his plugin — a prerequisite, see [`INSTALL.md`](INSTALL.md). |
 | [`package.json`](package.json) | Declares `template/_tools/bootstrap.mjs` as the `bin`, which is what makes the `npx` one-liner above work. Not published to npm. |
 | [`INSTALL.md`](INSTALL.md) | Installing and updating, in full. |
 | [`THIRD-PARTY.md`](THIRD-PARTY.md) | The one vendored component and its license. |
@@ -161,14 +165,14 @@ Obsidian's plugin browser and no restart to sit through.
 
 MIT — see [`LICENSE`](LICENSE).
 
-Two parts of this repo were not written here, and both are MIT:
+Two things this repo builds on were not written here, and both are MIT:
 
-- **The `/wayfinder` skill** is adapted from the `wayfinder` skill in
-  **[Matt Pocock's skills collection](https://github.com/mattpocock/skills)** — most of its text is still his. The idea this
-  whole repo is built around is his; what is added here is a place for the maps to live.
+- **The `/wayfinder` skill** is
+  **[Matt Pocock's](https://github.com/mattpocock/skills)**, used as-is from his
+  `mattpocock-skills` plugin — this repo does not bundle it. The idea this whole repo is built
+  around is his; what is added here is a place for the maps to live.
 - **Dataview 0.5.68** by Michael Brenan (`blacksmithgu`) is vendored inside
   `template/.obsidian/`, so that a fresh vault is complete on disk *before* Obsidian first
   opens it.
 
-Details, what was changed, and the full license texts are in
-[`THIRD-PARTY.md`](THIRD-PARTY.md).
+Details and the full license texts are in [`THIRD-PARTY.md`](THIRD-PARTY.md).

@@ -32,6 +32,18 @@ Thai: [`INSTALL.th.md`](INSTALL.th.md) · Repo overview: [`README.md`](README.md
 - `git`
 - Obsidian — optional at install time. The installer can register the vault for you only if
   Obsidian has been opened at least once on this machine; see step 5.
+- Matt Pocock's **`mattpocock-skills`** Claude Code plugin — it is where `/wayfinder` comes
+  from; this repo does not ship that skill. Install it inside Claude Code:
+
+  ```
+  /plugin marketplace add mattpocock/skills
+  /plugin install mattpocock-skills@mattpocock
+  ```
+
+  The installer reports whether it can find the plugin (a warning, never a failure — it does
+  not install it for you). That is user scope, so under rule 3 **the agent asks before
+  installing it**. The skills are Matt Pocock's work —
+  [github.com/mattpocock/skills](https://github.com/mattpocock/skills), MIT.
 
 ---
 
@@ -85,7 +97,7 @@ Default `~/Documents/Git/wayfinder-vault`. Any path works; it does not have to b
 
 | Piece | What it does | Where it writes |
 |---|---|---|
-| `skills` | the `/wayfinder` and `/wayfinder-next` skills | outside the vault (see question 5) |
+| `skills` | the `/wayfinder-next` skill (`/wayfinder` comes from the plugin above) | outside the vault (see question 5) |
 | `vault` | the vault contents, `_tools/`, and `git init` | inside the vault |
 | `hook` | the auto-commit hook | `~/.claude/settings.json` |
 | `obsidian` | `.obsidian/` settings, the Dataview plugin, and registering the vault | inside the vault, plus Obsidian's own config |
@@ -265,6 +277,19 @@ having done anything wrong.
 Files this repo has **stopped shipping** are deleted from the vault too. That deletion is
 driven strictly by the previous manifest — a file that was never in the manifest can never
 enter that code path.
+
+One such file: versions up to 0.2.x copied a `/wayfinder` skill into your skills directory
+(`<skills-dir>/wayfinder/SKILL.md`); it now comes from the plugin instead. The update deletes
+that old copy — and the folder, if it ends up empty — **only if the file is still byte for
+byte what the installer placed**. If you edited it, or put something else there, it is left in
+place, the installer says so, and stops tracking it. A personal skill named `wayfinder` can
+take precedence over the plugin's `/wayfinder`, so delete it yourself if it is not the one you
+want.
+
+> **Caveat for that one update.** Run through the vault's *own* older `_tools/bootstrap.mjs
+> --from <repo>`, the update uses the previous installer, which deletes the old copy without
+> that check and may leave an empty `wayfinder/` folder behind. For this update, prefer the
+> `npx` one-liner or the repo's own `template/_tools/bootstrap.mjs`.
 
 ### What is never touched
 
