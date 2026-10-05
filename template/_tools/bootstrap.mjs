@@ -27,6 +27,7 @@
 //
 // `--wire-hook` / `--wire-memory` ยัง opt-in เหมือนเดิม (ใช้กับ vault ที่ติดตั้งอยู่แล้ว)
 // — ในโหมด install ทั้งสองชิ้นมาจากคำตอบข้อ 2 (`hook` / `memory`) แทน
+// `--help` / `-h` พิมพ์บล็อกนี้แล้วออก · flag ที่ไม่อยู่ในรายชื่อ (ดู § args) = error ก่อนแตะอะไร
 
 // ตัวที่ **เขียน** เข้ามาด้วยชื่อ `fs*` แล้วถูกห่อใหม่ที่เดียวข้างล่าง (จุดเดียวที่ `--plan` ปิดได้)
 // ตัวที่อ่านอย่างเดียวเข้ามาตรง ๆ — แยกสองกลุ่มตั้งแต่บรรทัด import เพื่อให้ "จุดที่เขียนได้" นับด้วยตาเปล่าได้
@@ -92,23 +93,44 @@ const walk = async (root, base = root, acc = []) => {
   return acc
 }
 
+const die = (msg, code = 1) => { console.error(`❌ ${msg}`); process.exit(code) }
+
 // ── args ────────────────────────────────────────────────────────────────────
+// รายชื่อ flag ที่รู้จัก **ปิดตาย** — เมื่อก่อน parser รับทุก `--x` แล้วข้ามทุกอย่างที่ไม่ขึ้นต้นด้วย `--`
+// ⇒ `--help` · `-h` · flag พิมพ์ผิด (`--pln`) ถูกเงียบ แล้วรันจริงเต็มรอบ: บน vault ที่มี manifest
+// คือ update ทับทุกไฟล์ + commit ลง `main` (เกิดจริงแล้วกับ `--help`) · ตรวจตรงนี้ **ก่อนแตะอะไรทั้งนั้น**
+// boolean ไม่กินคำถัดไปเด็ดขาด — ไม่งั้น `--yes ~/vault` กลืน path ทิ้งเงียบ ๆ แทนที่จะฟ้อง
+const BOOL_FLAGS = new Set(['plan', 'yes', 'wire-hook', 'wire-memory'])
+const VALUE_FLAGS = new Set(['from', 'vault', 'parts', 'on-conflict', 'skills-dir', 'allow-brew'])
+
+const usage = async () => {
+  const src = (await readFile(fileURLToPath(import.meta.url), 'utf8')).split('\n')
+  const from = src.findIndex((l) => l.startsWith('// ใช้:'))
+  const to = src.findIndex((l, i) => i > from && !l.startsWith('//'))
+  return src.slice(from, to).map((l) => l.replace(/^\/\/ ?/, '')).join('\n').trimEnd()
+}
+
 const argv = process.argv.slice(2)
+if (argv.includes('--help') || argv.includes('-h')) { console.log(await usage()); process.exit(0) }
+
 const flags = new Map()
 const bare = new Set()
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i]
-  if (!a.startsWith('--')) continue
+  if (!a.startsWith('--')) die(`ไม่รู้จัก argument "${a}" — ทุกตัวต้องเป็น --flag (ดู --help)`, 2)
   const eq = a.indexOf('=')
-  if (eq !== -1) { flags.set(a.slice(2, eq), a.slice(eq + 1)); continue }
-  const next = argv[i + 1]
-  if (next !== undefined && !next.startsWith('--')) { flags.set(a.slice(2), next); i++ }
-  else bare.add(a.slice(2))
+  const name = a.slice(2, eq === -1 ? undefined : eq)
+  if (BOOL_FLAGS.has(name)) {
+    if (eq !== -1) die(`--${name} ไม่รับค่า (เจอ "${a}")`, 2)
+    bare.add(name)
+  } else if (VALUE_FLAGS.has(name)) {
+    const value = eq !== -1 ? a.slice(eq + 1) : argv[++i]
+    if (value === undefined || value === '' || (eq === -1 && value.startsWith('-'))) die(`--${name} ต้องมีค่าตามมา`, 2)
+    flags.set(name, value)
+  } else die(`ไม่รู้จัก flag "--${name}" — ดู --help`, 2)
 }
 const opt = (k) => flags.get(k)
 const has = (k) => bare.has(k) || flags.has(k)
-
-const die = (msg, code = 1) => { console.error(`❌ ${msg}`); process.exit(code) }
 
 // ── `--plan` = dry run · **จุดเดียวที่ตัดสินว่าเขียนได้ไหม** ────────────────────────────────
 // เมื่อก่อนธงนี้ถูกอ่านที่สาขา `else if (has('plan'))` ซึ่งอยู่ **หลัง** `if (MODE === 'update')`
