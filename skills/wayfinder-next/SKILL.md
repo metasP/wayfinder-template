@@ -9,6 +9,14 @@ Spawn background task chips so the user can start the next wayfinder session(s) 
 
 **One chip = one ticket, always.** A chip may cover several tickets only in the sense that you spawn several chips — never write a prompt that tells one session to resolve more than one ticket.
 
+## Language
+
+Read `language:` from the frontmatter of `__VAULT__/Wayfinder Config.md` **once, before generating anything**. It is an ISO 639-1 code (`en`, `th`, `ja`, …). No note, no key, or a blank value → **`en`**.
+
+It sets the language of everything this skill writes for the user to click or read: the **short title**, the **chip prompt**, the **`tldr`**, and the **`AskUserQuestion` options**. It does **not** change the fixed tokens — `#RR-LNN-` prefix, `/wayfinder work through the map`, `Map:`, file paths, `## Answer`, `status:resolved`, "Decisions so far" — those stay verbatim in every language because the next session matches on them.
+
+The templates below are given in `en` and `th`. For any other language, translate the `en` version, keeping the fixed tokens as they are.
+
 ## Arguments
 
 | what the user typed | what to do |
@@ -22,8 +30,10 @@ Accept comma- and/or space-separated numbers, with or without zero-padding. Anyt
 ## Chip title format
 
 ```
-#RR-LNN-<short title>          e.g.  #12-G09-ถ้อยคำล็อกของ gate รายจุด
-                                     #13-T17-ตัวหารเล็ก = เห็นเลข แต่ไม่ตัดสิน
+#RR-LNN-<short title>          e.g.  en  #12-G09-Per-gate lock wording
+                                         #13-T17-Small divisor: show the number, don't judge
+                                     th  #12-G09-ถ้อยคำล็อกของ gate รายจุด
+                                         #13-T17-ตัวหารเล็ก = เห็นเลข แต่ไม่ตัดสิน
 ```
 
 | part | meaning |
@@ -31,13 +41,13 @@ Accept comma- and/or space-separated numbers, with or without zero-padding. Anyt
 | `RR` | **run number** — how many chips this effort has spawned. Zero-pad to 2 (`01`…`99`, then just grows) |
 | `L` | **ticket type letter** — `T`ask · `G`rilling · `R`esearch · `P`rototype (from the ticket's `type:` frontmatter) |
 | `NN` | **ticket number** from `issues/NN-<slug>.md`, zero-padded to 2 |
-| short title | Thai, generated (see below) |
+| short title | generated in `language` (see below) |
 
 The prefix is exactly 8 chars, so **the short title gets ≤ 52** (`spawn_task` caps titles at 60). Fixed-width prefix is the point — the sidebar reads as columns.
 
 ### Short title
 
-Tickets have **no H1** — generate the short title from the bold line under `## Question`. Strip the scaffolding ("ทำกฎ … ให้เป็นโค้ดจริง", "ตัดสินใจว่า…", "แก้…") and keep the kernel. Thai. Never use the file's English slug.
+Tickets have **no H1** — generate the short title from the bold line under `## Question`. Strip the scaffolding ("Turn rule … into code", "Decide whether…", "Fix…" · "ทำกฎ … ให้เป็นโค้ดจริง", "ตัดสินใจว่า…", "แก้…") and keep the kernel. Write it in `language` — translate the bold line if the ticket is written in another language. Never use the file's slug.
 
 ## Run number (`runs:` in the map)
 
@@ -117,28 +127,46 @@ Before spawning anything, read the frontmatter of **every** requested ticket plu
 
 **If any is flagged** → print a compact table (ticket · flag · the specific reason, e.g. *"blocked by 05 (status: open)"*), then ask **once** with `AskUserQuestion` — never one question per ticket:
 
-- when at least one ticket is clean: **ข้ามใบที่มีปัญหา สร้างเฉพาะใบที่พร้อม** (recommended) · **สร้างทั้งหมดอยู่ดี** · **ยกเลิก**
-- when every ticket is flagged: **สร้างทั้งหมดอยู่ดี** · **เปลี่ยนไปใช้ใบ frontier แทน** (name the ticket you'd pick) · **ยกเลิก**
+| when | `en` | `th` |
+|---|---|---|
+| at least one ticket is clean | **Skip flagged, spawn the ready ones** (recommended) · **Spawn all anyway** · **Cancel** | **ข้ามใบที่มีปัญหา สร้างเฉพาะใบที่พร้อม** (recommended) · **สร้างทั้งหมดอยู่ดี** · **ยกเลิก** |
+| every ticket is flagged | **Spawn all anyway** · **Use a frontier ticket instead** (name the ticket you'd pick) · **Cancel** | **สร้างทั้งหมดอยู่ดี** · **เปลี่ยนไปใช้ใบ frontier แทน** (name the ticket you'd pick) · **ยกเลิก** |
 
-Respect the answer literally. "สร้างทั้งหมดอยู่ดี" is a real choice — the user may want a chip queued for a ticket whose blocker is finishing in another session right now. When you spawn a flagged ticket anyway, say so in that chip's prompt (e.g. `⚠️ ใบนี้ถูก block ด้วย 05 ที่ยังไม่ปิด — ถ้ายังไม่ปิดตอนเริ่ม ให้หยุดแล้วรายงาน อย่าเดาคำตอบของ 05`).
+Respect the answer literally. "Spawn all anyway" is a real choice — the user may want a chip queued for a ticket whose blocker is finishing in another session right now. When you spawn a flagged ticket anyway, say so in that chip's prompt, in `language`:
+
+- `en`: `⚠️ This ticket is blocked by 05, which is not resolved — if it is still open when you start, stop and report; don't guess 05's answer`
+- `th`: `⚠️ ใบนี้ถูก block ด้วย 05 ที่ยังไม่ปิด — ถ้ายังไม่ปิดตอนเริ่ม ให้หยุดแล้วรายงาน อย่าเดาคำตอบของ 05`
 
 ## Workflow
 
-1. **Find the active map.** Wayfinder maps live in `__VAULT__/<repo>/<effort>/map.md`. Use the map from the current conversation if known; else list `__VAULT__/*/*/map.md` and pick the one meant (ask if ambiguous).
+1. **Find the active map.** Wayfinder maps live in `__VAULT__/<repo>/<effort>/map.md`. Use the map from the current conversation if known; else list `__VAULT__/*/*/map.md` and pick the one meant (ask if ambiguous). Read `language` from `__VAULT__/Wayfinder Config.md` in the same pass (see [Language](#language)).
 2. **Resolve the requested tickets** per [Picking tickets](#picking-tickets). Read the map's own `status:` first (a map that is not `active` flags every ticket under it), then `ls` the map's `issues/` and read the `status:`/`type:`/`blockers:` frontmatter of the candidates **and of their blockers**.
    With **no argument**, read the frontmatter of **every** ticket (that is the whole blocker graph in one pass), plus the `## Answer` of the most recently resolved ones and the map's Decisions-so-far — signals 1 and 2 live there and nowhere else.
 3. **Validate + confirm** per the section above. Drop or keep flagged tickets according to the answer.
 4. **Read each surviving ticket** for its `## Question` bold line → short title; `type:` → `L`.
 5. **Allocate the `runs:` block** in `map.md` frontmatter (add it as `runs: k` if absent) in one edit. Ascending ticket order gets ascending `RR`.
 6. **Spawn one chip per ticket** with `mcp__ccd_session__spawn_task`:
-   - `title`: `#RR-LNN-<short title>` (e.g. `#12-G09-ถ้อยคำล็อกของ gate รายจุด`)
-   - `prompt`: the Thai kickoff template below (self-contained)
-   - `tldr`: one plain line — what that session does
+   - `title`: `#RR-LNN-<short title>` (e.g. `#12-G09-Per-gate lock wording`)
+   - `prompt`: the kickoff template below in `language` (self-contained)
+   - `tldr`: one plain line in `language` — what that session does
    - `cwd`: the target repo path (from the map's `repo:` field)
 7. **Report** every chip created, one line each (`#RR-LNN-title`), plus one line for anything skipped and why.
    When you picked with no argument, add **one line for why the top pick won** (which signal fired) and, if the frontier had strong runners-up, name them so the user can swap in one word.
 
-## Chip prompt template (write in Thai)
+## Chip prompt template (write in `language`)
+
+`en`:
+
+```
+/wayfinder work through the map
+
+Map: <absolute map.md path>
+
+Mode: Work through the map. Do ticket <NN> (<title>) — issues/<NN>-<slug>.md
+Follow the wayfinder steps: claim the ticket before starting, resolve, record (## Answer + status:resolved + add 1 line to the map's "Decisions so far"); resolve at most 1 ticket per session
+```
+
+`th`:
 
 ```
 /wayfinder work through the map
@@ -149,21 +177,23 @@ Map: <absolute map.md path>
 ทำตามขั้นตอน wayfinder: claim ticket ก่อนเริ่ม, resolve, record (## Answer + status:resolved + เติม 1 บรรทัดใน map "Decisions so far"), ห้าม resolve เกิน 1 ticket ต่อ session
 ```
 
-When the ticket is still in the fog (reserved number), say so explicitly instead of the second line's file path:
+When the ticket is still in the fog (reserved number), say so explicitly instead of the `Mode:` line's file path:
 
 ```
-โหมด: Work through the map. ticket <NN> ยังไม่มีไฟล์ — แตกเป็น issues/<NN>-<slug>.md ด้วย type: <type> ก่อน แล้วค่อย claim
+en  Mode: Work through the map. Ticket <NN> has no file yet — create issues/<NN>-<slug>.md with type: <type> first, then claim it
+th  โหมด: Work through the map. ticket <NN> ยังไม่มีไฟล์ — แตกเป็น issues/<NN>-<slug>.md ด้วย type: <type> ก่อน แล้วค่อย claim
 ```
 
 **When you spawn more than one chip for the same map**, append this line to every prompt in the batch — concurrent sessions will both edit `map.md`:
 
 ```
-หมายเหตุ: มี session อื่นของ map นี้รันพร้อมกัน — ตอน record ให้ merge บรรทัดใน "Decisions so far" อย่าทับของใบอื่น
+en  Note: another session of this map is running at the same time — when recording, merge your line into "Decisions so far"; don't overwrite other tickets' lines
+th  หมายเหตุ: มี session อื่นของ map นี้รันพร้อมกัน — ตอน record ให้ merge บรรทัดใน "Decisions so far" อย่าทับของใบอื่น
 ```
 
 ## Notes
 
-- **Batching chips is fine; batching tickets into one chip is not.** Each chip's prompt still says "ห้าม resolve เกิน 1 ticket ต่อ session".
+- **Batching chips is fine; batching tickets into one chip is not.** Each chip's prompt still says "resolve at most 1 ticket per session".
 - Prefer batching tickets that **don't block each other** — chips for a chain (05 blocked by 04) queue work that can't start, which is why the confirm step exists.
 - If the map has no open ticket and nothing left in the fog, say the map is complete instead of spawning a chip.
 - **Grouping happens by itself — but the agent cannot target it.** Verified against Claude Code desktop
