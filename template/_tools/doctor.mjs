@@ -2,7 +2,7 @@
 // ตรวจสุขภาพ wayfinder-vault — ทุกข้อที่ตรวจด้วยเครื่องได้
 //
 // ใช้:  node _tools/doctor.mjs
-// exit 0 = ผ่านหมด, exit 1 = มีอย่างน้อยหนึ่งข้อพัง
+// exit 0 = ผ่านหมด, exit 1 = มีอย่างน้อยหนึ่งข้อพัง, exit 2 = argument ผิด (doctor ไม่รับ argument)
 //
 // ข้อที่ *ตรวจด้วยเครื่องไม่ได้* (ต้องเปิด Obsidian ดูเอง) จะขึ้นเป็น MANUAL ท้ายรายงาน
 
@@ -15,6 +15,18 @@ import { homedir } from 'node:os'
 
 const run = promisify(execFile)
 const VAULT = join(dirname(fileURLToPath(import.meta.url)), '..')
+
+// doctor ไม่รับ argument — `--help` พิมพ์ "ใช้:" แล้วออก · อย่างอื่น (เช่น `--vault x` ที่หวังจะชี้ vault อื่น)
+// ฟ้อง exit 2 แทนการเงียบแล้วตรวจ vault ข้างตัวสคริปต์ ซึ่งคนสั่งจะอ่านผิดว่าเป็นผลของ vault ที่ตั้งใจ
+const argv = process.argv.slice(2)
+if (argv.includes('--help') || argv.includes('-h')) {
+  console.log('ใช้:  node <vault>/_tools/doctor.mjs   (ไม่รับ argument — ตรวจ vault ที่สคริปต์นี้อยู่)\nexit 0 = ผ่านหมด, exit 1 = มีอย่างน้อยหนึ่งข้อพัง, exit 2 = argument ผิด')
+  process.exit(0)
+}
+if (argv.length) {
+  console.error(`❌ doctor ไม่รับ argument (เจอ ${argv.map((a) => `"${a}"`).join(' ')}) — รัน doctor.mjs ของ vault ที่จะตรวจตรง ๆ`)
+  process.exit(2)
+}
 
 // doctor ถูกรันจาก **worktree ของ session** ได้ (`<vault>/.claude/worktrees/<ชื่อ>/`)
 // ข้อที่ตรวจ *เนื้อ vault* ใช้ `VAULT` = working tree ที่กำลังทำงานอยู่จริง (ถูกแล้ว)
