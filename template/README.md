@@ -231,6 +231,8 @@ blocker ข้าม effort ใช้ path เต็ม `"[[<repo>/<effort>/issu
   · map ที่มีตาราง `## Tickets` อยู่แล้วไม่ผิด แต่แตกใบใหม่เมื่อไหร่ต้องเติมแถวด้วย
 - **ticket** — frontmatter ตาม § รูปแบบ ticket · body มี `## Question` แล้วตามด้วย `## Answer` ที่ใส่
   `(เติมตอน resolve)` ไว้
+- **ภาษา** — เนื้อความที่เขียนลง map/ticket ให้เป็นภาษาตาม `language:` ใน [[Wayfinder Config]] (ไม่มี = `en`)
+  เพราะ plugin `/wayfinder` ไม่ได้อ่านโน้ตนั้นเอง · หัวข้อ · คีย์ frontmatter · wikilink คงตามรูปข้างบนทุกภาษา
 
 ### Operations
 
