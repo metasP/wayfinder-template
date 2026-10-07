@@ -197,7 +197,11 @@ sync_worktree_to_main() {
 
 # ---------------------------------------------------------------- main
 
-file=$(jq -r '.tool_response.filePath // .tool_input.file_path // empty' 2>/dev/null)
+# อ่าน stdin ครั้งเดียว แล้วแยกค่าออกมา — jq สองตัวอ่าน stdin เดียวกันไม่ได้
+input=$(cat)
+file=$(printf '%s' "$input" | jq -r '.tool_response.filePath // .tool_input.file_path // empty' 2>/dev/null)
+# cwd ของ *session* (ไม่ใช่ของ hook) — ดูเหตุผลที่เส้น Bash
+session_cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 
 # ---- เส้น Write|Edit : รู้ไฟล์แน่นอน ⇒ stage แค่ไฟล์นั้น -------------------
 if [ -n "$file" ]; then
@@ -219,7 +223,11 @@ fi
 # ---- เส้น Bash : ไม่รู้ไฟล์ ⇒ เดาจาก cwd แล้วถาม git แยก commit ต่อ effort ---
 #   session ที่รันใน worktree ของ vault ⇒ commit ลง worktree นั้น
 #   session ที่รันใน repo งาน (repo ไหนก็ได้) แล้วแก้ vault ด้วย sed/python3 ⇒ กลับไป vault หลัก
-REPO=$(repo_root_for "$PWD")
+# ⚠️ ห้ามใช้ `$PWD` อย่างเดียว: Claude Code รัน hook ด้วย PWD = project dir (= vault หลัก)
+# **ไม่ใช่** cwd ของ session ⇒ session ที่รันใน worktree จะเช็คแต่ `main` ที่สะอาดอยู่แล้วจบเงียบ
+# (ไฟล์ที่แก้ด้วย sed/python3 ใน worktree ไม่เคยถูก commit · พิสูจน์ด้วย debug log 2026-10-07)
+# ⇒ ใช้ `.cwd` จาก payload ก่อน แล้วค่อยถอยไป `$PWD` ถ้า payload ไม่มี
+REPO=$(repo_root_for "${session_cwd:-$PWD}")
 [ -n "$REPO" ] || REPO="$VAULT"
 [ -e "$REPO/.git" ] || exit 0
 repo_mid_operation "$REPO" && exit 0     # กลางคัน merge ⇒ ปล่อยให้คน resolve เอง
