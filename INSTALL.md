@@ -112,10 +112,12 @@ Default `~/Documents/Git/wayfinder-vault`. Any path works; it does not have to b
 > worktree it was written in. Declining is a legitimate choice; the cost is that the vault
 > path has to be spelled out by hand every single time.
 >
-> The paragraph is a pointer, not a copy of the format: it sends `/wayfinder` and the build
-> skills after it (`/to-spec`, `/to-tickets`, `/implement`, `/implement-spec`) to the vault
-> README's **§ Wayfinding operations** and **§ Spec & ticket operations**, which own the
-> layout and the frontmatter and win where a skill's own text disagrees.
+> The paragraph is a pointer, not a copy of the format: it sends `/wayfinder` to the vault
+> README's **§ Wayfinding operations**, and the build skills after it (`/to-spec`,
+> `/to-tickets`, `/implement`, `/implement-spec`) to **§ Spec & ticket operations**. Those
+> sections own the layout and the frontmatter and win where a skill's own text disagrees.
+> Only maps live in the vault: specs and build tickets go where the work repo's own tracker
+> config says, and the map keeps a `## Build board` pointing at them.
 >
 > The installer prints this same consequence again if the piece is skipped. It does not ask
 > twice, and neither should you.

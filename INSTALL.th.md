@@ -105,10 +105,11 @@ cd ~/Documents/Git/wayfinder-template && node template/_tools/bootstrap.mjs --pl
 > ไม่ใช่ลง vault แล้ว**ตายไปพร้อมกับ branch หรือ worktree ที่มันถูกเขียน**
 > การปฏิเสธเป็นทางเลือกที่ชอบธรรม ราคาของมันคือต้องพิมพ์ path ของ vault บอกเองทุกครั้ง
 >
-> ย่อหน้านี้เป็น **ตัวชี้** ไม่ใช่สำเนาของ format — มันส่ง `/wayfinder` และสกิลขั้น build ที่ตามมา
-> (`/to-spec` · `/to-tickets` · `/implement` · `/implement-spec`) ไปที่ README ของ vault
-> **§ Wayfinding operations** กับ **§ Spec & ticket operations** ซึ่งเป็นเจ้าของ layout และ frontmatter
-> และชนะเมื่อข้อความในตัว skill ขัดกัน
+> ย่อหน้านี้เป็น **ตัวชี้** ไม่ใช่สำเนาของ format — มันส่ง `/wayfinder` ไปที่ README ของ vault
+> **§ Wayfinding operations** และส่งสกิลขั้น build ที่ตามมา (`/to-spec` · `/to-tickets` · `/implement` ·
+> `/implement-spec`) ไปที่ **§ Spec & ticket operations** ซึ่งเป็นเจ้าของ layout และ frontmatter
+> และชนะเมื่อข้อความในตัว skill ขัดกัน · vault เก็บแค่ map — spec กับ build ticket ไปอยู่ที่ที่
+> tracker ของ repo งานกำหนด แล้ว map มี `## Build board` ชี้ไปหา
 >
 > ถ้าเขาไม่เอาชิ้นนี้ installer จะพิมพ์ผลข้อนี้ออกมาซ้ำให้เองอีกรอบ · **มันไม่ถามซ้ำ และคุณก็อย่าถามซ้ำ**
 
