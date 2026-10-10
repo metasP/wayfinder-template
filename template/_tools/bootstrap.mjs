@@ -53,6 +53,9 @@ const MANIFEST = '.wayfinder-template.json'
 const DEFAULT_VAULT = join(HOME, 'Documents/Git/wayfinder-vault')
 const DEFAULT_SKILLS = join(CLAUDE, 'skills')
 const ALL_PARTS = ['skills', 'vault', 'hook', 'obsidian', 'memory']
+// หัวย่อหน้า CLAUDE.md รุ่นก่อน (spec + build ticket อยู่ใน vault) — เจอแล้วต้องเตือน ไม่ใช่ข้ามเงียบ ๆ
+// อยู่บนสุดเพราะ report() ข้างล่างใช้ก่อนถึงขั้น 4g — ประกาศทีหลังแล้วโดน TDZ (ReferenceError)
+const STALE_MEMORY_HEADING = 'Wayfinder maps, specs, and build tickets live in the vault'
 
 // ── ชั้น seed-once — เหตุผลติดไว้ทีละข้อ เพราะย้ายไฟล์ผิดชั้น = ลบของผู้ใช้เงียบ ๆ ─────────
 //  · `Wayfinder Config.md` / `Wayfinder Picks.md` — ใบ 01 ย้ายค่าที่ผู้ใช้จูนเอง (STALE_DAYS,
@@ -689,8 +692,6 @@ if (parts.has('hook') || has('wire-hook')) {
 // ย่อหน้านี้เป็น **ตัวชี้** ไม่ใช่ตัว format — layout · frontmatter · operation อยู่ใน README ของ vault
 // ที่ update ตามได้ · ข้อความที่ก๊อปลง CLAUDE.md คือสำเนาที่สองซึ่งไม่มีใคร update ให้ (รุ่นก่อนลิสต์
 // `status` ไว้แค่ 3 ค่า แล้วตกรุ่นทันทีที่ vault มี `waiting`) ⇒ เหลือแค่ที่อยู่ + ชื่อหัวข้อที่ต้องอ่าน
-// หัวย่อหน้ารุ่นก่อน (spec + build ticket อยู่ใน vault) — เจอแล้วต้องเตือน ไม่ใช่ข้ามเงียบ ๆ
-const STALE_MEMORY_HEADING = 'Wayfinder maps, specs, and build tickets live in the vault'
 const MEMORY_BLOCK = `
 ## Wayfinder maps live in the vault, never in a repo
 
