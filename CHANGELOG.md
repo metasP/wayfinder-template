@@ -10,6 +10,23 @@ it reads the conventional-commit messages merged to `main`, keeps a release PR o
 GitHub release notes. `feat` bumps the minor version, `fix` the patch, and while the version is
 below 1.0.0 a breaking change (`feat!`) bumps the minor too.
 
+## [0.5.0](https://github.com/metasP/wayfinder-template/compare/v0.4.0...v0.5.0) (2026-10-10)
+
+
+### Features
+
+* move specs and build tickets out of the vault into the work repo's tracker ([4e121d9](https://github.com/metasP/wayfinder-template/commit/4e121d9ae56677885c5bc869f1f4ce3589181ea7))
+* move specs and build tickets out of the vault into the work repo's tracker ([a23ca69](https://github.com/metasP/wayfinder-template/commit/a23ca69dcc915bdb492ebc2bbb9f271676599d11))
+
+
+### Bug Fixes
+
+* declare STALE_MEMORY_HEADING before report() uses it ([84ddaac](https://github.com/metasP/wayfinder-template/commit/84ddaac96892a5f21008aa82f05562005aed6c44))
+* declare STALE_MEMORY_HEADING before report() uses it ([1084877](https://github.com/metasP/wayfinder-template/commit/10848771f7af17803249f4ab60e7042d86abe39c))
+* **hook:** autocommit Bash path reads the session cwd from the payload ([8d7e499](https://github.com/metasP/wayfinder-template/commit/8d7e4997bed3a3ac08bb25a02b78f3a1fb76a260))
+* **hook:** autocommit Bash path reads the session cwd from the payload ([f42c27b](https://github.com/metasP/wayfinder-template/commit/f42c27b4eb1ddcddeb3bddd25eee47dc10d1107b))
+* keep all-waiting maps off the stale clock and close review gaps ([d1d5b98](https://github.com/metasP/wayfinder-template/commit/d1d5b9814baab5d5b93785c97fda4d8c1df3442c))
+
 ## 0.4.0 — 2026-10-05
 
 **Changed (CLI):** `bootstrap.mjs` and `doctor.mjs` now reject what they do not understand,
