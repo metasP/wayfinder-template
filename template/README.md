@@ -101,7 +101,7 @@ blocker ปลด **map ที่มี `blocked_by` ค้างอยู่จ
 vault ⇒ เก็บเป็นบทเรียนเข้า harness ไว้ก่อนจะลืม
 
 1. แก้เป็น `status: done` + `status_since: ‹วันปิด›` ตามปกติ · ต้องไม่มีใบ `open`/`claimed`/`waiting` ค้าง
-   (`doctor.mjs` จับ)
+   (`doctor.mjs` จับ) · map ที่มี `## Build board` ต้องรอให้การ์ดทุกใบในนั้นปิดก่อน (doctor มองไม่เห็นการ์ด — เช็คเอง)
 2. **บอกผู้ใช้ให้พิมพ์ `/retro` เอง** — skill นี้ตั้ง `disable-model-invocation: true` ⇒ agent เรียกผ่าน
    Skill tool ไม่ได้ · ถ้าไม่ระบุ มันจะ retro แค่ *session ปัจจุบัน* แต่ map เดินมาหลาย session ⇒ ให้ระบุ
    ขอบเขตเป็นทั้ง effort เช่น `/retro ทุก session ที่แตะ <vault>/<repo>/<effort>/`
@@ -225,6 +225,7 @@ blocker ข้าม effort ใช้ path เต็ม `"[[<repo>/<effort>/issu
 
 - **map** — frontmatter ตาม § รูปแบบ map (`runs` เป็นของ `/wayfinder-next` อย่าแตะ) · body ใต้
   `# ‹ชื่อ effort›` ใช้หัวข้อของ upstream ตามลำดับ: `## Destination` · `## Notes` · `## Decisions so far` ·
+  (`## Build board` เฉพาะ effort ที่แตกการ์ดด้วย `/to-tickets` — ดู § Spec & ticket operations) ·
   `## Not yet specified` · `## Out of scope` · (`## Retro` เฉพาะ map ที่ `done` — ดู § ปิด map เป็น `done` ⇒ รัน `/retro`)
 - **Decisions so far** — ใบละบรรทัด `- [[NN-<slug>]]: ‹gist หนึ่งบรรทัด›` ต่อท้ายตามลำดับที่ปิด
 - ไม่ต้องลิสต์ใบที่ยังเปิดใน map — frontmatter ของใบคือแหล่งจริง และหน้า `Wayfinder Effort Tickets` วาดให้
@@ -275,60 +276,93 @@ vault ไม่มีแนวคิดเรื่อง branch และ branc
 
 ## Spec & ticket operations
 
-หัวข้อนี้คือ **tracker doc** ของขั้น build หลัง `/wayfinder` — `/to-spec` · `/to-tickets` · `/implement` ·
-`/implement-spec` (plugin `mattpocock-skills`) ถามหา "issue tracker ที่ provide ไว้" ⇒ **คือ vault นี้**
-ใช้ที่อยู่ · frontmatter · claim/resolve · frontier ชุดเดียวกับ § Wayfinding operations ทุกข้อ หัวข้อนี้บอกแค่ส่วนที่เพิ่ม
+หัวข้อนี้บอกว่าขั้น build หลัง `/wayfinder` — `/to-spec` · `/to-tickets` · `/implement` · `/implement-spec`
+(plugin `mattpocock-skills`) — **แตะ vault ตรงไหนบ้าง** · vault **ไม่ใช่** tracker ของขั้นนี้: spec กับ build ticket
+ไปอยู่ที่ที่ repo งานกำหนด แล้ว map เก็บแค่ตัวชี้ไปหามัน
 
-> ⚠️ **ข้อความในตัว skill หรือใน `docs/agents/issue-tracker.md` ของ repo งานที่ขัดกับหัวข้อนี้ ให้เชื่อหัวข้อนี้** —
-> `.scratch/<feature>/` · GitHub issue · label `ready-for-agent` · บรรทัด `**Status:**` / `**Blocked by:**` ·
-> "output ลงแชต" ใช้ไม่ได้ทั้งหมด spec และ ticket ที่ไม่ได้อยู่ใน vault คือของที่หายไปพร้อม session
+> ⚠️ **กลับด้านจากรุ่นก่อน** — รุ่นก่อนให้ spec อยู่ใน `assets/NN-spec.md` และ build ticket อยู่ใน map `-build`
+> ของ vault · ตอนนี้ไม่ใช่แล้ว: งานที่รันจริงบน tracker ของ repo (board · agent orchestrator · คนในทีม) มองไม่เห็น vault
+> และ spec ที่ต้องให้เจ้าของ product review ต้องอยู่ที่ที่เขา review ได้ · map `-build` ที่เปิดไว้ก่อนกติกานี้
+> ทำต่อจนจบแบบเดิมได้ ไม่ต้องย้าย
+
+### ใครเป็นเจ้าของอะไร
+
+| ของ | อยู่ที่ | กติกาของใคร |
+| --- | --- | --- |
+| map · grilling · research · prototype | vault | README นี้ |
+| spec | ที่ที่ repo งาน (หรือ knowledge base ของ product) กำหนด — เช่น PR เพิ่มไฟล์ spec ให้เจ้าของ product review | `AGENTS.md` / `docs/agents/issue-tracker.md` ของ repo นั้น |
+| build ticket (การ์ด) | tracker ของ repo งาน (GitHub issue · board ฯลฯ) ตาม format · สถานะ · label ของ repo นั้น | `docs/agents/issue-tracker.md` ของ repo นั้น |
+| ลำดับการ์ดข้าม repo | `## Build board` ของ map | README นี้ (ข้างล่าง) |
+
+- **repo งานไม่ได้บอกที่ไว้** ⇒ หยุดแล้วถามผู้ใช้ หรือให้รัน `/setup-matt-pocock-skills` ใน repo นั้นก่อน —
+  **ห้ามถอยกลับมาเขียนลง vault · `.scratch/` · หรือ output ลงแชต** spec และการ์ดที่ไม่ได้อยู่ใน tracker จริงคือของที่หายไปพร้อม session
+- กติกาเฉพาะของทีม (format หัวการ์ด · หัวข้อบังคับ · path ของ spec · board ไหน) อยู่ใน repo ของทีม **ไม่ใช่ที่นี่**
+  ⇒ vault ตัวเดียวใช้กับหลาย repo ที่ format ต่างกันได้
 
 ### เลือก pipeline
 
 | งาน build | ใช้ | หมายเหตุ |
 | --- | --- | --- |
-| ไม่เกิน 2 PR | `/implement` ต่อจากใบใน map ฝั่ง planning เลย | ไม่ต้องมี spec หรือ map `-build` · ลิงก์ PR ลง `## Answer` ของใบนั้น |
-| 3 PR ขึ้นไป | `/to-spec` → `/to-tickets` → กด chip ของ `/wayfinder-next` ทีละใบ | ใบละ session ใบละ PR |
-| `/implement-spec` | **ยังทดลอง** — ใช้กับ effort ที่ทุกใบเป็น two-way door เท่านั้น | ได้ integration branch + PR ตัวเดียว ซึ่งขัดกับ 1 ใบ = 1 PR ข้างล่าง ผลทดลองจะมาแก้ตารางนี้ |
+| ไม่เกิน 2 PR | `/implement` ต่อจากใบใน map เลย | ไม่ต้องมี spec หรือการ์ด · ใบใน vault เป็นเจ้าของ PR — ดู § `/implement` |
+| 3 PR ขึ้นไป | `/to-spec` → `/to-tickets` → ทำการ์ดบน tracker ของ repo | หยิบการ์ดตามวิธีของ repo นั้น (board · orchestrator · assign ตัวเอง) — **ไม่ใช่** chip ของ `/wayfinder-next` |
+| `/implement-spec` | **ยังทดลอง** — ใช้กับ effort ที่การ์ดทุกใบเป็น two-way door เท่านั้น | ได้ integration branch + PR ตัวเดียว ซึ่งขัดกับ 1 การ์ด = 1 PR ผลทดลองจะมาแก้ตารางนี้ |
 
 ### Spec — `/to-spec`
 
-- อยู่ที่ **`<vault>/<repo>/<effort>/assets/NN-spec.md` ของ map ฝั่ง planning** (`NN` = เลขใบที่รัน `/to-spec`)
-  · ใบนั้นลิงก์ spec และ map `-build` ไว้ใน `## Answer`
-- **ห้าม commit spec เข้า repo งาน** และห้ามเขียนลง `.scratch/` — spec เป็น plan doc ใช้ครั้งเดียว
-- ใช้ `<spec-template>` ของ `/to-spec` ครบทุกหัวข้อ แล้วเพิ่ม **`## Locked Decisions`** (คำสั่งที่ล็อกไว้)
-  ต่อจาก `## Implementation Decisions` — สิ่งที่ตัดสินแล้ว implementer ห้ามรื้อ · อ้าง ADR ด้วยชื่อ
-  และอ้างคำใน glossary ได้ (ของพวกนี้อยู่ใน repo งาน ดู § Glossary และ ADR)
-- **ไม่ใส่ path หรือ `file:line`** ทั้งฉบับ (กฎเดียวกับ upstream) — path เก่าเร็ว ให้ไปอยู่ใน build ticket
-- ชื่อหัวข้อ · identifier · คำใน glossary เป็นภาษาอังกฤษ · เนื้อหาใช้ภาษาเดียวกับ map และ ticket ของ vault
-- ไม่ต้องติด label `ready-for-agent` — vault ไม่มี triage
+- ใบใน map ที่รัน `/to-spec` เป็นเจ้าของ spec: เขียน spec ไปที่ที่ repo งานกำหนด แล้วลิงก์ (ไฟล์ · PR) ไว้ใน `## Answer`
+- spec ที่ต้องรอคน review (เปิดเป็น PR) ⇒ ใบเป็น `status: waiting` + `status_note: "รอ review spec ‹ลิงก์ PR›"`
+  · **resolve เมื่อ PR merge แล้ว** — `/to-tickets` ต้องอ่าน spec ฉบับที่ผ่าน review ไม่ใช่ฉบับร่าง
+- คำถาม product ที่โผล่ระหว่างเขียน spec ให้เจ้าของ product ตอบในที่ของเขา (comment บน PR · แก้เอกสาร product)
+  **ไม่ตัดสินแทนใน vault**
+- repo ไม่มี template ของ spec เอง ⇒ ใช้ `<spec-template>` ของ `/to-spec` ครบทุกหัวข้อ แล้วเพิ่ม **`## Locked Decisions`**
+  ต่อจาก `## Implementation Decisions` — สิ่งที่ตัดสินแล้ว implementer ห้ามรื้อ · อ้าง ADR ด้วยชื่อ และอ้างคำใน glossary ได้
+- **ไม่ใส่ path หรือ `file:line`** ทั้งฉบับ (กฎเดียวกับ upstream) — path เก่าเร็ว ให้ไปอยู่ในการ์ด
 
 ### Build ticket — `/to-tickets`
 
-- อยู่ใน **map ใหม่ `<vault>/<repo>/<effort>-build/`** ไม่ใช่ใน map ฝั่ง planning
-  · `map.md` ตาม § รูปแบบ map (`effort: <effort>-build` · `status: active`) · `## Destination` ลิงก์ spec
-  ด้วย `../<effort>/assets/NN-spec.md` · ไม่เขียน decision ซ้ำกับ spec
-- ใบ build ใช้ **frontmatter ตาม § รูปแบบ ticket** · `type: task` · ไม่ใช้ `<local-ticket-template>` ของ upstream
-  (ไม่มีบรรทัด `**Status:** ready-for-agent` · `**Blocked by:**` ไปอยู่ใน `blockers:`)
-- เพิ่มฟิลด์ **`door: one-way | two-way`** ในทุกใบ — คำเดียวกับ Merge Danger ของ `/pr`
-  - **two-way** ถอยกลับได้ถูก ⇒ ใบที่ไม่ติด blocker กันทำขนานกันได้
+- อ่าน spec ที่ merge แล้ว → **quiz breakdown ให้คนอนุมัติก่อนตามปกติ อย่าข้าม** → สร้างการ์ดบน tracker ของ repo งาน
+  ตาม format ของ repo นั้น · **ไม่สร้าง map `-build` และไม่มีไฟล์ใบ build ใน vault**
+- 1 การ์ด = 1 PR · งานหลาย repo ⇒ การ์ดแยก repo ละใบ
+- **door** — ระบุในการ์ดทุกใบว่า one-way หรือ two-way (คำเดียวกับ Merge Danger ของ `/pr`) ในช่องที่ format ของ repo มี
+  (เช่น ช่องความเสี่ยง)
+  - **two-way** ถอยกลับได้ถูก ⇒ การ์ดที่ไม่ติดกันทำขนานกันได้
   - **one-way** ถอยไม่ได้หรือถอยแพง (schema · migration · ข้อมูลที่เขียนไปแล้ว · contract ที่คนนอกใช้)
-    ⇒ ทำทีละใบหลังใบก่อนหน้า merge แล้ว · wire เป็น `blockers` ให้ frontier คิดเอง: ใบ one-way ติดทุกใบที่ต้อง
-    merge ก่อน และใบที่ตามหลังติดใบ one-way นั้น
-- body: `## Question` แตก `<issue-template>` ของ upstream เป็นหัวข้อย่อย — ลิงก์ spec (`../../<effort>/assets/NN-spec.md#…`
-  แทน `## Parent`) · What to build · Acceptance criteria เป็น checkbox · **path และ `file:line` ใส่ได้ที่นี่**
-  แล้วตามด้วย `## Answer` ที่ใส่ `(เติมตอน resolve)`
-- เลขใบเรียงตาม dependency (blocker มาก่อน) · สร้างทุกใบก่อนแล้ว wire `blockers` รอบที่สอง (§ Operations)
-- `/to-tickets` ให้คนอนุมัติ breakdown ก่อนเขียนไฟล์ตามปกติ — **อย่าข้ามขั้น quiz**
+    ⇒ ต้องติด blocker ครบทุกใบที่ต้อง merge ก่อน และการ์ดที่ตามหลังติดใบ one-way นั้น
+- **blocker ใน repo เดียวกัน** ใช้ช่อง blocker ของ tracker / format ของ repo
+- **blocker ข้าม repo** — tracker ส่วนใหญ่อ้าง blocker ข้าม repo ไม่ได้ (หรืออ้างได้แต่เครื่องมือที่หยิบการ์ดอ่านไม่ออก)
+  ⇒ บันทึกใน `## Build board` ของ map แทน · การ์ดที่ต้องรอ repo อื่น **ไม่ปล่อยเข้าคิวที่หยิบได้ทันที**
+  (ค้างในสถานะรอตามคำของ tracker นั้น) · คนปล่อยเองเมื่อ blocker merge แล้ว
+- effort มี **issue ระดับฟีเจอร์** (ลิงก์ไว้ใน `## Build board`) และ tracker มี sub-issue ⇒ ผูกการ์ดทุกใบเป็น sub-issue ของมัน
+- ใบใน map ที่รัน `/to-tickets` เขียน `## Build board` แล้วเป็น `status: waiting` +
+  `status_note: "รอการ์ดใน ## Build board ปิดครบ"` — ใบนี้คือสิ่งที่กันหน้า Efforts ไม่ให้เตือน "ใบหมดแล้ว → done"
+  ระหว่างที่การ์ดยังเดิน · **resolve เมื่อการ์ดทุกใบปิด** แล้วปิด map ตาม § ปิด map เป็น `done` ⇒ รัน `/retro`
 
-### ทำ build ticket — 1 ใบ = 1 PR
+### `## Build board` ใน map
 
-- chip ของ `/wayfinder-next` ได้ `cwd` = repo งานเอง (`repo:` ของ map `-build`) · claim ตาม § Operations
-- 1 ใบ = 1 branch = **1 PR ไปที่ base branch ของ repo** (ตามธรรมเนียมของ repo นั้น) · ไม่มี integration branch
-- PR เปิดแล้วแต่ยังไม่ merge ⇒ `status: waiting` + `status_note: "รอ review/merge ‹ลิงก์ PR›"` — review ไม่ได้อยู่ในมือเรา
-- **resolve เมื่อ PR merge แล้ว** ไม่ใช่ตอนเปิด PR — ใบที่ติดใบนี้ต้องได้โค้ดจาก base branch จริง
-- `## Answer` บันทึก: ลิงก์ PR · ชื่อ branch · merge commit · สิ่งที่ต่างจาก spec (ถ้ามี) · fact ที่ใบถัดไปต้องรู้
-- Decisions so far ของ map `-build` ใบละบรรทัดเหมือนเดิม · ครบทุกใบแล้วปิด map `-build` เป็น `done`
+ตัวชี้จาก map ไปหาการ์ด — **ไม่ก๊อปสถานะของการ์ดลงมา** (one copy, one place: สถานะจริงอยู่ใน tracker)
+
+```markdown
+## Build board
+
+- Feature: ‹ลิงก์ issue ระดับฟีเจอร์› (ถ้ามี)
+- **‹repo-a›**: [#7](‹url›) ‹ชื่อการ์ด› · [#8](‹url›) ‹ชื่อการ์ด›
+- **‹repo-b›**: [#12](‹url›) ‹ชื่อการ์ด›
+- ลำดับข้าม repo: `‹repo-b›#12 ⟵ ‹repo-a›#7` — ‹ทำไมต้องรอ›
+```
+
+- เขียนตอน `/to-tickets` · ใครเปิดการ์ดเพิ่มให้ effort นี้ในภายหลังเติมบรรทัดเอง
+- บรรทัด "ลำดับข้าม repo" คือ**ที่เดียว**ที่ลำดับนี้อยู่ ⇒ ก่อนปล่อยการ์ดที่รอ repo อื่นเข้าคิว ดูที่นี่
+- map ถึง Destination ด้าน build เมื่อการ์ดทุกใบใน Build board ปิด
+
+### `/implement` — ใครเป็นเจ้าของ PR
+
+- **ทำจากใบใน map** (ไม่เกิน 2 PR) — ใบใน vault เป็นเจ้าของ: PR เปิดแล้วแต่ยังไม่ merge ⇒ `status: waiting` +
+  `status_note: "รอ review/merge ‹ลิงก์ PR›"` · **resolve เมื่อ PR merge แล้ว** ไม่ใช่ตอนเปิด PR ·
+  `## Answer` บันทึก ลิงก์ PR · ชื่อ branch · merge commit · fact ที่ใบถัดไปต้องรู้
+- **ทำจากการ์ด** — การ์ดเป็นเจ้าของ: เปิด PR ที่ปิดการ์ดเมื่อ merge (ตามธรรมเนียมของ repo) · **ไม่แตะ vault เลย**
+  (ไม่มีใบให้ resolve) · fact ที่การ์ดถัดไปต้องรู้ไปอยู่ในการ์ดหรือ PR · ถ้าการ์ดที่ปิดเป็นใบสุดท้ายใน Build board
+  ให้บอกผู้ใช้ว่าใบ `waiting` ของ `/to-tickets` และ map พร้อมปิดแล้ว
+- 1 การ์ด (หรือ 1 ใบ) = 1 branch = **1 PR ไปที่ base branch ของ repo** (ตามธรรมเนียมของ repo นั้น) · ไม่มี integration branch
 
 ## สามหน้าที่ใช้อ่าน vault
 
