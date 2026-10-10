@@ -186,7 +186,9 @@ for (const r of rows) {
 
   if (r.status === "active") {
     if (r.pending === 0) push(r, "ใบหมดแล้ว แต่ยังไม่ประกาศว่าถึง Destination", "→ done")
-    else if (r.days > staleDays) push(r, `ประกาศ active แต่ไม่มีใบไหนขยับ ${r.days} วัน`, "→ paused")
+    // ใบที่ค้างทุกใบเป็น `waiting` = รอของนอกมือ ไม่ได้ดอง (เช่น รอการ์ดใน `## Build board` ปิด)
+    // ⇒ ไม่นับนาฬิกา เหมือน map ที่มี `blocked_by` · ตัวทวงคือ view ⏳ รอของนอก บน Dashboard
+    else if (r.days > staleDays && r.waiting < r.pending) push(r, `ประกาศ active แต่ไม่มีใบไหนขยับ ${r.days} วัน`, "→ paused")
     else active.push(r)
   } else if (r.status === "paused" && r.pausedDays > pausedStaleDays) {
     push(r, `พักมา ${r.pausedDays} วัน เกินเส้น ${pausedStaleDays} วัน`, "→ dropped")
@@ -355,4 +357,5 @@ for (const el of dv.container.querySelectorAll("[data-go]")) {
 > ที่ใช้เมื่อโน้ตนั้นหายหรือคีย์ไม่ครบเท่านั้น · ที่มาของเลข `30` (ไม่ใช่เลขกลม ๆ) อยู่ในโน้ต Config
 >
 > map ที่มี `blocked_by` ค้างอยู่ **ไม่ถูกนับนาฬิกา 30 วัน** — มันไม่ได้ดอง มันรอ
+> · map `active` ที่ใบค้างทุกใบเป็น `waiting` ก็ **ไม่ถูกนับนาฬิกา `stale_days`** ด้วยเหตุผลเดียวกัน
 > สิ่งที่ตัดสินคือสภาพของเป้าหมาย: ปลดแล้ว → เด้งขึ้น ⚠️ ให้กลับมาทำ · เป้าไม่มีใครผลัก → เด้งขึ้น ⚠️ ว่าโซ่ตัน

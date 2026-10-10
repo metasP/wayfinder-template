@@ -198,7 +198,7 @@ stub ต้องตั้งเป็น `status: waiting` + `status_note` ท�
 - map `<vault>/<repo>/<effort>/map.md` · ticket `<vault>/<repo>/<effort>/issues/NN-<slug>.md`
   (เริ่มที่ `01`) · ของแนบ `<vault>/<repo>/<effort>/assets/` (ดู § โครงสร้าง)
 - `<vault>` = โฟลเดอร์ของ README นี้ · `<repo>` = repo ที่งานตั้งเป้า **ไม่ใช่** repo ที่ session รันอยู่
-- **ห้ามใช้ `.scratch/`, `docs/plan/` หรือ GitHub issue** — chip ของ `/wayfinder-next` รันใน repo งาน
+- map และใบ **ห้ามใช้ `.scratch/`, `docs/plan/` หรือ GitHub issue** (การ์ดขั้น build เป็นอีกเรื่อง — ดู § Spec & ticket operations) — chip ของ `/wayfinder-next` รันใน repo งาน
   ⇒ เขียนลง vault ด้วย **absolute path** · ถ้า session รันใน worktree ของ vault เอง ให้เขียนที่ path
   ใน worktree (ไม่ใช่ checkout หลัก) แล้ว `autocommit.sh` หยดลง `main` ให้
 - ไม่ต้อง commit เอง — `autocommit.sh` commit ให้ทุกครั้งที่ Write/Edit
@@ -334,8 +334,11 @@ vault ไม่มีแนวคิดเรื่อง branch และ branc
   (ค้างในสถานะรอตามคำของ tracker นั้น) · คนปล่อยเองเมื่อ blocker merge แล้ว
 - effort มี **issue ระดับฟีเจอร์** (ลิงก์ไว้ใน `## Build board`) และ tracker มี sub-issue ⇒ ผูกการ์ดทุกใบเป็น sub-issue ของมัน
 - ใบใน map ที่รัน `/to-tickets` เขียน `## Build board` แล้วเป็น `status: waiting` +
-  `status_note: "รอการ์ดใน ## Build board ปิดครบ"` — ใบนี้คือสิ่งที่กันหน้า Efforts ไม่ให้เตือน "ใบหมดแล้ว → done"
-  ระหว่างที่การ์ดยังเดิน · **resolve เมื่อการ์ดทุกใบปิด** แล้วปิด map ตาม § ปิด map เป็น `done` ⇒ รัน `/retro`
+  `status_note: "รอการ์ดใน ## Build board ปิดครบ"` — ใบนี้กันหน้า Efforts ไม่ให้เตือน "ใบหมดแล้ว → done"
+  ระหว่างที่การ์ดยังเดิน (map ที่ใบค้างทุกใบเป็น `waiting` ไม่ถูกนับนาฬิกา `stale_days`) · **resolve เมื่อการ์ดทุกใบปิด**
+  แล้วปิด map ตาม § ปิด map เป็น `done` ⇒ รัน `/retro`
+- **ไม่มีเครื่องไหนเห็นว่าการ์ดปิดครบ** (doctor กับหน้า Efforts อ่าน tracker ไม่ได้) ⇒ ตัวทวงคือใบ `waiting` นี้ใน view
+  `⏳ รอของนอก` ของ Dashboard · เห็นมันเมื่อไหร่ให้เปิด `## Build board` ไล่ลิงก์ ปิดครบแล้ว ⇒ resolve
 
 ### `## Build board` ใน map
 
@@ -360,8 +363,8 @@ vault ไม่มีแนวคิดเรื่อง branch และ branc
   `status_note: "รอ review/merge ‹ลิงก์ PR›"` · **resolve เมื่อ PR merge แล้ว** ไม่ใช่ตอนเปิด PR ·
   `## Answer` บันทึก ลิงก์ PR · ชื่อ branch · merge commit · fact ที่ใบถัดไปต้องรู้
 - **ทำจากการ์ด** — การ์ดเป็นเจ้าของ: เปิด PR ที่ปิดการ์ดเมื่อ merge (ตามธรรมเนียมของ repo) · **ไม่แตะ vault เลย**
-  (ไม่มีใบให้ resolve) · fact ที่การ์ดถัดไปต้องรู้ไปอยู่ในการ์ดหรือ PR · ถ้าการ์ดที่ปิดเป็นใบสุดท้ายใน Build board
-  ให้บอกผู้ใช้ว่าใบ `waiting` ของ `/to-tickets` และ map พร้อมปิดแล้ว
+  (ไม่มีใบให้ resolve) · fact ที่การ์ดถัดไปต้องรู้ไปอยู่ในการ์ดหรือ PR · ถ้ารู้ว่าการ์ดที่ปิดเป็นใบสุดท้ายใน Build board
+  ให้บอกผู้ใช้ว่าใบ `waiting` ของ `/to-tickets` และ map พร้อมปิดแล้ว (ไม่รู้ก็ไม่เป็นไร — view `⏳ รอของนอก` ทวงอยู่)
 - 1 การ์ด (หรือ 1 ใบ) = 1 branch = **1 PR ไปที่ base branch ของ repo** (ตามธรรมเนียมของ repo นั้น) · ไม่มี integration branch
 
 ## สามหน้าที่ใช้อ่าน vault

@@ -250,7 +250,8 @@ const report = () => {
   log(`  hook            ${hookWired ? 'ต่อไว้แล้ว' : 'ยังไม่ต่อ'}`)
   log(`  /wayfinder      ${env.wayfinderPlugin ? 'ปลั๊กอิน mattpocock-skills ลงแล้ว'
     : '⚠️ ไม่เจอปลั๊กอิน mattpocock-skills — ลงก่อนใช้ (INSTALL § What you need) · ลงทางอื่นแล้วข้ามได้'}`)
-  log(`  ~/.claude/CLAUDE.md  ${env.claudeMd.includes('Wayfinding operations') ? 'มีย่อหน้าแล้ว'
+  log(`  ~/.claude/CLAUDE.md  ${env.claudeMd.includes(STALE_MEMORY_HEADING) ? '⚠️ มีย่อหน้ารุ่นที่ส่ง spec + build ticket เข้า vault'
+    : env.claudeMd.includes('Wayfinding operations') ? 'มีย่อหน้าแล้ว'
     : env.claudeMd.includes('Wayfinder maps live in') ? '⚠️ มีย่อหน้ารุ่นเก่า (ยังไม่ชี้ไป § Wayfinding operations)'
     : 'ยังไม่มีย่อหน้า'}`)
   if (!env.darwin) log(`  ⚠️  ไม่ใช่ macOS — ข้อ Obsidian/brew ใช้ไม่ได้`)
