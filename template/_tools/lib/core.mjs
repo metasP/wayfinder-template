@@ -198,8 +198,11 @@ const mapRecord = (id, note) => {
     status: fm.status ?? null,
     statusSince: isoDate(fm.status_since),
     statusNote: optionalString(fm.status_note),
-    blockedBy: fm.blocked_by ?? null,
+    blockedBy: fm.blocked_by === "" ? null : (fm.blocked_by ?? null),
     supersededBy: fm.superseded_by ?? null,
+    // The text between the `wf:tickets` markers, when the caller read the body: null = no markers,
+    // undefined = not read (drift isn't checked).
+    ticketsBlock: note.ticketsBlock,
     frontmatter: fm,
   }
 }
@@ -239,7 +242,7 @@ const linkStem = (raw, homeKey) => {
 const resolveTicketLink = (raw, home, byStem) => byStem.get(linkStem(raw, home.effortKey))?.ref ?? null
 
 /**
- * Build the read model from raw notes. Returns
+ * Build the read model from raw notes (`{ path, frontmatter, ticketsBlock? }`). Returns
  * `{ maps: Map<repo/effort, Map>, tickets: Map<repo/effort#NN, Ticket>, efforts: Map<repo/effort,
  * { repo, effort, key, map, tickets }>, duplicates: [{ ref, path }], skipped: [{ path, reason }] }`.
  * Notes are taken in path order, so a duplicate NN keeps the first path and reports the others.
@@ -521,4 +524,315 @@ export function renderTicketsBlock(index, effort, language) {
   const tickets = index.efforts.get(effort)?.tickets ?? []
   if (!tickets.length) return EMPTY_TICKETS[languageOf(language)] ?? EMPTY_TICKETS.en
   return tickets.map((t) => ticketLine(index, t)).join("\n")
+}
+
+// ── Lint ───────────────────────────────────────────────────────────────────
+
+const SEVERITY_ORDER = Object.freeze({ error: 0, warn: 1 })
+
+const finding = (severity, rule, ref, message, fix = null) => ({ severity, rule, ref, message, fix })
+const byFinding = (a, b) =>
+  SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] ||
+  compare(a.ref, b.ref) ||
+  compare(a.rule, b.rule) ||
+  compare(a.message, b.message)
+
+// Every note the index holds, as `{ kind, ref, fields, frontmatter, status }`.
+const indexedNotes = (index) => [
+  ...[...index.maps.values()].map((m) => ({ ...m, kind: "map", ref: m.key, fields: MAP_FIELDS })),
+  ...[...index.tickets.values()].map((t) => ({ ...t, kind: "ticket", fields: TICKET_FIELDS })),
+]
+
+const LEGACY_KEYS = Object.freeze(["repo", "effort"])
+const LEGACY_HINT = "identity comes from the path; preview with wf migrate"
+// Where a fix needs the owner's words. Unquoted, so a fix run verbatim is a shell syntax error
+// rather than a placeholder note that would satisfy the rule.
+const NOTE_ARG = "--note <note>"
+
+const isBlank = (value) => value == null || value === ""
+const quote = (value) => JSON.stringify(value)
+const isDateLike = (value) => value instanceof Date || typeof value?.toISODate === "function"
+const isNested = (value) => value !== null && typeof value === "object" && !isDateLike(value)
+const isWholeNumber = (value) => (typeof value === "number" ? Number.isInteger(value) : /^\d+$/.test(String(value)))
+const isOutsideSubset = (value) => (Array.isArray(value) ? value.some(isNested) : isNested(value))
+
+// What is wrong with one present value of a known field, or null. Nested values are `yaml-subset`'s.
+const valueProblem = (f, value) => {
+  if (isOutsideSubset(value)) return null
+  if (f.shape === "scalar" && Array.isArray(value)) return "a list; expected a single value"
+  if (f.shape === "list" && !Array.isArray(value)) return `${quote(value)}; expected a list`
+  if (Array.isArray(value)) return null
+  if (f.values && !f.values.includes(value)) return `${quote(value)}; expected ${f.values.join(" | ")}`
+  if (f.format === "date" && !isoDate(value)) return `${quote(value)}; expected YYYY-MM-DD`
+  if (f.format === "integer" && !isWholeNumber(value)) return `${quote(value)}; expected a whole number`
+  return null
+}
+
+const invalidValues = (note) =>
+  Object.entries(note.fields)
+    .filter(([name]) => !isBlank(note.frontmatter[name]))
+    .map(([name, f]) => [name, valueProblem(f, note.frontmatter[name])])
+    .filter(([, problem]) => problem)
+    .map(([name, problem]) => finding("error", "invalid-value", note.ref, `${name} is ${problem}`))
+
+// `status_note` on a waiting ticket is `waiting-without-note`'s, which carries a fix.
+const isWaitingNote = (note, name) => note.kind === "ticket" && note.status === "waiting" && name === "status_note"
+
+const missingFields = (note) =>
+  requiredFields(note.kind, note.status)
+    .filter((name) => !isWaitingNote(note, name) && isBlank(note.frontmatter[name]))
+    .map((name) => {
+      const when = note.fields[name].required === true ? "" : ` when status is ${note.status}`
+      return finding("error", "missing-field", note.ref, `${name} is required${when}`)
+    })
+
+const waitingWithoutNote = (note) =>
+  note.kind === "ticket" && note.status === "waiting" && isBlank(note.frontmatter.status_note)
+    ? [
+        finding(
+          "error",
+          "waiting-without-note",
+          note.ref,
+          `waiting without status_note — release it, then wait again with ${NOTE_ARG}`,
+          `wf release ${note.ref}`,
+        ),
+      ]
+    : []
+
+const keyFindings = (note) =>
+  Object.entries(note.frontmatter).flatMap(([name, value]) => {
+    if (LEGACY_KEYS.includes(name))
+      return [finding("warn", "legacy-field", note.ref, `legacy field ${name} — ${LEGACY_HINT}`, "wf migrate --yes")]
+    if (isOutsideSubset(value))
+      return [finding("error", "yaml-subset", note.ref, `${name} is outside the YAML subset (flat scalars and lists of strings)`)]
+    return hasOwn(note.fields, name) ? [] : [finding("warn", "unknown-key", note.ref, `unknown frontmatter key ${name}`)]
+  })
+
+// A `map.md` the index skipped (no `kind: map`) in an effort that has tickets is a map missing `kind`.
+const unreadMaps = (index) =>
+  index.skipped.flatMap(({ path }) => {
+    const id = parseRef(path)
+    const effort = id && index.efforts.get(formatRef(id))
+    if (!effort?.tickets.length || effort.map) return []
+    return [finding("error", "missing-field", effort.key, `kind: map is required — ${path} is not read as a map`)]
+  })
+
+const noteFindings = (note) => [
+  ...invalidValues(note),
+  ...missingFields(note),
+  ...waitingWithoutNote(note),
+  ...keyFindings(note),
+]
+
+// A nested entry is `yaml-subset`'s. `wf block --remove` takes the dangling link as written.
+const danglingBlockers = (t) =>
+  t.blockers.flatMap((ref, i) => {
+    const raw = t.rawBlockers[i]
+    if (ref != null || isNested(raw)) return []
+    const isLink = typeof raw === "string" && WIKILINK_RE.test(raw.trim())
+    const fix = isLink ? `wf block ${t.ref} ${quote(raw)} --remove` : null
+    return [finding("error", "dangling-blocker", t.ref, `blocker ${quote(raw)} resolves to no ticket`, fix)]
+  })
+
+// The shortest blocker path from `start` back to itself, as refs (start first), or null.
+const cycleThrough = (index, start) => {
+  const parent = new Map()
+  const queue = [start]
+  while (queue.length) {
+    const ref = queue.shift()
+    for (const next of [...new Set(index.tickets.get(ref).blockers)].filter(Boolean).sort(compare)) {
+      if (next === start) return [...pathTo(parent, ref, start), start]
+      if (parent.has(next) || !index.tickets.has(next)) continue
+      parent.set(next, ref)
+      queue.push(next)
+    }
+  }
+  return null
+}
+
+const pathTo = (parent, ref, start) => {
+  const path = [ref]
+  while (path[0] !== start) path.unshift(parent.get(path[0]))
+  return path
+}
+
+// Tarjan's strongly connected components over `graph` (Map ref → refs), iteratively — a long
+// blocker chain must not overflow the stack.
+const stronglyConnected = (graph) => {
+  let counter = 0
+  const order = new Map()
+  const low = new Map()
+  const stack = []
+  const onStack = new Set()
+  const groups = []
+  const visit = (v) => {
+    order.set(v, counter)
+    low.set(v, counter++)
+    stack.push(v)
+    onStack.add(v)
+  }
+  for (const root of graph.keys()) {
+    if (order.has(root)) continue
+    visit(root)
+    const work = [{ v: root, i: 0 }]
+    while (work.length) {
+      const frame = work[work.length - 1]
+      const w = graph.get(frame.v)[frame.i++]
+      if (w !== undefined) {
+        if (!order.has(w)) {
+          visit(w)
+          work.push({ v: w, i: 0 })
+        } else if (onStack.has(w)) low.set(frame.v, Math.min(low.get(frame.v), order.get(w)))
+        continue
+      }
+      work.pop()
+      if (work.length) low.set(work[work.length - 1].v, Math.min(low.get(work[work.length - 1].v), low.get(frame.v)))
+      if (low.get(frame.v) !== order.get(frame.v)) continue
+      const group = []
+      let top
+      do {
+        top = stack.pop()
+        onStack.delete(top)
+        group.push(top)
+      } while (top !== frame.v)
+      groups.push(group.sort(compare))
+    }
+  }
+  return groups
+}
+
+// Each cycle group (strongly connected blockers) once, at its smallest ref, with the shortest cycle
+// through that ref; the fix cuts that cycle's first edge. Fixing one cycle may leave another in
+// the group, which the next lint reports.
+const blockerCycles = (index) => {
+  const graph = new Map(
+    [...index.tickets.values()].map((t) => [t.ref, [...new Set(t.blockers)].filter((r) => index.tickets.has(r))]),
+  )
+  return stronglyConnected(graph)
+    .filter((group) => group.length > 1 || graph.get(group[0]).includes(group[0]))
+    .map((group) => {
+      const cycle = cycleThrough(index, group[0])
+      const extra = group.length > new Set(cycle).size ? ` (cycle group: ${group.join(", ")})` : ""
+      const message = `blocker cycle ${cycle.join(" → ")}${extra}`
+      return finding("error", "blocker-cycle", group[0], message, `wf block ${cycle[0]} ${cycle[1]} --remove`)
+    })
+}
+
+const duplicateNns = (index) =>
+  index.duplicates.map(({ ref, path }) => {
+    const nn = ref.split("#").pop()
+    const kept = index.tickets.get(ref).path
+    return finding("error", "duplicate-nn", ref, `${path} reuses NN ${nn} (kept ${kept})`)
+  })
+
+const BLOCK_MESSAGES = Object.freeze({
+  cleared: (target) => `blocked_by ${target} has cleared — remove blocked_by`,
+  dead: (target) => `blocked_by ${target} sits in a paused or dropped map and can't clear`,
+})
+
+const mapBlockFindings = (index, m) => {
+  const block = mapBlockState(index, m)
+  if (block?.state === "dangling" && typeof block.raw === "string")
+    return [finding("error", "dangling-blocker", m.key, `blocked_by ${quote(block.raw)} resolves to no map or ticket`)]
+  const message = BLOCK_MESSAGES[block?.state]
+  return message ? [finding("warn", "map-blocked-by", m.key, message(block.target))] : []
+}
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`
+
+// `done`, `paused` and `dropped` claim nothing moves; a ticket that moved after `status_since` says otherwise.
+const mapStatusFindings = ({ map: m, tickets }) => {
+  const pending = tickets.filter((t) => PENDING.has(t.status))
+  const reopen = `wf map-status ${m.key} active`
+  if (m.status === "done" && pending.length) {
+    const verb = pending.length === 1 ? "is" : "are"
+    const refs = pending.map((t) => t.ref).join(", ")
+    const message = `done, but ${plural(pending.length, "ticket")} ${verb} still pending: ${refs}`
+    return [finding("error", "done-map-pending", m.key, message, reopen)]
+  }
+  const isKnown = tickets.every((t) => TICKET_STATUSES.includes(t.status))
+  if (m.status === "active" && tickets.length && isKnown && !pending.length)
+    return [finding("warn", "map-finished", m.key, "active with no pending tickets → done", `wf map-status ${m.key} done`)]
+  if (!["done", ...STOPPED_MAP].includes(m.status) || !m.statusSince) return []
+  const movers = tickets.filter((t) => t.statusSince > m.statusSince)
+  if (!movers.length) return []
+  const last = movers.reduce((a, b) => (b.statusSince > a.statusSince ? b : a))
+  const message = `${m.status} since ${m.statusSince}, but ${last.ref} moved on ${last.statusSince}`
+  return [finding("warn", "lying-map-status", m.key, message, reopen)]
+}
+
+const STALE_MAP_FINDINGS = Object.freeze({
+  idle: (m, days, config) =>
+    finding(
+      "warn",
+      "idle-map",
+      m.key,
+      `active, but nothing moved for ${days} days (stale_days ${configValue(config, "stale_days")})`,
+      `wf map-status ${m.key} paused ${NOTE_ARG}`,
+    ),
+  paused: (m, days, config) =>
+    finding(
+      "warn",
+      "stale-paused-map",
+      m.key,
+      `paused for ${days} days (paused_stale_days ${configValue(config, "paused_stale_days")}) — resume or drop it`,
+      `wf map-status ${m.key} dropped ${NOTE_ARG}`,
+    ),
+})
+
+const timeFindings = (index, { today, config }) => [
+  ...staleMaps(index, { today, config }).map(({ map: m, reason, days }) => STALE_MAP_FINDINGS[reason](m, days, config)),
+  ...staleClaims(index, { today, config }).map(({ ticket: t, days }) =>
+    finding(
+      "warn",
+      "stale-claim",
+      t.ref,
+      `claimed by ${t.claimedBy ?? "nobody"} for ${days} days (claim_stale_days ${configValue(config, "claim_stale_days")})`,
+      `wf release ${t.ref}`,
+    ),
+  ),
+  ...overdueWaits(index, { today }).map(({ ticket: t, days }) =>
+    finding("warn", "overdue-wait", t.ref, `wait_until ${t.waitUntil} passed ${plural(days, "day")} ago`, `wf release ${t.ref}`),
+  ),
+]
+
+const normalizeBlock = (text) => String(text).replace(/\r\n?/g, "\n").trim()
+
+const blockDrift = (index, m, language) => {
+  if (m.ticketsBlock === undefined) return []
+  const fix = `wf lint --fix ${m.key}`
+  if (m.ticketsBlock === null) return [finding("warn", "tickets-block-drift", m.key, "no generated ## Tickets block", fix)]
+  const drifted = normalizeBlock(m.ticketsBlock) !== normalizeBlock(renderTicketsBlock(index, m.key, language))
+  return drifted ? [finding("warn", "tickets-block-drift", m.key, "## Tickets block differs from the rendering", fix)] : []
+}
+
+// *Wayfinder Picks* isn't an effort, so its findings carry the note's name as the ref.
+const PICKS_REF = "Wayfinder Picks"
+
+const unknownSortKeys = (sort) =>
+  parsePickSort(sort).unknown.map((rule) =>
+    finding("error", "unknown-sort-key", PICKS_REF, `unknown sort rule ${quote(rule)} — keys: ${PICK_SORT_KEYS.join(", ")}`),
+  )
+
+/**
+ * Every content rule over the read model (spec *Lint rules*): `Finding[]` of
+ * `{ severity: "error"|"warn", rule, ref, message, fix }`, errors first, then by ref. `fix` is the
+ * `wf` command that resolves the finding, or null when no verb does. `config` is *Wayfinder Config*
+ * (thresholds, `language` for the block rendering); `sort` is *Wayfinder Picks* `sort:`.
+ */
+export function lint(index, { today, config, sort } = {}) {
+  requireToday(today)
+  const findings = [
+    ...indexedNotes(index).flatMap(noteFindings),
+    ...unreadMaps(index),
+    ...[...index.tickets.values()].flatMap(danglingBlockers),
+    ...blockerCycles(index),
+    ...duplicateNns(index),
+    ...[...index.maps.values()].flatMap((m) => mapBlockFindings(index, m)),
+    ...[...index.efforts.values()].filter((e) => e.map).flatMap(mapStatusFindings),
+    ...[...index.maps.values()].flatMap((m) => blockDrift(index, m, config?.language)),
+    ...unknownSortKeys(sort),
+    ...timeFindings(index, { today, config }),
+  ]
+  return findings.sort(byFinding)
 }
