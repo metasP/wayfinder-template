@@ -19,6 +19,7 @@ const observe = (core) => {
     stale: core.staleClaims(idx, { today: TODAY }).map((s) => [s.ticket.ref, s.days]),
     staleMaps: core.staleMaps(idx, { today: TODAY }).map((s) => [s.map.key, s.reason, s.days]),
     block: core.renderTicketsBlock(idx, "repoA/eff1", "en"),
+    lint: core.lint(idx, { today: TODAY }),
   }
 }
 
