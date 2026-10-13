@@ -12,6 +12,9 @@
   "engines": {
     "node": ">=18"
   },
+  "scripts": {
+    "test": "node --test"
+  },
   "bin": {
     "wayfinder-template": "template/_tools/bootstrap.mjs"
   },
