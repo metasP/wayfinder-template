@@ -6,7 +6,8 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import * as core from "../template/_tools/lib/core.mjs"
-import { dataviewjsBlocks, fakeDataview, LOADER, TEMPLATE } from "./dataview.mjs"
+import { stubOf } from "../template/_tools/lib/page-views.mjs"
+import { dataviewjsBlocks, fakeDataview, LOADER, TEMPLATE, viewSource } from "./dataview.mjs"
 import { map, ticket } from "./fixture.mjs"
 import { pageLogic } from "./page-logic.mjs"
 
@@ -62,10 +63,12 @@ const svgOf = (body) => /<svg[\s\S]*<\/svg>/.exec(body)?.[0] ?? ""
 const isoOf = (body) => [...body.matchAll(/class="internal-link wft-iso" data-href="([^"]+)"/g)].map((m) => m[1])
 
 describe("Effort Tickets structure", () => {
-  test("its block goes through the shared loader and keeps no read-model code of its own", () => {
+  test("its one block is a stub; the view goes through the shared loader and keeps no read-model code of its own", () => {
     assert.equal(BLOCKS.length, 1)
-    assert.ok(BLOCKS[0].includes(`dv.view(${JSON.stringify(LOADER)}`))
-    assert.deepEqual(pageLogic(BLOCKS[0]), [])
+    assert.deepEqual(stubOf(BLOCKS[0]), { view: "effort-tickets", block: null })
+    const view = viewSource("effort-tickets")
+    assert.ok(view.includes(`dv.view(${JSON.stringify(LOADER)}`))
+    assert.deepEqual(pageLogic(view), [])
   })
 })
 

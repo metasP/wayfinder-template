@@ -6,7 +6,8 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { parseNote } from "../template/_tools/lib/frontmatter.mjs"
-import { dataviewjsBlocks, fakeDataview, LOADER, TEMPLATE } from "./dataview.mjs"
+import { stubOf } from "../template/_tools/lib/page-views.mjs"
+import { dataviewjsBlocks, fakeDataview, LOADER, TEMPLATE, viewSource } from "./dataview.mjs"
 import { pageLogic } from "./page-logic.mjs"
 import { makeVault, map, ticket, wf } from "./vault.mjs"
 
@@ -43,12 +44,14 @@ describe("Picks page", () => {
     assert.deepEqual(SEED.sort, ["unblocks desc", "nn asc"])
   })
 
-  test("has one block, through the shared loader, and no DQL of its own", () => {
+  test("has one block, a stub; the view goes through the shared loader, and no DQL of its own", () => {
     assert.doesNotMatch(PAGE, /^```dataview[ \t]*$/m)
     assert.equal(BLOCKS.length, 1)
-    assert.ok(BLOCKS[0].includes(`dv.view(${JSON.stringify(LOADER)}`))
-    assert.doesNotMatch(BLOCKS[0], /inlinks|buildIndex/)
-    assert.deepEqual(pageLogic(BLOCKS[0]), [])
+    assert.deepEqual(stubOf(BLOCKS[0]), { view: "picks", block: null })
+    const view = viewSource("picks")
+    assert.ok(view.includes(`dv.view(${JSON.stringify(LOADER)}`))
+    assert.doesNotMatch(view, /inlinks|buildIndex/)
+    assert.deepEqual(pageLogic(view), [])
   })
 
   test("lists the frontier in the seed's order, the same as wf frontier", async () => {

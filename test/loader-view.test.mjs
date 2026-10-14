@@ -3,7 +3,8 @@
 // `{ core, index, config, sort, today, link }` (spec, *Loading the core in Obsidian*).
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { cpSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { LOADER_VIEW, PAGE_VIEWS } from "../template/_tools/lib/page-views.mjs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fakeDataview, LOADER, TEMPLATE } from "./dataview.mjs"
@@ -173,10 +174,14 @@ test("text(value) escapes what markdown would read as HTML", async () => {
   assert.equal(wf.text(null), "—")
 })
 
-test("the view returns its promise to Dataview: its text never contains the word Dataview wraps", () => {
+test("every view returns its promise to Dataview: its text never contains the word Dataview wraps", () => {
   // Dataview wraps a view containing `await` in an IIFE and drops the promise; without it, the
   // view's promise is awaited, so the page block runs after the view has rendered.
-  const source = readFileSync(join(TEMPLATE, `${LOADER}.js`), "utf8")
-  assert.equal(source.includes("await"), false)
-  assert.doesNotMatch(source, /\brequire\s*\(|file:\/\//)
+  const views = readdirSync(join(TEMPLATE, "_tools/views")).filter((f) => f.endsWith(".js"))
+  assert.deepEqual(views.sort(), [LOADER_VIEW, ...Object.values(PAGE_VIEWS)].map((v) => `${v}.js`).sort())
+  for (const file of views) {
+    const source = readFileSync(join(TEMPLATE, "_tools/views", file), "utf8")
+    assert.equal(source.includes("await"), false, file)
+    assert.doesNotMatch(source, /\brequire\s*\(|file:\/\//, file)
+  }
 })

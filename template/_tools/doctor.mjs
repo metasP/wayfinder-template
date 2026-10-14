@@ -118,6 +118,10 @@ await section('§3 plugin', async () => {
   const dvCfg = await readJson(join(VAULT, '.obsidian/plugins/dataview/data.json')).catch(() => null)
   check(dvCfg?.enableDataviewJs === true, 'Dataview เปิด enableDataviewJs',
     dvCfg ? '' : 'ไม่มี data.json — เปิด Obsidian หนึ่งครั้งแล้วตั้งใน Settings → Dataview')
+  // inline JS (`$=`) ไม่มีหน้าไหนใช้ — เปิดไว้ = โน้ตที่ sandbox เขียนได้มีอีกทางให้รันโค้ดด้วยสิทธิ์เต็มของเจ้าของ
+  // (spec *Sandbox grant (Q2)*) · data.json เป็น seed-once ⇒ vault เก่ายังเปิดอยู่จนกว่าเจ้าของจะปิดเอง ⇒ เตือน ไม่ใช่พัง
+  warn(dvCfg?.enableInlineDataviewJs !== true, 'Dataview ปิด enableInlineDataviewJs (ไม่มีหน้าไหนใช้ inline JS)',
+    dvCfg?.enableInlineDataviewJs === true ? 'ปิดที่ Settings → Dataview → Enable Inline JavaScript Queries' : '')
   const gi = await readFile(join(VAULT, '.gitignore'), 'utf8').catch(() => '')
   check(gi.includes('!.obsidian/plugins/dataview/data.json'),
     '.gitignore ยกเว้น data.json ของ Dataview', 'ไม่งั้นค่าตั้งนี้ไม่เดินทางไปเครื่องใหม่')
@@ -137,35 +141,62 @@ await section('§4 graph', async () => {
 // ── 5. dashboard ────────────────────────────────────────────────────────────
 await section('§5 dashboard', async () => {
   // สี่หน้า (Dashboard · Efforts · Effort Tickets · Picks) คำนวณจาก core ผ่าน loader กลางทุกบล็อก
-  // (ไม่มี DQL / index / กฎ frontier / ตัวอ่าน Config ของตัวเองแล้ว) ⇒ ตรวจว่า loader กับ core อยู่ครบ
-  // และทุกบล็อกเรียกผ่าน loader — บล็อกที่ไม่ผ่าน loader = กฎแยกสาย ซึ่งคือสิ่งที่ทำให้หน้าเถียงกันเอง
-  const dash = await readFile(join(VAULT, 'Wayfinder Dashboard.md'), 'utf8').catch(() => '')
-  const LOADER = '_tools/views/wf-core'
-  // loader ห้ามมีคำ a-w-a-i-t แม้ในคอมเมนต์: Dataview ห่อ view ที่มีคำนี้ด้วย async IIFE แล้วทิ้ง promise
+  // (ไม่มี DQL / index / กฎ frontier / ตัวอ่าน Config ของตัวเองแล้ว) และ **โค้ดของหน้าอยู่ใน `_tools/views/`**
+  // บล็อกในโน้ตเป็นแค่ stub บรรทัดเดียว (spec *Sandbox grant (Q2)*): `dataviewjs` รันด้วยสิทธิ์เต็มของเจ้าของ
+  // ตอนเปิดโน้ต · sandbox เขียนโน้ตได้แต่เขียน `_tools/` ไม่ได้ ⇒ บล็อกที่ไม่ใช่ stub บนหน้าเหล่านี้ = โค้ดที่ใคร
+  // ก็แก้ได้ ⇒ ไม่ผ่าน · ตรวจว่า view · loader · core อยู่ครบ และทุกบล็อกเป็น stub ที่เรียก view ของหน้านั้น
+  const { PAGE_STUBS, PAGE_VIEWS, VIEWS_DIR, LOADER_VIEW, dataviewjsBlocks, stubOf, jsFenceCount } = await import('./lib/page-views.mjs')
+  const { isLegacyPicksBlock } = await import('./lib/picks-page.mjs')
+  const pageText = {}
+  for (const note of Object.keys(PAGE_VIEWS)) pageText[note] = await readFile(join(VAULT, `${note}.md`), 'utf8').catch(() => '')
+  const dash = pageText['Wayfinder Dashboard']
+  const eff = pageText['Wayfinder Efforts']
+  const tix = pageText['Wayfinder Effort Tickets']
+  const picks = pageText['Wayfinder Picks']
+  // view ห้ามมีคำ a-w-a-i-t แม้ในคอมเมนต์: Dataview ห่อ view ที่มีคำนี้ด้วย async IIFE แล้วทิ้ง promise
   // ⇒ บล็อกวาดก่อน view เสร็จ และ error หลุดเป็น unhandled rejection เงียบ ๆ (ดูหัวไฟล์ loader)
-  const loaderSrc = await readFile(join(VAULT, `${LOADER}.js`), 'utf8').catch(() => null)
-  check(loaderSrc !== null && !loaderSrc.includes('aw' + 'ait'), `มี loader กลาง ${LOADER}.js (คืน promise ให้ Dataview)`,
-    loaderSrc === null ? 'ไม่มีไฟล์' : loaderSrc.includes('aw' + 'ait') ? 'มีคำที่ทำให้ Dataview ทิ้ง promise' : '')
+  const viewSrc = {}
+  for (const view of [LOADER_VIEW, ...Object.values(PAGE_VIEWS)])
+    viewSrc[view] = await readFile(join(VAULT, VIEWS_DIR, `${view}.js`), 'utf8').catch(() => null)
+  const viewBad = Object.entries(viewSrc).filter(([, src]) => src === null || src.includes('aw' + 'ait'))
+  check(viewBad.length === 0, `มี view ครบใน ${VIEWS_DIR}/ (loader กลาง + ของแต่ละหน้า · คืน promise ให้ Dataview)`,
+    viewBad.length
+      ? viewBad.map(([v, src]) => `${v}.js ${src === null ? 'ไม่มีไฟล์' : 'มีคำที่ทำให้ Dataview ทิ้ง promise'}`).join(' · ')
+      : Object.keys(viewSrc).map((v) => `${v}.js`).join(' · '))
   check(await exists(join(VAULT, '_tools/lib/core.mjs')), 'มี core _tools/lib/core.mjs')
-  const eff = await readFile(join(VAULT, 'Wayfinder Efforts.md'), 'utf8').catch(() => '')
-  const tix = await readFile(join(VAULT, 'Wayfinder Effort Tickets.md'), 'utf8').catch(() => '')
-  const picks = await readFile(join(VAULT, 'Wayfinder Picks.md'), 'utf8').catch(() => '')
-  // Picks เป็น **โน้ตของผู้ใช้** (ตัวอัปเดตไม่แตะ) ⇒ vault เก่าอาจยังเป็น DQL จนกว่า `wf migrate` จะแปลง
-  // ข้อนี้จึงตรวจเฉพาะสามหน้าที่ template ดูแล · Picks ได้ข้อของตัวเองข้างล่าง (ไม่มี DQL = ใช้ `sort:` แล้ว)
-  // ไฟล์หาย = 0 บล็อก ⇒ ไม่ผ่าน (ไม่ใช่ "ผ่านเพราะไม่มีอะไรให้ตรวจ")
-  const PAGE_MIN_BLOCKS = [['Wayfinder Dashboard', dash, 5], ['Wayfinder Efforts', eff, 1], ['Wayfinder Effort Tickets', tix, 1]]
-  for (const [note, body, min] of PAGE_MIN_BLOCKS) {
-    const js = [...body.matchAll(/^```dataviewjs[ \t]*\r?\n([\s\S]*?)^```/gm)].map((m) => m[1])
-    const viaLoader = js.filter((src) => src.includes(`dv.view("${LOADER}"`)).length
-    const dql = body.match(/^```dataview[ \t]*$/gm)?.length ?? 0
-    check(js.length >= min && viaLoader === js.length && dql === 0,
-      `ทุกบล็อกบน ${note} โหลด core ผ่าน loader กลาง`,
-      body ? `${viaLoader}/${js.length} บล็อกผ่าน loader · ${dql} บล็อก DQL` : `ไม่มีไฟล์ ${note}.md`)
+  const effJs = viewSrc.efforts ?? ''
+  const tixJs = viewSrc['effort-tickets'] ?? ''
+  // ไฟล์หาย = 0 บล็อก ⇒ ไม่ผ่าน (ไม่ใช่ "ผ่านเพราะไม่มีอะไรให้ตรวจ") · นับ fence แบบกว้างด้วย (`~~~` · ย่อหน้า ·
+  // ใน callout · บนบรรทัด list) ⇒ บล็อกที่เขียนต่างรูปจากที่ template เขียนก็ไม่หลุดการตรวจ
+  // stub ต้องครบตาม PAGE_STUBS เป๊ะ (Dashboard = ทุก section ครั้งละหนึ่ง) — หน้าเหล่านี้เป็นของ template
+  const stubsOn = (note) => {
+    const body = pageText[note]
+    const blocks = dataviewjsBlocks(body)
+    const stubs = blocks.map((b) => stubOf(b.src)).filter((st) => st?.view === PAGE_VIEWS[note]).map((st) => st.block)
+    return { body, blocks, stubs, fences: jsFenceCount(body), dql: body.match(/^```dataview[ \t]*$/gm)?.length ?? 0 }
   }
-  // Picks เก่าที่ยังเป็น DQL ไม่ได้พัง (Dashboard/`wf` เรียงด้วยค่าเริ่มต้นแทน) แต่บรรทัด SORT ในนั้นไม่มีผลแล้ว ⇒ เตือน
-  const picksDql = picks.match(/^```dataview[ \t]*$/gm)?.length ?? 0
-  warn(!picks || picksDql === 0, 'Wayfinder Picks เรียงด้วย sort: ใน frontmatter (ไม่มีบล็อก DQL ของตัวเอง)',
-    picksDql ? `${picksDql} บล็อก DQL — บรรทัด SORT ในนั้นไม่มีผลกับ Dashboard/wf frontier แล้ว · ย้ายกฎไปที่ sort: (หรือรอ wf migrate)` : '')
+  const sameStubs = (got, want) => got.length === want.length && got.every((b, i) => b === want[i])
+  // Picks เป็น **โน้ตของผู้ใช้** (ตัวอัปเดตไม่แตะ) ⇒ ได้ข้อของตัวเองข้างล่าง ไม่อยู่ในลูปนี้
+  for (const note of ['Wayfinder Dashboard', 'Wayfinder Efforts', 'Wayfinder Effort Tickets']) {
+    const { body, stubs, fences, dql } = stubsOn(note)
+    const want = PAGE_STUBS[note]
+    const sections = want.some(Boolean) ? ` · section: ${stubs.join(' ') || '—'}` : ''
+    check(sameStubs(stubs, want) && stubs.length === fences && dql === 0,
+      `ทุกบล็อกบน ${note} เป็น stub ที่เรียก ${VIEWS_DIR}/${PAGE_VIEWS[note]}.js`,
+      body ? `${stubs.length}/${fences} บล็อกเป็น stub (ต้องมี ${want.length})${sections} · ${dql} บล็อก DQL` : `ไม่มีไฟล์ ${note}.md`)
+  }
+  // Picks: vault เก่าอาจยังเป็น DQL หรือยังมีบล็อก inline ที่ 0.5.0 วางไว้ จนกว่า `wf migrate` จะแปลง ⇒ เตือน ไม่ใช่พัง
+  // (DQL ไม่ได้พัง — Dashboard/`wf` เรียงด้วยค่าเริ่มต้นแทน แต่บรรทัด SORT ในนั้นไม่มีผลแล้ว)
+  // ส่วนโค้ดอื่นที่ไม่ใช่ stub และไม่ใช่บล็อกรุ่นก่อน = โค้ดในโน้ตที่ sandbox เขียนได้ ⇒ **ไม่ผ่าน** ให้เจ้าของไปดู
+  const pk = stubsOn('Wayfinder Picks')
+  warn(!picks || pk.dql === 0, 'Wayfinder Picks เรียงด้วย sort: ใน frontmatter (ไม่มีบล็อก DQL ของตัวเอง)',
+    pk.dql ? `${pk.dql} บล็อก DQL — บรรทัด SORT ในนั้นไม่มีผลกับ Dashboard/wf frontier แล้ว · ย้ายกฎไปที่ sort: (หรือรอ wf migrate)` : '')
+  const legacyPicks = pk.blocks.filter((b) => isLegacyPicksBlock(['```dataviewjs', ...b.src.split(/\r?\n/).slice(0, -1), '```'])).length
+  const strayPicks = pk.fences - pk.stubs.length - legacyPicks
+  check(!picks || strayPicks === 0, `บล็อก dataviewjs บน Wayfinder Picks เป็น stub ที่เรียก ${VIEWS_DIR}/picks.js (หรือบล็อกรุ่นก่อน)`,
+    strayPicks ? `${strayPicks} บล็อกไม่ใช่ stub และไม่ใช่บล็อกรุ่นก่อน — โค้ดในโน้ตที่ sandbox เขียนได้: ตรวจว่าใครใส่ไว้` : '')
+  warn(!picks || legacyPicks === 0, 'Wayfinder Picks ไม่มีบล็อก inline รุ่นก่อน stub',
+    legacyPicks ? 'โค้ดของหน้ายังอยู่ในโน้ต ⇒ `wf migrate --yes` เปลี่ยนเป็น stub ให้' : '')
 
   check(dash.includes('[[Wayfinder Efforts]]'), 'Dashboard ลิงก์ไปหน้า Efforts')
 
@@ -244,8 +275,8 @@ await section('§5 dashboard', async () => {
     body.match(new RegExp(`^const\\s+${name}\\s*=\\s*["']([^"']+)["']`, 'm'))?.[1] ?? null
   // (ชื่อโน้ต Config ไม่อยู่ในลูปนี้แล้ว — ทุกหน้าอ่าน Config ผ่าน loader กลางตัวเดียว ไม่มีสองที่ให้ไม่ตรงกัน)
   for (const name of ['LS_KEY', 'SELECT_EVENT']) {
-    const a = sharedConst(eff, name)
-    const b = sharedConst(tix, name)
+    const a = sharedConst(effJs, name)
+    const b = sharedConst(tixJs, name)
     const same = a !== null && b !== null && a === b
     const show = (v) => (v === null ? 'ไม่พบ' : `"${v}"`)
     check(same, `${name} ตรงกันทั้ง Efforts และ Effort Tickets`,
@@ -258,11 +289,11 @@ await section('§5 dashboard', async () => {
   // ผูกชื่อ vault จริง **และ** ไม่มีใครส่ง `LS_KEY` ดิบเข้า localStorage หลงเหลืออยู่
   const nsKey = (b) => /^const lsKey = \(\) =>/m.test(b) && /app\.vault\.getName\(\)/.test(b)
   const rawLS = (b) => /localStorage\.(get|set)Item\(\s*LS_KEY\s*[,)]/.test(b)
-  const nsOk = nsKey(eff) && nsKey(tix) && !rawLS(eff) && !rawLS(tix)
+  const nsOk = nsKey(effJs) && nsKey(tixJs) && !rawLS(effJs) && !rawLS(tixJs)
   check(nsOk, 'คีย์ localStorage ผูกกับชื่อ vault (ไม่รั่วข้าม vault)',
     nsOk ? 'ทั้งสองหน้าใช้ lsKey() ที่ต่อ app.vault.getName()'
-      : `Efforts=${nsKey(eff) ? 'ผูกแล้ว' : 'ยังไม่ผูก'}${rawLS(eff) ? ' +ยังมี LS_KEY ดิบ' : ''}`
-        + ` · Effort Tickets=${nsKey(tix) ? 'ผูกแล้ว' : 'ยังไม่ผูก'}${rawLS(tix) ? ' +ยังมี LS_KEY ดิบ' : ''}`)
+      : `Efforts=${nsKey(effJs) ? 'ผูกแล้ว' : 'ยังไม่ผูก'}${rawLS(effJs) ? ' +ยังมี LS_KEY ดิบ' : ''}`
+        + ` · Effort Tickets=${nsKey(tixJs) ? 'ผูกแล้ว' : 'ยังไม่ผูก'}${rawLS(tixJs) ? ' +ยังมี LS_KEY ดิบ' : ''}`)
 
   // ── coupling ตัวที่สาม: `TICKETS_NOTE` → ชื่อโน้ตจริงบนดิสก์ ─────────────────
   // สองข้อบนเทียบ **ไฟล์กับไฟล์** (ค่าเดียวกันประกาศไว้สองที่ ต้องตรงกัน) · ข้อนี้อยู่ **คนละฝั่ง
@@ -291,7 +322,7 @@ await section('§5 dashboard', async () => {
   // ⚠️ ยึด **หัวบรรทัด** เหมือนสองข้อบน (คอมเมนต์เหนือของจริงพูดถึงรูปประกาศอยู่)
   // · **หาไม่เจอ = ไม่ผ่าน** ห้ามเขียวเพราะเทียบ null กับ null · `readdir` พังก็ไม่ผ่าน (ตรวจไม่ได้
   // ห้ามเขียว) · `detail` โชว์ค่าที่ดึงมาได้จริงตั้งแต่ตอนยังเขียว จะได้เห็นทันทีถ้า regex คว้าผิดตัว
-  const ticketsNote = eff.match(/^const\s+TICKETS_NOTE\s*=\s*["']([^"']+)["']/m)?.[1] ?? null
+  const ticketsNote = effJs.match(/^const\s+TICKETS_NOTE\s*=\s*["']([^"']+)["']/m)?.[1] ?? null
   const rootNotes = await readdir(VAULT).then(
     (fs) => fs.filter((f) => f.endsWith('.md')).map((f) => basename(f, '.md')), () => [])
   const noteHit = ticketsNote !== null && rootNotes.includes(ticketsNote)
@@ -301,7 +332,7 @@ await section('§5 dashboard', async () => {
     : rootNotes.filter((n) => n !== ticketsNote && norm(n) === norm(ticketsNote))
   check(noteHit, 'TICKETS_NOTE ชี้ไปยังโน้ตที่มีอยู่จริงใน vault',
     ticketsNote === null
-      ? 'ไม่พบตัวประกาศ const TICKETS_NOTE ใน Wayfinder Efforts.md'
+      ? `ไม่พบตัวประกาศ const TICKETS_NOTE ใน ${VIEWS_DIR}/efforts.js`
       : noteHit ? `"${ticketsNote}" ⇒ ${ticketsNote}.md`
         : `"${ticketsNote}" ไม่ตรงกับโน้ตรากไหนเลย (สแกน ${rootNotes.length} โน้ต)`
           + (near.length ? ` · ใกล้เคียง: "${near.join('" · "')}" — ต่างแค่ตัวพิมพ์/ช่องว่าง` : ''))
@@ -322,52 +353,40 @@ await section('§5 dashboard', async () => {
   check(missingH.length === 0, 'README มีหัวข้อที่ /wayfinder และ CLAUDE.md ชี้มา',
     missingH.length ? `ไม่เจอ: ${missingH.map((h) => `## ${h}`).join(' · ')}` : TRACKER_HEADINGS.join(' · '))
 
-  // ── บล็อก dataviewjs ต้องเป็น JS ที่ parse ได้ ───────────────────────────────
+  // ── view และบล็อก dataviewjs ต้องเป็น JS ที่ parse ได้ ──────────────────────────
   // ใบ 11 ตกกับดักนี้ **สองครั้งในใบเดียว**: `CSS` เป็น template literal ⇒ backtick ที่พิมพ์ลง
   // คอมเมนต์ CSS ตามนิสัยมาร์กดาวน์ (`/* `paint-order: stroke` วาดขอบก่อนตัวอักษร */`)
-  // **ปิดสตริงกลางทาง** ⇒ บล็อกพังทั้งบล็อกตั้งแต่ตอน parse · Obsidian ขึ้นกล่องแดง
+  // **ปิดสตริงกลางทาง** ⇒ view พังทั้งไฟล์ตั้งแต่ตอน parse · Obsidian ขึ้นกล่องแดง
   // "Dataview: <error>" ทั้งที่ไฟล์ยังดูปกติทุกตัวอักษรในสายตา
   // (กติกาในไฟล์คือ escape เป็น \` — ดูคอมเมนต์ `.wft-head` ของใบ 04)
   // ⇒ ใบ 11 สรุปเองว่า **"ไม่ใช่เรื่องที่ระวังแล้วจะไม่พลาด"** ⇒ ต้องเป็นงานของเครื่อง
   //
-  // **ตรวจไวยากรณ์อย่างเดียว ไม่รัน** — `new AsyncFunction(src)` คอมไพล์บอดี้แล้วทิ้ง ไม่ execute
-  // ⇒ ไม่ต้องมี `dv` / DOM / `localStorage` / `app` ให้มันเรียก
-  // ต้องเป็น **Async**Function ไม่ใช่ `Function` เปล่า เพราะ Dataview รันบล็อกเป็นบอดี้ของ
-  // async function ⇒ `await` ระดับบนสุดถูกกฎ · ด้วยเหตุผลเดียวกัน `node --check` ใช้แทนไม่ได้
-  // (โหมดสคริปต์ = top-level await แดงปลอม · โหมดโมดูล = `return` ระดับบนสุดแดงปลอม)
+  // **ตรวจไวยากรณ์อย่างเดียว ไม่รัน** — คอมไพล์บอดี้แล้วทิ้ง ไม่ execute ⇒ ไม่ต้องมี `dv` / DOM / `app`
+  // · view: `new Function('dv', 'input', src)` แบบเดียวกับที่ `dv.view` คอมไพล์ (view ไม่มีคำ a-w-a-i-t
+  //   จึงไม่ถูกห่อ async) ⇒ `return` ระดับบนสุดถูกกฎ
+  // · บล็อกในโน้ต: **Async**Function เพราะ Dataview รันบล็อกเป็นบอดี้ของ async function
+  // ด้วยเหตุผลเดียวกัน `node --check` ใช้แทนไม่ได้ (โหมดสคริปต์ = top-level await/return แดงปลอม)
   //
-  // สแกน **ทั้งสามหน้า** โดยจับจาก *ชนิด fence* ไม่ใช่ *ชื่อไฟล์* — `Wayfinder Dashboard` เคยเป็น DQL
-  // ล้วน (0 บล็อก) แล้วกลายเป็น dataviewjs ผ่าน loader ทั้งหน้า โดยข้อนี้ไม่ต้องแก้อะไรเลย
-  // **ไม่เจอเลยสักบล็อกทั้ง vault = ไม่ผ่าน** — regex ที่คว้าไม่โดนเลย (เช่นมีคนเปลี่ยนรูป fence
-  // ทั้ง vault) ต้องแดง ไม่ใช่เขียวเพราะ "ไม่มีอะไรให้ตรวจ" ซึ่งคือกับดัก `null === null` ของใบ 05/06
-  // ส่วน **การมีบล็อกอยู่ *รายหน้า* เป็นของสองข้อข้างบน** (`… มีบล็อก dataviewjs`) ⇒ ข้อนี้ไม่ตรวจซ้ำ
-  // พิสูจน์แล้วด้วย harness: ทำ fence ของหน้าใบเพี้ยน หรือลบไฟล์หน้าใบทิ้ง ⇒ ข้อข้างบนแดง
-  // ข้อนี้เขียวโดยเหลือ 1 บล็อก — เห็นได้จาก `detail` ที่นับบล็อกให้ ไม่ใช่เขียวแบบไม่บอกอะไร
-  // และ `detail` โชว์ตำแหน่ง + ขนาดที่ดึงมาได้จริง เพื่อให้เห็นตั้งแต่บรรทัดที่ยังเขียว
-  // ถ้าวันหนึ่งมันคว้าได้แค่เศษเสี้ยวของบล็อก
+  // **ไม่เจอเลยสักไฟล์ = ไม่ผ่าน** — ต้องแดง ไม่ใช่เขียวเพราะ "ไม่มีอะไรให้ตรวจ" ซึ่งคือกับดัก
+  // `null === null` ของใบ 05/06 · `detail` โชว์ขนาดที่อ่านมาได้จริง เพื่อให้เห็นตั้งแต่บรรทัดที่ยังเขียว
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
-  const DVJS = /^```dataviewjs[ \t]*\r?\n([\s\S]*?)^```/gm
-  const NOTES = [['Wayfinder Dashboard', dash],
-    ['Wayfinder Efforts', eff], ['Wayfinder Effort Tickets', tix], ['Wayfinder Picks', picks]]
-  const jsBlocks = []
-  for (const [note, body] of NOTES) {
-    for (const m of body.matchAll(DVJS)) {
-      const src = m[1]
-      let err = null
-      try { new AsyncFunction(src) } catch (e) { err = e.message }
-      jsBlocks.push({ note, line: body.slice(0, m.index).split('\n').length,
-        size: src.split('\n').length, err })
-    }
-  }
-  const brokenJs = jsBlocks.filter((b) => b.err)
-  check(jsBlocks.length > 0 && brokenJs.length === 0,
-    'ทุกบล็อก dataviewjs parse เป็น JS ได้',
+  const compiled = (compile, src) => { try { compile(src); return null } catch (e) { return e.message } }
+  const jsUnits = [
+    ...Object.entries(viewSrc).filter(([, src]) => src !== null).map(([view, src]) => ({
+      where: `${VIEWS_DIR}/${view}.js`, size: src.split('\n').length,
+      err: compiled((x) => new Function('dv', 'input', x), src) })),
+    ...Object.entries(pageText).flatMap(([note, body]) => dataviewjsBlocks(body).map((b) => ({
+      where: `${note}.md:${b.line}`, size: b.src.split('\n').length - 1,
+      err: compiled((x) => new AsyncFunction(x), b.src) }))),
+  ]
+  const brokenJs = jsUnits.filter((u) => u.err)
+  check(jsUnits.length > 0 && brokenJs.length === 0,
+    'ทุก view และบล็อก dataviewjs parse เป็น JS ได้',
     brokenJs.length
-      ? brokenJs.map((b) => `${b.note}.md บรรทัด ${b.line}: ${b.err}`).join(' · ')
-      : jsBlocks.length
-        ? `สแกน ${NOTES.length} หน้า ⇒ ${jsBlocks.length} บล็อก: `
-          + jsBlocks.map((b) => `${b.note}:${b.line} (${b.size} บรรทัด)`).join(' · ')
-        : 'ไม่พบบล็อก dataviewjs เลยสักหน้า')
+      ? brokenJs.map((u) => `${u.where}: ${u.err}`).join(' · ')
+      : jsUnits.length
+        ? jsUnits.map((u) => `${u.where} (${u.size} บรรทัด)`).join(' · ')
+        : 'ไม่พบ view หรือบล็อก dataviewjs เลย')
 
   // ── backtick ในเนื้อ CSS ต้อง escape ครบทุกตัว ───────────────────────────────
   // ข้อบนจับ "บล็อกพัง" · ข้อนี้จับ "**CSS พังแต่ JS ไม่พัง**" ซึ่งข้อบนมองไม่เห็นเลย
@@ -392,7 +411,9 @@ await section('§5 dashboard', async () => {
   // ถ้าวันหนึ่งมันขึ้น `0 ตัว` ทั้งที่ไฟล์ยังมี `\`` อยู่ แปลว่าตัวตัดขอบเขตคว้าผิด และเห็นได้
   // ตั้งแต่บรรทัดที่ยังเขียว (กับดัก `LS_KEY` ของใบ 05/06 อีกครั้ง)
   const cssBodies = []
-  for (const [note, body] of NOTES) {
+  for (const [view, body] of Object.entries(viewSrc)) {
+    if (body === null) continue
+    const note = `${VIEWS_DIR}/${view}.js`
     const lines = body.split('\n')
     const open = lines.findIndex((l) => /^const CSS\s*=\s*`/.test(l))
     if (open === -1) continue
@@ -413,19 +434,47 @@ await section('§5 dashboard', async () => {
   }
   const cssBad = [], cssOk = []
   for (const c of cssBodies) {
-    if (c.to === null) { cssBad.push(`${c.note}.md บรรทัด ${c.from - 1}: เปิด \`const CSS = \`\` แล้วหาตัวปิดไม่เจอ`); continue }
+    if (c.to === null) { cssBad.push(`${c.note} บรรทัด ${c.from - 1}: เปิด \`const CSS = \`\` แล้วหาตัวปิดไม่เจอ`); continue }
     let esc = 0
     for (const [i, l] of c.lines.entries()) {
       const t = scanTicks(l)
       esc += t.esc
-      if (t.raw) cssBad.push(`${c.note}.md:${c.from + i} มี backtick ไม่ escape ${t.raw} ตัว — ${l.trim().slice(0, 55)}`)
+      if (t.raw) cssBad.push(`${c.note}:${c.from + i} มี backtick ไม่ escape ${t.raw} ตัว — ${l.trim().slice(0, 55)}`)
     }
     cssOk.push(`${c.note}:${c.from}–${c.to} (escape แล้ว ${esc} ตัว)`)
   }
   check(cssBodies.length > 0 && cssBad.length === 0,
     'backtick ในเนื้อ CSS escape ครบทุกตัว',
     cssBad.length ? cssBad.join(' · ')
-      : cssBodies.length ? cssOk.join(' · ') : 'ไม่พบ `const CSS = `` เลยสักหน้า')
+      : cssBodies.length ? cssOk.join(' · ') : `ไม่พบ \`const CSS = \`\` ใน ${VIEWS_DIR}/ เลยสักไฟล์`)
+
+  // ── โน้ตอื่นที่มีบล็อก dataviewjs ─────────────────────────────────────────────
+  // sandbox ของ Claude Code เขียนโน้ตได้ทุกใบ (spec *Sandbox grant (Q2)*) และบล็อก `dataviewjs` ในโน้ตไหนก็รัน
+  // ด้วยสิทธิ์เต็มของเจ้าของตอนเปิดใน Obsidian ⇒ บล็อกที่ไม่ได้อยู่บนสี่หน้าข้างบน คือโค้ดที่ไม่มีใครในชุดนี้วางไว้
+  // `wf` ไม่เขียนบล็อกแบบนี้ลงใบหรือ map เลย ⇒ เตือนพร้อมชื่อโน้ต ให้เจ้าของเปิดดูก่อนเปิดโน้ตนั้นใน Obsidian
+  // (เตือน ไม่ใช่พัง: เจ้าของอาจเขียนเองในโน้ตส่วนตัว) · ขอบเขต = ทุกโน้ตที่ Obsidian เปิดได้ ข้ามแค่โฟลเดอร์จุด
+  // กับ `_tools/` ที่ราก (sandbox เขียนไม่ได้) — **กว้างกว่า store** ซึ่งข้าม `_` ที่รากทุกตัว: `_inbox/` เขียนได้และเปิดได้
+  // อ่านโฟลเดอร์ไหนไม่ได้ = ข้อนี้ไม่ผ่าน (ตรวจไม่ครบ ห้ามเขียว) แต่ไม่ล้มทั้งหมวด
+  const pageFiles = new Set(Object.keys(PAGE_VIEWS).map((n) => `${n}.md`))
+  const notesUnder = async (rel) => {
+    const entries = await readdir(join(VAULT, rel), { withFileTypes: true })
+    const nested = await Promise.all(entries.map((e) => {
+      const path = rel ? `${rel}/${e.name}` : e.name
+      if (e.name.startsWith('.') || path === '_tools') return []
+      if (e.isDirectory()) return notesUnder(path)
+      return e.isFile() && e.name.endsWith('.md') ? [path] : []
+    }))
+    return nested.flat()
+  }
+  const scanned = await notesUnder('').then((paths) => ({ paths }), (e) => ({ err: e.message }))
+  const otherJs = []
+  for (const path of (scanned.paths ?? []).filter((f) => !pageFiles.has(f))) {
+    const n = jsFenceCount(await readFile(join(VAULT, path), 'utf8').catch(() => ''))
+    if (n) otherJs.push(`${path} (${n})`)
+  }
+  if (scanned.err) check(false, 'สแกนโน้ตทั้ง vault หาบล็อก dataviewjs', `อ่านไม่ได้: ${scanned.err}`)
+  else warn(otherJs.length === 0, 'ไม่มีบล็อก dataviewjs ในโน้ตอื่นนอกจากสี่หน้า Wayfinder',
+    otherJs.length ? `เปิดดูก่อนเปิดใน Obsidian: ${otherJs.join(' · ')}` : `สแกน ${scanned.paths.length} โน้ต`)
 
   // ── โน้ตของผู้ใช้: Wayfinder Config · Wayfinder Picks (ใบ 01) ────────────────
   // ใบ 01 ย้ายค่าที่ผู้ใช้จูนออกจากสามหน้าไปไว้สองใบนี้ เพราะตัวอัปเดต **ทับสามหน้าทั้งชุดโดยไม่ถาม**
@@ -839,7 +888,7 @@ function printReport() {
   // รายการรับงานด้วยมือใน Obsidian จาก spec (*Testing Decisions → Manual acceptance in Obsidian*) อยู่สี่ข้อแรก
   console.log(`
 ตรวจด้วยเครื่องไม่ได้ — ต้องเปิด Obsidian ดูเอง:
-  • ทุกหน้า (Dashboard · Efforts · Effort Tickets · Picks) เรนเดอร์ผ่าน \`dv.view\` กับ loader กลาง
+  • ทุกหน้า (Dashboard · Efforts · Effort Tickets · Picks) เรนเดอร์ผ่าน stub → view ใน _tools/views/ → loader กลาง
     เป็นตาราง ไม่ใช่กล่องแดง "Dataview: <error>" (view ว่างขึ้นบรรทัดเอียง "ไม่มี…" · 🩺 สะอาดขึ้น "✅ lint clean" = ปกติ)
   • แก้ _tools/lib/core.mjs แล้ว render รอบถัดไปเห็นของใหม่โดยไม่ต้องรีสตาร์ต Obsidian (อาศัย mtime ใน getResourcePath)
   • core พัง (ลองใส่ syntax error) ⇒ ทุกบล็อกขึ้นข้อความของ loader ที่บอกชื่อไฟล์ core + doctor

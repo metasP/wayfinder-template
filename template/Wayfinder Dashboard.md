@@ -6,7 +6,7 @@
 วิธี setup + โครงสร้างโฟลเดอร์: ดู [[README]]
 ค่าที่คุณจูนเอง — ตัวอัปเดตไม่แตะ: [[Wayfinder Config]] (สี · เส้นแบ่งเวลา · ป้ายสถานะ map) · [[Wayfinder Picks]] (กฎ "หยิบอันไหนต่อ")
 
-> **ทุกบล็อกในหน้านี้คำนวณจาก core ตัวเดียวกับ `wf`** (`_tools/lib/core.mjs` ผ่าน loader `_tools/views/wf-core.js`)
+> **ทุกบล็อกในหน้านี้คำนวณจาก core ตัวเดียวกับ `wf`** (`_tools/lib/core.mjs` ผ่าน loader `_tools/views/wf-core.js`) · โค้ดของทุกบล็อกอยู่ที่ `_tools/views/dashboard.js` บล็อกในโน้ตเป็นแค่บรรทัดเรียก
 > ⇒ Frontier ที่นี่ = `wf frontier` · ตาราง lint ที่นี่ = `wf lint` บนโน้ตชุดเดียวกัน — หน้านี้แค่จัดตาราง ไม่มีกฎของตัวเอง
 > **สี่ view หลักเห็นเฉพาะใบใน map ที่ `status: active`** — ใบจาก map ที่ `paused` / `draft` ถูกพับไว้ข้างล่าง
 > ส่วนใบจาก map ที่ `dropped` ไม่แสดงเลย (นับจำนวนไว้ท้ายหน้า จะได้ไม่ใช่การซ่อนเงียบ ๆ)
@@ -19,28 +19,7 @@
 เห็นได้เฉพาะ frontmatter กับบล็อก `## Tickets` — เรื่อง install · git · hook ไปดูที่ `node _tools/doctor.mjs`
 
 ```dataviewjs
-await dv.view("_tools/views/wf-core", {
-  bodies: true,
-  render: ({ core, index, unread, config, sort, today, link, text }) => {
-    // map ที่อ่านเนื้อไม่ได้ = ยังไม่ได้ตรวจ drift ⇒ บอกตรง ๆ ไม่ใช่เงียบแล้วอ้างว่าตรงกับ `wf lint`
-    if (unread.length) dv.paragraph(`⚠️ อ่านเนื้อ map ไม่ได้ ${unread.length} ไฟล์ — ยังไม่ได้ตรวจ \`## Tickets\` drift: ${unread.join(" · ")}`)
-    const findings = core.lint(index, { today, config, sort })
-    if (!findings.length) return dv.paragraph("✅ lint clean")
-    const SEVERITY = { error: "🔴 error", warn: "🟡 warn" }
-    const errors = findings.filter((f) => f.severity === "error").length
-    dv.paragraph(`**${errors} error · ${findings.length - errors} warn**`)
-    dv.table(
-      ["Severity", "Note", "Rule", "Message", "Fix"],
-      findings.map((f) => [
-        SEVERITY[f.severity] ?? f.severity,
-        link(f.ref),
-        f.rule,
-        text(f.message),
-        f.fix ? "`" + f.fix + "`" : "—",
-      ]),
-    )
-  },
-})
+await dv.view("_tools/views/dashboard", { block: "lint" })
 ```
 
 ## 🔥 Frontier — หยิบได้ตอนนี้
@@ -50,16 +29,7 @@ open + ไม่ถูก block + อยู่ใน map ที่เดิน�
 blocker ที่ลิงก์หาใบไม่เจอ = **ยัง block อยู่** (fail closed) ใบนั้นจึงไปโผล่ใน 🚧 แทน
 
 ```dataviewjs
-await dv.view("_tools/views/wf-core", {
-  render: ({ core, index, sort, link }) => {
-    const tickets = core.frontier(index, { sort })
-    if (!tickets.length) return dv.paragraph("_ไม่มีใบที่หยิบได้ตอนนี้_")
-    dv.table(
-      ["Ticket", "Effort", "Type", "ปลดล็อกกี่ใบ"],
-      tickets.map((t) => [link(t.ref), link(t.effortKey), t.type, core.unblocks(index, t)]),
-    )
-  },
-})
+await dv.view("_tools/views/dashboard", { block: "frontier" })
 ```
 
 ## 🚧 Blocked — ติดใบอื่นที่อยู่ในมือเรา
@@ -68,19 +38,7 @@ await dv.view("_tools/views/wf-core", {
 ต่างจาก ⏳ ข้างล่าง: อันนี้ปลดล็อกได้เองด้วยการไปปิดใบที่บล็อกอยู่
 
 ```dataviewjs
-await dv.view("_tools/views/wf-core", {
-  render: ({ core, index, link }) => {
-    const tickets = [...index.tickets.values()].filter(
-      (t) => index.maps.get(t.effortKey)?.status === "active" && core.ticketState(index, t) === "blocked",
-    )
-    if (!tickets.length) return dv.paragraph("_ไม่มีใบที่ติดใบอื่น_")
-    const waitingOn = (ref) => (ref == null ? "❓ ลิงก์เสีย — ดู 🩺 lint" : link(ref))
-    dv.table(
-      ["Ticket", "Effort", "รออยู่"],
-      tickets.map((t) => [link(t.ref), link(t.effortKey), core.openBlockers(index, t).map(waitingOn)]),
-    )
-  },
-})
+await dv.view("_tools/views/dashboard", { block: "blocked" })
 ```
 
 ## ⏳ รอของนอก — ทำอะไรไม่ได้เลย
@@ -89,18 +47,7 @@ await dv.view("_tools/views/wf-core", {
 **ตัวรายการนี้เองคือสัญญาณ** — เรียงรอนานสุดขึ้นก่อน ถ้ามันเริ่มยาวแปลว่ามีของค้างที่ควรไปทวง
 
 ```dataviewjs
-await dv.view("_tools/views/wf-core", {
-  render: ({ core, index, link, text }) => {
-    const tickets = [...index.tickets.values()]
-      .filter((t) => index.maps.get(t.effortKey)?.status === "active" && core.ticketState(index, t) === "waiting")
-      .sort((a, b) => (a.statusSince ?? "").localeCompare(b.statusSince ?? ""))
-    if (!tickets.length) return dv.paragraph("_ไม่มีใบที่รอของนอก_")
-    dv.table(
-      ["Ticket", "Effort", "รออะไร", "รอตั้งแต่", "นัดดูอีกที"],
-      tickets.map((t) => [link(t.ref), link(t.effortKey), text(t.statusNote), t.statusSince, t.waitUntil ?? "—"]),
-    )
-  },
-})
+await dv.view("_tools/views/dashboard", { block: "waiting" })
 ```
 
 ## 🖐 Claimed — มี session จับอยู่
@@ -108,18 +55,7 @@ await dv.view("_tools/views/wf-core", {
 ถ้าอันไหนค้างนาน = session ตายกลางทาง ⇒ `wf release` (🩺 ข้างบนเตือน stale claim ให้แล้ว)
 
 ```dataviewjs
-await dv.view("_tools/views/wf-core", {
-  render: ({ core, index, link, text }) => {
-    const tickets = [...index.tickets.values()]
-      .filter((t) => index.maps.get(t.effortKey)?.status === "active" && core.ticketState(index, t) === "claimed")
-      .sort((a, b) => (a.statusSince ?? "").localeCompare(b.statusSince ?? ""))
-    if (!tickets.length) return dv.paragraph("_ไม่มี session ไหนจับใบอยู่_")
-    dv.table(
-      ["Ticket", "Effort", "Type", "จับโดย", "จับตั้งแต่"],
-      tickets.map((t) => [link(t.ref), link(t.effortKey), t.type, text(t.claimedBy), t.statusSince]),
-    )
-  },
-})
+await dv.view("_tools/views/dashboard", { block: "claimed" })
 ```
 
 ---
@@ -130,15 +66,7 @@ await dv.view("_tools/views/wf-core", {
 **ถ้าไม่ทำแล้ว** → ปิดใบทิ้ง · 🩺 ข้างบนก็ฟ้องข้อนี้เหมือนกัน ปกติตารางนี้ต้องว่าง
 
 ```dataviewjs
-await dv.view("_tools/views/wf-core", {
-  render: ({ core, index, link }) => {
-    const tickets = [...index.tickets.values()].filter(
-      (t) => index.maps.get(t.effortKey)?.status === "done" && core.isPending(index, t),
-    )
-    if (!tickets.length) return dv.paragraph("_ว่าง — ดีแล้ว_")
-    dv.table(["Ticket", "Effort", "Status"], tickets.map((t) => [link(t.ref), link(t.effortKey), t.status]))
-  },
-})
+await dv.view("_tools/views/dashboard", { block: "stranded" })
 ```
 
 ## ⏸ จาก map ที่พักไว้
@@ -146,18 +74,7 @@ await dv.view("_tools/views/wf-core", {
 ไม่ใช่ของที่หายไป — แค่ไม่ควรแย่งที่กับงานที่เดินอยู่ ปลด map กลับเป็น `active` แล้วมันขึ้น Frontier เอง
 
 ```dataviewjs
-await dv.view("_tools/views/wf-core", {
-  render: ({ core, index, link, text }) => {
-    const tickets = [...index.tickets.values()].filter(
-      (t) => index.maps.get(t.effortKey)?.status === "paused" && core.isPending(index, t),
-    )
-    if (!tickets.length) return dv.paragraph("_ไม่มี map ที่พักไว้ซึ่งยังมีใบค้าง_")
-    dv.table(
-      ["Ticket", "Effort", "เงื่อนไขกลับมา"],
-      tickets.map((t) => [link(t.ref), link(t.effortKey), text(index.maps.get(t.effortKey).statusNote)]),
-    )
-  },
-})
+await dv.view("_tools/views/dashboard", { block: "paused" })
 ```
 
 ## ✏️ จาก map ที่ยังไม่ได้ชาร์ต
@@ -165,18 +82,7 @@ await dv.view("_tools/views/wf-core", {
 `draft` = ยังไม่ผ่าน grill หา Destination — **อย่าต่อยอดจากใบพวกนี้** ให้ chart map ใหม่ก่อน
 
 ```dataviewjs
-await dv.view("_tools/views/wf-core", {
-  render: ({ core, index, link, text }) => {
-    const tickets = [...index.tickets.values()].filter(
-      (t) => index.maps.get(t.effortKey)?.status === "draft" && core.isPending(index, t),
-    )
-    if (!tickets.length) return dv.paragraph("_ไม่มี map ร่างที่มีใบค้าง_")
-    dv.table(
-      ["Ticket", "Effort", "ยังขาดอะไร"],
-      tickets.map((t) => [link(t.ref), link(t.effortKey), text(index.maps.get(t.effortKey).statusNote)]),
-    )
-  },
-})
+await dv.view("_tools/views/dashboard", { block: "draft" })
 ```
 
 ## 🗑 ใบใน map ที่ทิ้งแล้ว — นับไว้เฉย ๆ
@@ -184,16 +90,7 @@ await dv.view("_tools/views/wf-core", {
 ไม่แสดงรายใบ แต่ต้องรู้ว่ามีกี่ใบ ไม่งั้นการซ่อนจะกลายเป็นการโกหก
 
 ```dataviewjs
-await dv.view("_tools/views/wf-core", {
-  render: ({ core, index, link }) => {
-    const efforts = [...index.efforts.values()]
-      .filter((e) => e.map?.status === "dropped")
-      .map((e) => [link(e.key), e.tickets.filter((t) => core.isPending(index, t)).length])
-      .filter(([, count]) => count > 0)
-    if (!efforts.length) return dv.paragraph("_ไม่มีใบค้างใน map ที่ทิ้งแล้ว_")
-    dv.table(["Effort", "ใบที่ไม่แสดง"], efforts)
-  },
-})
+await dv.view("_tools/views/dashboard", { block: "dropped" })
 ```
 
 ---
@@ -201,16 +98,7 @@ await dv.view("_tools/views/wf-core", {
 ## ✅ Decisions so far
 
 ```dataviewjs
-await dv.view("_tools/views/wf-core", {
-  render: ({ core, index, link }) => {
-    const tickets = [...index.tickets.values()]
-      .filter((t) => index.maps.get(t.effortKey)?.status !== "dropped" && core.ticketState(index, t) === "resolved")
-      .sort((a, b) => (b.statusSince ?? "").localeCompare(a.statusSince ?? ""))
-      .slice(0, 30)
-    if (!tickets.length) return dv.paragraph("_ยังไม่มีใบที่ปิด_")
-    dv.table(["Ticket", "Effort", "ปิดเมื่อ"], tickets.map((t) => [link(t.ref), link(t.effortKey), t.statusSince]))
-  },
-})
+await dv.view("_tools/views/dashboard", { block: "decisions" })
 ```
 
 ---

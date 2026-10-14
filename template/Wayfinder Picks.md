@@ -31,17 +31,5 @@ Frontier ตอบว่า *"อะไรหยิบได้"* แต่ไ�
 `sort: [afk_first, unblocks desc, nn asc]`
 
 ```dataviewjs
-await dv.view("_tools/views/wf-core", {
-  render: ({ core, index, sort, link, text }) => {
-    const { keys, unknown } = core.parsePickSort(sort)
-    const rule = keys.length ? keys.map((k) => `${k.key} ${k.dir}`).join(", ") : `${core.DEFAULT_PICK_SORT.join(", ")} (ค่าเริ่มต้น)`
-    dv.paragraph(`เรียงตาม: \`${rule}\`` + (unknown.length ? ` · ⚠️ ข้าม key ที่ไม่รู้จัก: ${unknown.map((u) => `\`${text(u)}\``).join(" ")}` : ""))
-    const tickets = core.frontier(index, { sort })
-    if (!tickets.length) return dv.paragraph("_ไม่มีใบที่หยิบได้ตอนนี้_")
-    dv.table(
-      ["Ticket", "Effort", "Type", "ปลดล็อกกี่ใบ"],
-      tickets.map((t) => [link(t.ref), link(t.effortKey), text(t.type), core.unblocks(index, t)]),
-    )
-  },
-})
+await dv.view("_tools/views/picks")
 ```

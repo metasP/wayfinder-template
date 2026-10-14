@@ -1,14 +1,15 @@
 // The seed-once notes and the manifest `wf migrate` takes to schema 2 (spec *`wf migrate`*, Q28):
 //   · *Wayfinder Picks* — an old page's DQL `SORT` rule becomes the `sort:` key when every term maps
 //     onto the pick vocabulary; otherwise `sort:` gets the default and the old query is kept, folded
-//     and inert, under the new body. The body becomes the loader view (PICKS_BODY).
+//     and inert, under the new body. The body becomes the loader view (PICKS_BODY). A page already on
+//     the loader that still holds the old inline block, unedited, gets the stub in its place (PICKS_BLOCK).
 //   · *Wayfinder Config* — every CONFIG_DEFAULTS key it lacks is added with its default.
 //   · the manifest — `vault_schema` is set to SCHEMA_VERSION.
 // Each returns the note's new text (the same text when there is nothing to do), or null for a missing note.
 import { CONFIG_DEFAULTS, DEFAULT_PICK_SORT, noteText, SCHEMA_VERSION } from "./core.mjs"
 import { contentOf, editFrontmatter, eolOf, foldedCallout, linesOf } from "./edit.mjs"
 import { CLOSE_RE, OPEN_RE, parseNote } from "./frontmatter.mjs"
-import { PICKS_BODY } from "./picks-page.mjs"
+import { isLegacyPicksBlock, LEGACY_PICKS_BLOCK, PICKS_BLOCK, PICKS_BODY } from "./picks-page.mjs"
 
 // Missing, blank, or an empty list: the note doesn't set the key.
 const isUnset = (value) => value == null || value === "" || (Array.isArray(value) && value.length === 0)
@@ -94,6 +95,28 @@ const splitFrontmatter = (text) => {
 // The frontmatter with `changes` set, a new one when the note has none, in the note's line endings.
 const editedFrontmatter = ({ frontmatter }, changes, eol) => editFrontmatter(frontmatter ?? `---${eol}---${eol}`, changes)
 
+// `text` with each unedited LEGACY_PICKS_BLOCK swapped for PICKS_BLOCK, in the line ending of the block's own
+// first line; the same text when it holds none. A block the user changed by so much as a character is theirs
+// and stays.
+const withStubBlock = (text) => {
+  const lines = linesOf(text)
+  const isLegacyAt = (i) => isLegacyPicksBlock(lines.slice(i, i + LEGACY_PICKS_BLOCK.length).map(contentOf))
+  const out = []
+  for (let i = 0; i < lines.length; ) {
+    if (!isLegacyAt(i)) {
+      out.push(lines[i])
+      i += 1
+      continue
+    }
+    const end = i + LEGACY_PICKS_BLOCK.length
+    const eol = eolOf([lines[i]])
+    const lastEol = lines[end - 1].endsWith("\n") ? eol : ""
+    out.push(PICKS_BLOCK.map((line, k) => line + (k < PICKS_BLOCK.length - 1 ? eol : lastEol)).join(""))
+    i = end
+  }
+  return out.join("")
+}
+
 /** *Wayfinder Picks* at schema 2, or null when the vault has none. */
 export function migratePicks(text, language) {
   if (text == null) return null
@@ -102,7 +125,8 @@ export function migratePicks(text, language) {
   const hasSort = !isUnset(frontmatter.sort)
   const parts = splitFrontmatter(text)
   const eol = eolOf(linesOf(text))
-  if (!blocks.length) return hasSort ? text : parts.bom + editedFrontmatter(parts, [["sort", [...DEFAULT_PICK_SORT]]], eol) + parts.rest
+  if (!blocks.length)
+    return hasSort ? withStubBlock(text) : parts.bom + editedFrontmatter(parts, [["sort", [...DEFAULT_PICK_SORT]]], eol) + withStubBlock(parts.rest)
   const converted = sortFromDql(blocks)
   const head = parts.bom + (hasSort ? parts.frontmatter : editedFrontmatter(parts, [["sort", converted ?? [...DEFAULT_PICK_SORT]]], eol))
   const newBody = PICKS_BODY.split("\n").join(eol)

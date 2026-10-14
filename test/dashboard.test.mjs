@@ -7,10 +7,13 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import * as core from "../template/_tools/lib/core.mjs"
-import { fakeDataview, LOADER, TEMPLATE } from "./dataview.mjs"
+import { DASHBOARD_SECTIONS, stubOf } from "../template/_tools/lib/page-views.mjs"
+import { fakeDataview, LOADER, TEMPLATE, viewSource } from "./dataview.mjs"
+import { pageLogic } from "./page-logic.mjs"
 import { makeVault, map, ticket, ticketsBlock, today, wf } from "./vault.mjs"
 
 const PAGE = readFileSync(join(TEMPLATE, "Wayfinder Dashboard.md"), "utf8")
+const VIEW = viewSource("dashboard")
 
 // Each `dataviewjs` block with the `## ` heading it sits under.
 const sections = [...PAGE.matchAll(/^## (.*)$|^```dataviewjs[ \t]*\r?\n([\s\S]*?)^```/gm)].reduce(
@@ -87,18 +90,35 @@ const onlyTable = (out) => {
 const firstColumn = (out) => onlyTable(out).rows.map((r) => pathOf(r[0]))
 
 describe("Dashboard structure", () => {
-  test("has no DQL blocks: every section is a dataviewjs block through the shared loader", () => {
+  test("has no DQL blocks: every section is a one-line stub naming its own section of the dashboard view", () => {
     assert.doesNotMatch(PAGE, /^```dataview[ \t]*$/m)
     assert.ok(sections.length >= 9, `${sections.length} dataviewjs blocks`)
-    for (const s of sections) assert.ok(s.src.includes(`dv.view(${JSON.stringify(LOADER)}`), s.heading)
+    const stubs = sections.map((s) => stubOf(s.src))
+    for (const [i, s] of sections.entries()) assert.equal(stubs[i]?.view, "dashboard", s.heading)
+    assert.deepEqual(stubs.map((st) => st.block), [...DASHBOARD_SECTIONS], "every section once, in page order")
   })
 
-  test("keeps no frontier or blocked logic of its own", () => {
-    for (const s of sections) {
-      assert.doesNotMatch(s.src, /\.blockers\b|rawBlockers|isBlocked|status\s*[!=]==\s*"(open|claimed|waiting|resolved)"/, s.heading)
-      assert.doesNotMatch(s.src, /\.filter\([^)]*frontier/, s.heading)
-      assert.doesNotMatch(s.src, /\[\s*"(open|ready|blocked|claimed|waiting)"/, `${s.heading}: a status list of its own`)
+  test("the dashboard view reads the core through the shared loader and keeps no frontier or blocked logic of its own", () => {
+    assert.ok(VIEW.includes(JSON.stringify(LOADER)))
+    assert.deepEqual(pageLogic(VIEW), [])
+    assert.doesNotMatch(VIEW, /\.blockers\b|rawBlockers|isBlocked|status\s*[!=]==\s*"(open|claimed|waiting|resolved)"/)
+    assert.doesNotMatch(VIEW, /\.filter\([^)]*frontier/)
+    assert.doesNotMatch(VIEW, /\[\s*"(open|ready|blocked|claimed|waiting)"/, "a status list of its own")
+  })
+
+  test("a stub naming no section says so instead of rendering nothing", async () => {
+    for (const src of ['await dv.view("_tools/views/dashboard", { block: "nope" })', 'await dv.view("_tools/views/dashboard")']) {
+      const dv = fakeDataview()
+      await dv.run(src)
+      assert.equal(dv.out.length, 1)
+      assert.match(dv.out[0].text, /ไม่รู้จักบล็อก/)
     }
+  })
+
+  test("the view's sections are the ones doctor holds the page to", async () => {
+    const dv = fakeDataview()
+    await dv.run('await dv.view("_tools/views/dashboard", { block: "toString" })')
+    assert.equal(/กับหนึ่งใน (.*)$/.exec(dv.out[0].text)?.[1], DASHBOARD_SECTIONS.join(" · "))
   })
 
   test("the lint panel is the first block on the page", () => {

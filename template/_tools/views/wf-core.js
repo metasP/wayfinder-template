@@ -1,6 +1,6 @@
 // Shared loader view — every Wayfinder page reaches the read-model core through this one file
-// (spec docs/specs/ticket-store.md, *Loading the core in Obsidian*). A page's `dataviewjs` block
-// ends with this call, waiting on the promise it returns:
+// (spec docs/specs/ticket-store.md, *Loading the core in Obsidian*). A page's view (`_tools/views/<page>.js`,
+// which the page note's one-line stub calls) ends with this call, returning the promise it gives back:
 //
 //   dv.view("_tools/views/wf-core", { render: (wf) => { … }, bodies: true })
 //

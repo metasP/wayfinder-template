@@ -213,6 +213,12 @@ The work is five modules. The first three are new; the last two are existing mod
   Nothing more is needed.
 - Fallback, kept documented but not built: load the core as CommonJS with `dv.io.load` + `new Function`. This
   passed in 01 and is the route to take if dynamic import fails on Obsidian mobile.
+- Each page's code is a view of its own under `_tools/views/` (`dashboard`, `efforts`, `effort-tickets`,
+  `picks`), which reads the core through the loader with a nested `dv.view`. A `dataviewjs` block in a page note
+  is a one-line stub that calls its view; the Dashboard's stubs also name a section (`{ block: "frontier" }`).
+  See *Sandbox grant (Q2)* for why. `lib/page-views.mjs` holds the page-to-view map and the stub's shape.
+- No view's text contains the word `await`, not even in a comment. Dataview wraps such a view in an async IIFE
+  and drops its promise, so the block would finish before the view rendered. Views chain promises instead.
 - No index JSON is ever written by `wf` for the pages to read (Q35). That would go stale whenever someone edits
   a note in Obsidian.
 
@@ -466,7 +472,25 @@ started in the vault, not a sandbox escape.
   paths without its deny.
 - Dataview JS in a note runs when the owner opens that note in Obsidian, with the owner's full rights. The pages
   depend on it (`enableDataviewJs`), and notes are what `wf` writes, so no grant can close this. INSTALL tells the
-  owner. Narrowing it, by keeping page code in `_tools/views` and leaving only a stub in the note, is separate work.
+  owner. What narrows it:
+  - The pages' code lives in `_tools/views/`, which is denied. Each block in a page note is a one-line stub that
+    calls its view (*Loading the core in Obsidian*), so a sandboxed command can't change what a page runs
+    without leaving a block `doctor` refuses.
+  - `doctor` fails a template page (Dashboard, Efforts, Effort Tickets) unless its blocks are exactly its stubs:
+    each calls that page's view, and the Dashboard names every section once. It counts every fence Dataview
+    might run, so a block written with `~~~`, an indent, inside a callout, or on a list-item line counts too.
+    The count isn't anchored to the line start, because counting too many is safe and too few is a false green.
+  - On *Wayfinder Picks*, the user's note, the old inline block is only a warning that names `wf migrate`. Any
+    other block that isn't the stub fails, because the sandbox can write that note.
+  - `doctor` warns about a `dataviewjs` block in any other note, naming it, so the owner can look before opening
+    it. The scan skips only dot folders and `_tools`, so a root `_` folder the sandbox can write is covered.
+    Nothing `wf` writes has such a block. It's a warning because the owner may use Dataview JS in notes of
+    their own.
+  - Inline JS queries (`$=`) are off (`enableInlineDataviewJs: false`). No page uses them. The setting lives under
+    `.obsidian`, which is denied. It's seed-once, so an older vault keeps it on until the owner turns it off;
+    `doctor` warns until then.
+  - What stays open: a sandboxed command can still add a block to a note. `doctor` reports it, but only when
+    someone runs `doctor`, and Obsidian runs the block as soon as the note is opened.
 - Out of scope: a vault whose `.git` is a file (a linked worktree or a separate git dir). There, git reads hooks
   and config from somewhere else, and `.git/worktrees/*/config.worktree` applies once `extensions.worktreeConfig`
   is set. Q14 ended tracker work in vault worktrees.
@@ -507,7 +531,9 @@ For each item, `wf migrate` does the following:
 - ***Wayfinder Picks*:**
   - Converts the DQL `SORT` rule into the `sort:` key when it maps onto the vocabulary. Otherwise it writes the
     default and keeps the old rule in a folded callout.
-  - Replaces the body with the loader view.
+  - Replaces the body with the loader view: a stub that calls `_tools/views/picks`.
+  - On a page already off DQL, swaps the inline loader block that 0.5.0 seeded for the stub, when it is there
+    unedited. An edited block is the user's, so `wf migrate` leaves it and `doctor` warns.
 - ***Wayfinder Config*:** adds missing keys with defaults, such as `claim_stale_days`.
 - **Manifest:** sets the vault schema version.
 
@@ -672,8 +698,8 @@ that the internals can be refactored freely. There are three test surfaces, and 
 
 **Manual acceptance in Obsidian** (listed in `doctor`'s manual section; 01 left these open):
 
-- Every page renders through `dv.view` with the shared loader. 01 tested `import()` only in an inline
-  `dataviewjs` block.
+- Every page renders through its stub, its view in `_tools/views/`, and the shared loader (a `dv.view` inside a
+  `dv.view`). 01 tested `import()` only in an inline `dataviewjs` block.
 - After the core file in the vault is edited, the next render picks up the change without restarting Obsidian.
   This relies on `getResourcePath` adding an mtime query, which is inferred, not yet tested.
 - A deliberately broken core shows the loader's own message naming the core file and `doctor`.
