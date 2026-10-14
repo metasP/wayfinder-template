@@ -180,13 +180,3 @@ export function parseNote(text) {
   const { frontmatter, errors } = parseLines(parts.fm, 2)
   return { frontmatter, body: lines.slice(parts.bodyStart).join("\n"), errors }
 }
-
-const BLOCK_OPEN = "<!-- wf:tickets -->"
-const BLOCK_CLOSE = "<!-- /wf:tickets -->"
-
-/** The text between the `wf:tickets` markers in a map body, or null when they are missing. */
-export function ticketsBlockOf(body) {
-  const start = body.indexOf(BLOCK_OPEN)
-  const end = start === -1 ? -1 : body.indexOf(BLOCK_CLOSE, start + BLOCK_OPEN.length)
-  return end === -1 ? null : body.slice(start + BLOCK_OPEN.length, end)
-}
