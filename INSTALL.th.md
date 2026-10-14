@@ -243,12 +243,14 @@ node template/_tools/bootstrap.mjs --vault ~/Documents/Git/wayfinder-vault --yes
 - **`~/.claude/settings.json`** (ชิ้น `hook`): frontmatter guard บน PreToolUse `Write|Edit` · autocommit
   บน PostToolUse `Write|Edit` เท่านั้น · และ allow rule หนึ่งข้อ `Bash(node <vault>/_tools/wf.mjs:*)` ให้ agent
   เรียก `wf` ด้วย path เต็มได้โดยไม่ต้องขออนุญาต · autocommit เส้นเก่าของ vault นี้ (matcher `Bash` ·
-  `|| true` · เส้นซ้ำ) ถูกถอด · key อื่นทุกตัว รวม `env.PATH` อยู่ตามเดิม · ไฟล์ก่อนแก้เก็บไว้ที่ `settings.json.bak`
+  `|| true` · เส้นซ้ำ · path ที่เขียนเป็น `~/…` หรือ `$HOME/…`) ถูกถอด · เส้นบน matcher ที่สะกด `Edit|Write`
+  หรือ `^(Edit|Write)$` นับเป็น `Write|Edit` แล้วอยู่ที่เดิม · key อื่นทุกตัว รวม `env.PATH` อยู่ตามเดิม ·
+  อ่านไฟล์ซ้ำก่อนเขียน ⇒ ของที่ Claude Code แก้ระหว่างนั้นไม่หาย · ไฟล์ก่อน bootstrap แก้ครั้งแรกเก็บไว้ที่ `settings.json.bak`
 - **`~/.claude/CLAUDE.md`** (ชิ้น `memory`): ย่อหน้าที่บอก agent ให้เปลี่ยน state ของ tracker ด้วย
   `node <vault>/_tools/wf.mjs <verb>` และเขียนเนื้อด้วย Write/Edit · อยู่ระหว่าง
   `<!-- wayfinder-template:begin … -->` กับ `<!-- wayfinder-template:end -->` แล้วถูกแทนที่ตรงนั้นทุกรอบ ·
   ย่อหน้าที่รุ่นก่อนเขียน (หัวข้อเดิม ไม่มี marker) ถูกหาเจอแล้วแทนที่ตรงที่เดิม ไม่ซ้อนซ้ำ ·
-  ไฟล์ก่อนแก้เก็บไว้ที่ `CLAUDE.md.bak`
+  ไฟล์ก่อน bootstrap แก้ครั้งแรกเก็บไว้ที่ `CLAUDE.md.bak`
 
 แผนโชว์ diff ของไฟล์ `~/.claude` ทั้งสองทีละบรรทัด — อยู่นอก vault ⇒ git กู้คืนให้ไม่ได้
 
@@ -322,6 +324,7 @@ cd ~/Documents/Git/wayfinder-vault && git log --oneline
 
 ส่วนไฟล์ที่เขียน **นอก vault** จะถูกก็อบเก็บไว้ข้าง ๆ ตัวเองในครั้งแรกที่ถูกแก้ **ถ้าไฟล์นั้นมีอยู่ก่อน**:
 `~/.claude/settings.json.bak` · `~/.claude/CLAUDE.md.bak` · และ `obsidian.json.bak` ของ Obsidian
+`.bak` ที่มีอยู่แล้ว (จากรอบก่อน หรือที่คุณทำเอง) ไม่ถูกทับเด็ดขาด ⇒ มันคือสำเนาที่เก่าที่สุด ไม่ใช่ล่าสุด
 (ถ้าเดิมไม่มีไฟล์อยู่ ก็ไม่มีอะไรให้สำรอง จะไม่มี `.bak` โผล่มา)
 
 ---
