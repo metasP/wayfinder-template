@@ -46,7 +46,7 @@ await dv.view("_tools/views/wf-core", {
 ## 🔥 Frontier — หยิบได้ตอนนี้
 
 open + ไม่ถูก block + อยู่ใน map ที่เดินอยู่ · เรียงตาม `sort:` ใน frontmatter ของ [[Wayfinder Picks]] — ลำดับเดียวกับ `wf frontier`
-(ไม่มี `sort:` = ค่าเริ่มต้น `[unblocks desc, nn asc]` · บรรทัด `SORT` ของ DQL ในหน้า Picks ไม่มีผลกับตารางนี้)
+(ไม่มี `sort:` = ค่าเริ่มต้น `[unblocks desc, nn asc]` · ตารางในหน้า Picks คือรายการเดียวกันนี้)
 blocker ที่ลิงก์หาใบไม่เจอ = **ยัง block อยู่** (fail closed) ใบนั้นจึงไปโผล่ใน 🚧 แทน
 
 ```dataviewjs

@@ -326,6 +326,24 @@ export function isPending(index, ticketOrRef) {
 }
 
 /**
+ * An effort's tickets counted by `ticketState`: `{ total, resolved, ready, frontier, blocked, claimed,
+ * waiting, unknown, pending }`. `frontier` is the ready ones when the map is active (what `frontier`
+ * lists), `unknown` a status outside the enum, `pending` open + claimed + waiting.
+ */
+export function effortCounts(index, effortKey) {
+  const tickets = index.efforts.get(effortKey)?.tickets ?? []
+  const counts = { total: tickets.length, resolved: 0, ready: 0, frontier: 0, blocked: 0, claimed: 0, waiting: 0, unknown: 0, pending: 0 }
+  const isActive = index.maps.get(effortKey)?.status === "active"
+  for (const t of tickets) {
+    const state = ticketState(index, t) ?? "unknown"
+    counts[state] += 1
+    if (state === "ready" && isActive) counts.frontier += 1
+    if (PENDING.has(t.status)) counts.pending += 1
+  }
+  return counts
+}
+
+/**
  * Ready tickets on active maps, in pick order. `repo` matches the home repo or
  * `target_repo`; `from` (`repo/effort`) is the context for `same_effort`; `sort` defaults to the
  * Picks default.
@@ -364,6 +382,34 @@ export function blockerPath(index, from, to) {
 export function unblocks(index, ticketOrRef) {
   const ref = typeof ticketOrRef === "string" ? ticketOrRef : ticketOrRef.ref
   return unblockCounts(index).get(ref) ?? 0
+}
+
+/**
+ * What closing a ticket does: `waiting` — the open tickets it still blocks (`unblocks` counts these),
+ * by effort then NN — and `freed`, those of them with no other open blocker, which become ready.
+ */
+export function dependents(index, ticketOrRef) {
+  const ref = typeof ticketOrRef === "string" ? ticketOrRef : ticketOrRef.ref
+  const waiting = [...index.tickets.values()]
+    .filter((t) => t.status === "open" && t.blockers.includes(ref))
+    .sort(byEffortThenNn)
+  const freed = waiting.filter((t) => openBlockers(index, t).every((b) => b === ref))
+  return { waiting, freed }
+}
+
+/**
+ * The blocker graph inside one effort: `[blocker ref, blocked ref]` pairs for every resolved `blockers`
+ * edge whose two ends both sit in `effortKey`, without duplicates or self-edges, in NN order.
+ */
+export function blockerEdges(index, effortKey) {
+  const tickets = index.efforts.get(effortKey)?.tickets ?? []
+  const inEffort = new Set(tickets.map((t) => t.ref))
+  const edges = new Map()
+  for (const t of tickets)
+    for (const ref of t.blockers)
+      if (ref !== t.ref && inEffort.has(ref)) edges.set(`${ref}>${t.ref}`, [ref, t.ref])
+  const nnOf = (ref) => index.tickets.get(ref).nn
+  return [...edges.values()].sort((a, b) => nnOf(a[0]) - nnOf(b[0]) || nnOf(a[1]) - nnOf(b[1]))
 }
 
 const unblockCounts = (index) => {
@@ -427,16 +473,60 @@ export function pickOrder(index, tickets, rules, { from } = {}) {
 /** *Wayfinder Config* keys the core reads, with their defaults. A bad value falls back per key. */
 export const DEFAULT_CONFIG = Object.freeze({ claim_stale_days: 3, stale_days: 14, paused_stale_days: 30 })
 
+/**
+ * Every *Wayfinder Config* key, with its default: the thresholds above plus the colours (`#rrggbb`) and
+ * map-status labels the pages draw with. The pages read them through `readConfig` only.
+ */
+export const CONFIG_DEFAULTS = Object.freeze({
+  ...DEFAULT_CONFIG,
+  color_resolved: "#4CAF50",
+  color_claimed: "#FFB300",
+  color_open: "#9E9E9E",
+  color_waiting: "#AB47BC",
+  label_paused: "⏸ พักไว้",
+  label_draft: "✏️ ยังไม่ได้ชาร์ต",
+  label_done: "✅ ปิดแล้ว",
+  label_dropped: "🗑 ทิ้งแล้ว",
+})
+
 const DAY_MS = 24 * 60 * 60 * 1000
 const PENDING = new Set(["open", "claimed", "waiting"])
 
 // Only a number, or a numeric string, counts — `Number(null)`, `Number("")` and `Number(false)` are 0,
 // which would turn a blank Config key into "everything is stale".
-const configValue = (config, key) => {
-  const raw = config?.[key]
+const asCount = (raw) => {
   const isNumeric = typeof raw === "number" || (typeof raw === "string" && raw.trim() !== "")
   const v = isNumeric ? Number(raw) : NaN
-  return Number.isFinite(v) && v >= 0 ? v : DEFAULT_CONFIG[key]
+  return Number.isFinite(v) && v >= 0 ? v : null
+}
+// Exactly six hex digits: the pages append an alpha (`#rrggbb33`), which `red` or `#abc` would break.
+const asColor = (raw) => (typeof raw === "string" && /^#[0-9a-fA-F]{6}$/.test(raw.trim()) ? raw.trim() : null)
+// Labels go into HTML as they are, so nothing that leaves a tag or an attribute.
+const asLabel = (raw) => (typeof raw === "string" && raw.trim() && !/[<>"]/.test(raw) ? raw.trim() : null)
+const CONFIG_READERS = Object.freeze({
+  claim_stale_days: asCount,
+  stale_days: asCount,
+  paused_stale_days: asCount,
+  color_resolved: asColor,
+  color_claimed: asColor,
+  color_open: asColor,
+  color_waiting: asColor,
+  label_paused: asLabel,
+  label_draft: asLabel,
+  label_done: asLabel,
+  label_dropped: asLabel,
+})
+
+const configValue = (config, key) => CONFIG_READERS[key](config?.[key]) ?? CONFIG_DEFAULTS[key]
+
+/** Every CONFIG_DEFAULTS key read from *Wayfinder Config* frontmatter; a missing or bad value → its default. */
+export function readConfig(config) {
+  return Object.fromEntries(Object.keys(CONFIG_DEFAULTS).map((key) => [key, configValue(config, key)]))
+}
+
+/** Whether `value` is one `readConfig` keeps for `key` (false = it would fall back to the default). */
+export function isConfigValue(key, value) {
+  return hasOwn(CONFIG_READERS, key) && CONFIG_READERS[key](value) != null
 }
 
 const requireToday = (today) => {
@@ -445,8 +535,23 @@ const requireToday = (today) => {
   return iso
 }
 
-const daysBetween = (from, to) => Math.round((Date.parse(to) - Date.parse(from)) / DAY_MS)
+/** Calendar days from one `YYYY-MM-DD` to another (negative when `to` comes first). */
+export function daysBetween(from, to) {
+  return Math.round((Date.parse(to) - Date.parse(from)) / DAY_MS)
+}
+
 const later = (a, b) => (a == null ? b : b == null ? a : a > b ? a : b)
+
+/**
+ * When an effort last moved: the newest `status_since` among its map and its tickets, or null. Declaring
+ * a map status resets the clock. This is the clock `staleMaps` judges `idle` by.
+ */
+export function lastMoved(index, mapOrKey) {
+  const key = typeof mapOrKey === "string" ? mapOrKey : mapOrKey.key
+  const effort = index.efforts.get(key)
+  if (!effort) return null
+  return effort.tickets.map((t) => t.statusSince).reduce(later, effort.map?.statusSince ?? null)
+}
 
 /** Claims older than `claim_stale_days`: `[{ ticket, days }]` by effort, then NN. */
 export function staleClaims(index, { today, config } = {}) {
@@ -482,13 +587,13 @@ export function staleMaps(index, { today, config } = {}) {
   for (const effort of [...index.efforts.values()].sort((a, b) => compare(a.key, b.key))) {
     const m = effort.map
     if (!m || m.blockedBy != null) continue
-    const found = staleReason(m, effort.tickets, now, config)
+    const found = staleReason(index, effort, now, config)
     if (found) stale.push({ map: m, ...found })
   }
   return stale
 }
 
-const staleReason = (m, tickets, now, config) => {
+const staleReason = (index, { map: m, tickets }, now, config) => {
   if (m.status === "paused" && m.statusSince) {
     const days = daysBetween(m.statusSince, now)
     return days > configValue(config, "paused_stale_days") ? { reason: "paused", days } : null
@@ -496,10 +601,43 @@ const staleReason = (m, tickets, now, config) => {
   if (m.status !== "active") return null
   const pending = tickets.filter((t) => PENDING.has(t.status))
   if (!pending.length || pending.every((t) => t.status === "waiting")) return null
-  const moved = tickets.map((t) => t.statusSince).reduce(later, m.statusSince)
+  const moved = lastMoved(index, m)
   if (!moved) return null
   const days = daysBetween(moved, now)
   return days > configValue(config, "stale_days") ? { reason: "idle", days } : null
+}
+
+/**
+ * What the pages show for one effort: `effortCounts`, plus `lastMoved`, `days` since then, `pausedDays`
+ * since the map's own `status_since`, and the map's `blocked_by` state (`mapBlockState`). Null where
+ * there is no date or no map.
+ */
+export function effortSummary(index, effortKey, { today } = {}) {
+  const now = requireToday(today)
+  const m = index.maps.get(effortKey) ?? null
+  const moved = lastMoved(index, effortKey)
+  return {
+    ...effortCounts(index, effortKey),
+    lastMoved: moved,
+    days: moved ? daysBetween(moved, now) : null,
+    pausedDays: m?.statusSince ? daysBetween(m.statusSince, now) : null,
+    block: m ? mapBlockState(index, m) : null,
+  }
+}
+
+// An effort with tickets, every one in a known status and none pending, on a map that still says active.
+const isFinished = ({ map: m, tickets }) =>
+  m?.status === "active" &&
+  tickets.length > 0 &&
+  tickets.every((t) => TICKET_STATUSES.includes(t.status)) &&
+  !tickets.some((t) => PENDING.has(t.status))
+
+/** Active maps with nothing left to do — every ticket resolved — that should be `done`, in key order. */
+export function finishedMaps(index) {
+  return [...index.efforts.values()]
+    .filter(isFinished)
+    .map((e) => e.map)
+    .sort((a, b) => compare(a.key, b.key))
 }
 
 // ── Map blocked_by ─────────────────────────────────────────────────────────
@@ -532,6 +670,28 @@ export function mapBlockState(index, mapOrKey) {
   if (hit.map) return { state: blockedOnMap(hit.map.status), target: hit.map.key, raw }
   const state = hit.ticket.status === "resolved" ? "cleared" : STOPPED_MAP.has(hit.owner?.status) ? "dead" : "waiting"
   return { state, target: hit.ticket.ref, raw }
+}
+
+const BLOCK_WARNINGS = new Set(["cleared", "dead", "dangling"])
+
+/**
+ * Maps whose status doesn't match what happens, one warning each, in key order:
+ * `{ map, reason, block?, days? }`. Precedence: a `blocked_by` that cleared, can't clear (`dead`) or
+ * points nowhere (`dangling`) — with its `block` state; then `finished` (`finishedMaps`); then the
+ * stale clock, `idle` or `paused`, with its `days` (`staleMaps`).
+ */
+export function mapWarnings(index, { today, config } = {}) {
+  const finished = new Set(finishedMaps(index).map((m) => m.key))
+  const stale = new Map(staleMaps(index, { today, config }).map((s) => [s.map.key, s]))
+  const warnings = []
+  for (const m of [...index.maps.values()].sort((a, b) => compare(a.key, b.key))) {
+    const block = mapBlockState(index, m)
+    const s = stale.get(m.key)
+    if (block && BLOCK_WARNINGS.has(block.state)) warnings.push({ map: m, reason: block.state, block })
+    else if (finished.has(m.key)) warnings.push({ map: m, reason: "finished" })
+    else if (s) warnings.push({ map: m, reason: s.reason, days: s.days })
+  }
+  return warnings
 }
 
 const blockedOnMap = (status) => (status === "done" ? "cleared" : STOPPED_MAP.has(status) ? "dead" : "waiting")
@@ -794,8 +954,7 @@ const mapStatusFindings = ({ map: m, tickets }) => {
     const message = `done, but ${plural(pending.length, "ticket")} ${verb} still pending: ${refs}`
     return [finding("error", "done-map-pending", m.key, message, reopen)]
   }
-  const isKnown = tickets.every((t) => TICKET_STATUSES.includes(t.status))
-  if (m.status === "active" && tickets.length && isKnown && !pending.length)
+  if (isFinished({ map: m, tickets }))
     return [finding("warn", "map-finished", m.key, "active with no pending tickets → done", `wf map-status ${m.key} done`)]
   if (!["done", ...STOPPED_MAP].includes(m.status) || !m.statusSince) return []
   const movers = tickets.filter((t) => t.statusSince > m.statusSince)

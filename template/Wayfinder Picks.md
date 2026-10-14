@@ -1,3 +1,6 @@
+---
+sort: [unblocks desc, nn asc]
+---
 # Wayfinder Picks
 
 **โน้ตนี้เป็นของคุณ ไม่ใช่ของ template** — สร้างให้ครั้งเดียวตอนติดตั้ง แล้วไม่มีอะไรมาแตะอีกเลย
@@ -9,33 +12,36 @@
 
 ---
 
-## 🎯 หยิบอันไหนต่อ — TODO: เขียนกฎของคุณเอง
+## 🎯 หยิบอันไหนต่อ — กฎอยู่ใน `sort:` ข้างบน
 
-Frontier บน [[Wayfinder Dashboard]] ตอบว่า *"อะไรหยิบได้"* แต่ไม่ได้ตอบว่า *"ควรหยิบอะไร"* — ซึ่งเป็นการตัดสินใจที่มีแต่คุณตอบได้
+Frontier ตอบว่า *"อะไรหยิบได้"* แต่ไม่ได้ตอบว่า *"ควรหยิบอะไร"* — ซึ่งเป็นการตัดสินใจที่มีแต่คุณตอบได้
+กฎนั้นคือ **`sort:` ใน frontmatter ของโน้ตนี้** (แก้ในแถบ Properties ได้) — บรรทัดเดียวที่ทุกคนอ่าน:
+ตารางข้างล่าง · 🔥 Frontier บน [[Wayfinder Dashboard]] · `wf frontier` · และ `/wayfinder-next`
+ไม่มี `sort:` หรือ key ผิดทั้งหมด = ค่าเริ่มต้น `[unblocks desc, nn asc]`
 
-แก้ `SORT` ข้างล่างให้ตรงกับกฎที่คุณใช้จริงเวลานั่งลงทำงาน เช่น
+| key | หมายถึง |
+|---|---|
+| `unblocks` | ใบนี้ปลดใบที่ยัง open อยู่กี่ใบ — นับจาก `blockers` ของใบอื่นจริง ๆ (ลิงก์ในเนื้อความไม่นับ) |
+| `afk_first` | `research` ก่อนชนิดอื่น — ยิงทิ้งไว้ตอนไม่ว่างนั่งเฝ้า ส่วน HITL เก็บไว้ตอนมีสมาธิ |
+| `same_effort` | ใบใน effort ที่ส่งมากับ `wf frontier --from` ก่อน (ไม่มี `--from` = ไม่มีผล) — กัน context switch |
+| `nn` | เลขใบ |
 
-- **AFK ก่อน** (`type = "research"`) — ยิงทิ้งไว้ตอนไม่ว่างนั่งเฝ้า ส่วน HITL เก็บไว้ตอนมีสมาธิ
-- **ปลดล็อกได้เยอะสุดก่อน** (`length(file.inlinks)`) — ticket ที่มีคนรออยู่หลายใบควรมาก่อน
-- **effort เดียวให้จบก่อน** — กัน context switch ข้าม map
+แต่ละ key ต่อท้ายด้วย `asc` หรือ `desc` ได้ (ไม่ใส่ = `asc`) · key ที่ไม่รู้จัก = ข้ามตอนเรียง
+และขึ้นเป็น error ใน 🩺 lint ของ Dashboard · ตัวอย่าง "AFK ก่อน แล้วค่อยปลดล็อกเยอะสุด":
+`sort: [afk_first, unblocks desc, nn asc]`
 
-> **`ปลดล็อกกี่ใบ` ที่นี่จะสูงกว่าคอลัมน์ `ปลดกี่ใบ` ของ [[Wayfinder Effort Tickets]] — ไม่ใช่บั๊ก**
-> `file.inlinks` นับ**ทุกลิงก์ที่ชี้มาหาใบนี้** รวมตอน `map.md` เอ่ยถึงใบในเนื้อความ ⇒ เลขเฟ้อขึ้น
-> ส่วนหน้านั้นนับจาก `blockers` ของใบอื่นจริง ๆ อย่างเดียว · ที่นี่ใช้ `inlinks` ต่อเพราะ DQL ล้วนทำอีกแบบไม่ได้
-> และงานของคอลัมน์นี้คือ **จัดลำดับ** ไม่ใช่รายงานตัวเลข
-
-```dataview
-TABLE WITHOUT ID
-  file.link AS "Ticket",
-  type AS "Type",
-  length(file.inlinks) AS "ปลดล็อกกี่ใบ"
-FROM "" AND -"_tools"
-WHERE status = "open"
-  AND link(repo + "/" + effort + "/map").status = "active"
-  AND all(map(blockers, (b) => b.status = "resolved"))
-SORT file.name ASC
+```dataviewjs
+await dv.view("_tools/views/wf-core", {
+  render: ({ core, index, sort, link, text }) => {
+    const { keys, unknown } = core.parsePickSort(sort)
+    const rule = keys.length ? keys.map((k) => `${k.key} ${k.dir}`).join(", ") : `${core.DEFAULT_PICK_SORT.join(", ")} (ค่าเริ่มต้น)`
+    dv.paragraph(`เรียงตาม: \`${rule}\`` + (unknown.length ? ` · ⚠️ ข้าม key ที่ไม่รู้จัก: ${unknown.map((u) => `\`${text(u)}\``).join(" ")}` : ""))
+    const tickets = core.frontier(index, { sort })
+    if (!tickets.length) return dv.paragraph("_ไม่มีใบที่หยิบได้ตอนนี้_")
+    dv.table(
+      ["Ticket", "Effort", "Type", "ปลดล็อกกี่ใบ"],
+      tickets.map((t) => [link(t.ref), link(t.effortKey), text(t.type), core.unblocks(index, t)]),
+    )
+  },
+})
 ```
-
-> **TODO** — เปลี่ยนบรรทัด `SORT` (เติม `WHERE` ถ้าอยากกรอง repo/effort เดียว)
-> ตัวอย่างถ้าเอา "ปลดล็อกเยอะสุดก่อน แล้วค่อย AFK ก่อน HITL":
-> `SORT length(file.inlinks) DESC, type = "research" DESC, file.name ASC`

@@ -134,8 +134,9 @@ try {
 
 // ── 5. dashboard ────────────────────────────────────────────────────────────
 {
-  // Dashboard คำนวณจาก core ผ่าน loader กลางทุกบล็อก (ไม่มี DQL / กฎ frontier ของตัวเองแล้ว)
-  // ⇒ ตรวจว่า loader กับ core อยู่ครบ และทุกบล็อกเรียกผ่าน loader — บล็อกที่ไม่ผ่าน loader = กฎแยกสาย
+  // สี่หน้า (Dashboard · Efforts · Effort Tickets · Picks) คำนวณจาก core ผ่าน loader กลางทุกบล็อก
+  // (ไม่มี DQL / index / กฎ frontier / ตัวอ่าน Config ของตัวเองแล้ว) ⇒ ตรวจว่า loader กับ core อยู่ครบ
+  // และทุกบล็อกเรียกผ่าน loader — บล็อกที่ไม่ผ่าน loader = กฎแยกสาย ซึ่งคือสิ่งที่ทำให้หน้าเถียงกันเอง
   const dash = await readFile(join(VAULT, 'Wayfinder Dashboard.md'), 'utf8').catch(() => '')
   const LOADER = '_tools/views/wf-core'
   // loader ห้ามมีคำ a-w-a-i-t แม้ในคอมเมนต์: Dataview ห่อ view ที่มีคำนี้ด้วย async IIFE แล้วทิ้ง promise
@@ -144,31 +145,29 @@ try {
   check(loaderSrc !== null && !loaderSrc.includes('aw' + 'ait'), `มี loader กลาง ${LOADER}.js (คืน promise ให้ Dataview)`,
     loaderSrc === null ? 'ไม่มีไฟล์' : loaderSrc.includes('aw' + 'ait') ? 'มีคำที่ทำให้ Dataview ทิ้ง promise' : '')
   check(await exists(join(VAULT, '_tools/lib/core.mjs')), 'มี core _tools/lib/core.mjs')
-  const dashJs = [...dash.matchAll(/^```dataviewjs[ \t]*\r?\n([\s\S]*?)^```/gm)].map((m) => m[1])
-  const viaLoader = dashJs.filter((src) => src.includes(`dv.view("${LOADER}"`)).length
-  const dql = dash.match(/^```dataview[ \t]*$/gm)?.length ?? 0
-  check(dashJs.length >= 5 && viaLoader === dashJs.length && dql === 0,
-    'ทุกบล็อกบน Dashboard โหลด core ผ่าน loader กลาง',
-    `${viaLoader}/${dashJs.length} บล็อกผ่าน loader · ${dql} บล็อก DQL`)
-
   const eff = await readFile(join(VAULT, 'Wayfinder Efforts.md'), 'utf8').catch(() => '')
-  // ⚠️ ยึด **หัวบรรทัด** ทั้งสองเส้น — ใบ 01 ตรวจแล้วว่ารูปเดิม (`/const STALE_DAYS = \d+/` ไม่มี
-  // `^`/`m`) กันได้แค่ "ลบตัวประกาศทิ้ง" ยังไม่กัน "เหลือแต่คอมเมนต์ที่เขียนรูปประกาศเต็ม ๆ" ซึ่งเป็น
-  // กับดักตัวเดียวกับที่ข้อ `LS_KEY` ข้างล่างจงใจ harden ไว้ตั้งแต่ต้น · ที่ผ่านมาไฟล์นี้รอดมาได้
-  // **แบบบังเอิญ** เพราะยังไม่มีใครเขียนคอมเมนต์รูปนั้นลงไป — ปลอดภัยแบบบังเอิญไม่ใช่ปลอดภัย
-  //
-  // สองบรรทัดนี้คือ **ค่าเริ่มต้น** ตัวจริงตอนไม่มีโน้ต Config (ใบ 01 ย้ายค่าที่ใช้จริงไปที่นั่น
-  // แล้วเก็บตัวประกาศไว้เป็น fallback) ⇒ หายเมื่อไหร่ vault ที่ไม่มี Config จะไม่เหลืออะไรให้ตกไปหา
-  check(eff.includes('```dataviewjs') && /^const STALE_DAYS = \d+/m.test(eff)
-    && /^const PAUSED_STALE_DAYS = \d+/m.test(eff),
-    'Wayfinder Efforts มีบล็อก dataviewjs + เส้นแบ่งเวลาทั้งสองเส้น')
+  const tix = await readFile(join(VAULT, 'Wayfinder Effort Tickets.md'), 'utf8').catch(() => '')
+  const picks = await readFile(join(VAULT, 'Wayfinder Picks.md'), 'utf8').catch(() => '')
+  // Picks เป็น **โน้ตของผู้ใช้** (ตัวอัปเดตไม่แตะ) ⇒ vault เก่าอาจยังเป็น DQL จนกว่า `wf migrate` จะแปลง
+  // ข้อนี้จึงตรวจเฉพาะสามหน้าที่ template ดูแล · Picks ได้ข้อของตัวเองข้างล่าง (ไม่มี DQL = ใช้ `sort:` แล้ว)
+  // ไฟล์หาย = 0 บล็อก ⇒ ไม่ผ่าน (ไม่ใช่ "ผ่านเพราะไม่มีอะไรให้ตรวจ")
+  const PAGE_MIN_BLOCKS = [['Wayfinder Dashboard', dash, 5], ['Wayfinder Efforts', eff, 1], ['Wayfinder Effort Tickets', tix, 1]]
+  for (const [note, body, min] of PAGE_MIN_BLOCKS) {
+    const js = [...body.matchAll(/^```dataviewjs[ \t]*\r?\n([\s\S]*?)^```/gm)].map((m) => m[1])
+    const viaLoader = js.filter((src) => src.includes(`dv.view("${LOADER}"`)).length
+    const dql = body.match(/^```dataview[ \t]*$/gm)?.length ?? 0
+    check(js.length >= min && viaLoader === js.length && dql === 0,
+      `ทุกบล็อกบน ${note} โหลด core ผ่าน loader กลาง`,
+      body ? `${viaLoader}/${js.length} บล็อกผ่าน loader · ${dql} บล็อก DQL` : `ไม่มีไฟล์ ${note}.md`)
+  }
+  // Picks เก่าที่ยังเป็น DQL ไม่ได้พัง (Dashboard/`wf` เรียงด้วยค่าเริ่มต้นแทน) แต่บรรทัด SORT ในนั้นไม่มีผลแล้ว ⇒ เตือน
+  const picksDql = picks.match(/^```dataview[ \t]*$/gm)?.length ?? 0
+  warn(!picks || picksDql === 0, 'Wayfinder Picks เรียงด้วย sort: ใน frontmatter (ไม่มีบล็อก DQL ของตัวเอง)',
+    picksDql ? `${picksDql} บล็อก DQL — บรรทัด SORT ในนั้นไม่มีผลกับ Dashboard/wf frontier แล้ว · ย้ายกฎไปที่ sort: (หรือรอ wf migrate)` : '')
 
   check(dash.includes('[[Wayfinder Efforts]]'), 'Dashboard ลิงก์ไปหน้า Efforts')
 
   // ── หน้าที่สาม: Wayfinder Effort Tickets (ใบทั้ง effort เดียว จบในหน้าเดียว) ──
-  const tix = await readFile(join(VAULT, 'Wayfinder Effort Tickets.md'), 'utf8').catch(() => '')
-  check(tix.includes('```dataviewjs'), 'Wayfinder Effort Tickets มีบล็อก dataviewjs',
-    tix ? '' : 'ไม่มีไฟล์ Wayfinder Effort Tickets.md')
   // ── หัวโน้ตหน้าใบ — ตรวจ *ตำแหน่ง + ชนิดบล็อก* ไม่ใช่แค่ "มีสตริงอยู่ในไฟล์" ────
   // ใบ 09 พิสูจน์บน Obsidian จริงแล้วว่าโครงที่ถูกคือ: บล็อกนำทาง (ลิงก์สามหน้า) อยู่ **นอก**
   // กล่องพับ · คำอธิบายกติกาอยู่ใน callout `> [!info]-` ที่พับเป็นค่าเริ่มต้น
@@ -241,10 +240,8 @@ try {
   // ⇒ detail โชว์ค่าที่ดึงมาได้จริงด้วย เพื่อให้เห็นทันทีถ้าวันหนึ่งมันคว้าผิดตัว
   const sharedConst = (body, name) =>
     body.match(new RegExp(`^const\\s+${name}\\s*=\\s*["']([^"']+)["']`, 'm'))?.[1] ?? null
-  // `CONFIG_NOTE` เข้าลูปนี้ด้วยตั้งแต่ใบ 01 — สองหน้าอ่านค่าที่ผู้ใช้จูนจากโน้ตเดียวกัน
-  // แก้ชื่อข้างเดียว = หน้าหนึ่งอ่าน Config ไม่เจอแล้วตกไปใช้ค่าเริ่มต้น **เงียบ ๆ** ส่วนอีกหน้าไม่ตก
-  // ⇒ สองหน้าโชว์คนละค่าจากข้อมูลชุดเดียวกัน ซึ่งดูเหมือน "ข้อมูลมั่ว" มากกว่า "ของพัง"
-  for (const name of ['LS_KEY', 'SELECT_EVENT', 'CONFIG_NOTE']) {
+  // (ชื่อโน้ต Config ไม่อยู่ในลูปนี้แล้ว — ทุกหน้าอ่าน Config ผ่าน loader กลางตัวเดียว ไม่มีสองที่ให้ไม่ตรงกัน)
+  for (const name of ['LS_KEY', 'SELECT_EVENT']) {
     const a = sharedConst(eff, name)
     const b = sharedConst(tix, name)
     const same = a !== null && b !== null && a === b
@@ -349,7 +346,7 @@ try {
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
   const DVJS = /^```dataviewjs[ \t]*\r?\n([\s\S]*?)^```/gm
   const NOTES = [['Wayfinder Dashboard', dash],
-    ['Wayfinder Efforts', eff], ['Wayfinder Effort Tickets', tix]]
+    ['Wayfinder Efforts', eff], ['Wayfinder Effort Tickets', tix], ['Wayfinder Picks', picks]]
   const jsBlocks = []
   for (const [note, body] of NOTES) {
     for (const m of body.matchAll(DVJS)) {
@@ -366,7 +363,7 @@ try {
     brokenJs.length
       ? brokenJs.map((b) => `${b.note}.md บรรทัด ${b.line}: ${b.err}`).join(' · ')
       : jsBlocks.length
-        ? `สแกน 3 หน้า ⇒ ${jsBlocks.length} บล็อก: `
+        ? `สแกน ${NOTES.length} หน้า ⇒ ${jsBlocks.length} บล็อก: `
           + jsBlocks.map((b) => `${b.note}:${b.line} (${b.size} บรรทัด)`).join(' · ')
         : 'ไม่พบบล็อก dataviewjs เลยสักหน้า')
 
@@ -434,48 +431,39 @@ try {
   // **ห้าม throw** และตกไปใช้ค่าเริ่มต้น *เป็นราย ๆ คีย์* ⇒ ไม่มีกล่องแดง ไม่มี error ไม่มีอะไรบอกเลย
   // ว่าค่าที่เพิ่งแก้ถูกทิ้ง · ผู้ใช้จะสรุปว่า *ฟีเจอร์พัง* แล้วไปไล่หาผิดทางทั้งเส้น
   //
-  // ⚠️ รายชื่อคีย์ **ดึงจากตัวบล็อกจริง** ไม่ใช่ลิสต์ตัวที่สองใน doctor — เติมคีย์ใหม่ในบล็อกเมื่อไหร่
-  // ข้อนี้เรียกร้องให้โน้ต Config มีคีย์นั้นทันทีโดยไม่ต้องแก้ doctor และไม่มีลิสต์ไหนให้ drift
-  // (เหตุผลเดียวกับที่ข้อ `TICKETS_NOTE` เทียบกับสารบัญไฟล์จริง ไม่ใช่กับสตริงตัวที่สองใน doctor)
-  // **ดึงไม่ได้เลยสักคีย์ = ไม่ผ่าน** — regex ที่คว้าไม่โดนต้องแดง ไม่ใช่เขียวเพราะ "ไม่มีอะไรให้ตรวจ"
-  const CFG_CALL = /\bcfg(Num|Color|Label)\(\s*"([^"]+)"/g
-  const cfgWant = new Map()
-  for (const [, body] of NOTES) for (const m of body.matchAll(CFG_CALL)) cfgWant.set(m[2], m[1])
-  const cfgKeys = [...cfgWant.keys()].sort()
+  // ⚠️ รายชื่อคีย์และกฎว่าค่าไหนใช้ได้ **มาจาก core** (`CONFIG_DEFAULTS` · `isConfigValue`) ตัวเดียวกับที่
+  // ทุกหน้าอ่านผ่าน `core.readConfig` — ไม่ใช่ลิสต์ตัวที่สองใน doctor ⇒ เติมคีย์ใน core เมื่อไหร่ ข้อนี้เรียกร้อง
+  // ให้โน้ต Config มีคีย์นั้นทันที และไม่มีกฎสองชุดให้ drift · core โหลดไม่ได้ = ไม่ผ่าน (ตรวจไม่ได้ ห้ามเขียว)
+  const core = await import('./lib/core.mjs').catch(() => null)
+  const cfgKeys = core?.CONFIG_DEFAULTS ? Object.keys(core.CONFIG_DEFAULTS).sort() : []
 
-  // ชื่อโน้ตมาจาก `CONFIG_NOTE` ในบล็อก (ข้อข้างบนบังคับให้สองหน้าประกาศตรงกันไปแล้ว)
-  // ⇒ ข้อนี้คือ *อีกฝั่งของสัญญา*: สตริงนั้นต้องสะกดตรงกับโน้ตที่มีอยู่จริง เหมือนข้อ `TICKETS_NOTE`
-  const configNote = sharedConst(eff, 'CONFIG_NOTE')
-  const cfgOnDisk = configNote !== null && rootNotes.includes(configNote)
+  // ชื่อโน้ตคือตัวที่ loader อ่าน (`Wayfinder Config.md`) ⇒ สตริงนั้นต้องสะกดตรงกับโน้ตที่มีอยู่จริง เหมือนข้อ `TICKETS_NOTE`
+  const configNote = 'Wayfinder Config'
+  const cfgOnDisk = rootNotes.includes(configNote)
   const cfgFm = !cfgOnDisk ? null
     : frontmatter(await readFile(join(VAULT, `${configNote}.md`), 'utf8').catch(() => ''))
+  // คีย์ที่ขาดตกไปค่าเริ่มต้นทีละคีย์ตามที่โน้ตสัญญาไว้ ("ลบโน้ตนี้ทิ้งได้ ไม่พัง") ⇒ เตือน ไม่นับว่าพัง
+  // (vault เก่ายังไม่มี `claim_stale_days` จนกว่า `wf migrate` จะเติมให้) · core โหลดไม่ได้ต่างหากที่พัง
   const cfgMissing = cfgFm === null ? cfgKeys : cfgKeys.filter((k) => cfgFm.get(k) === undefined)
-  check(cfgOnDisk && cfgFm !== null && cfgKeys.length > 0 && cfgMissing.length === 0,
-    'Wayfinder Config มีอยู่จริง + frontmatter ครบทุกคีย์ที่บล็อกอ่าน',
-    configNote === null ? 'ไม่พบตัวประกาศ const CONFIG_NOTE ใน Wayfinder Efforts.md'
-      : !cfgOnDisk ? `"${configNote}" ไม่ตรงกับโน้ตรากไหนเลย (สแกน ${rootNotes.length} โน้ต)`
+  check(cfgKeys.length > 0, 'โหลดรายชื่อคีย์ Config จาก core ได้', cfgKeys.length ? '' : 'โหลด _tools/lib/core.mjs ไม่ได้')
+  warn(cfgOnDisk && cfgFm !== null && cfgKeys.length > 0 && cfgMissing.length === 0,
+    'Wayfinder Config มีอยู่จริง + frontmatter ครบทุกคีย์ที่ core อ่าน',
+    cfgKeys.length === 0 ? 'โหลด _tools/lib/core.mjs ไม่ได้ — ไม่รู้ว่าต้องมีคีย์อะไรบ้าง'
+      : !cfgOnDisk ? `ไม่มี ${configNote}.md ที่รากของ vault (สแกน ${rootNotes.length} โน้ต)`
         : cfgFm === null ? `${configNote}.md ไม่มี frontmatter`
-          : cfgKeys.length === 0 ? 'ดึงรายชื่อคีย์จากบล็อกไม่ได้เลยสักตัว — regex คว้าไม่โดน'
-            : cfgMissing.length ? `ขาด ${cfgMissing.length} คีย์: ${cfgMissing.join(' · ')}`
-              : `${cfgKeys.length} คีย์: ${cfgKeys.join(' · ')}`)
+          : cfgMissing.length ? `ขาด ${cfgMissing.length} คีย์: ${cfgMissing.join(' · ')}`
+            : `${cfgKeys.length} คีย์: ${cfgKeys.join(' · ')}`)
 
-  // คีย์ครบแต่ค่าใช้ไม่ได้ = โหมดพังเดียวกันเป๊ะ (ตกไปค่าเริ่มต้นเงียบ ๆ) ⇒ ต้องเป็นคนละข้อ ไม่รวบ
-  // ตัวตรวจสามตัวนี้เป็นสำเนาของกฎในบล็อก — แต่ **คีย์ไหนใช้ตัวไหนถูกดึงมาจากบล็อกเช่นกัน**
-  // (จากชื่อฟังก์ชัน `cfgNum`/`cfgColor`/`cfgLabel` ที่บล็อกเรียก) ⇒ ย้ายคีย์ข้ามชนิดแล้วข้อนี้ตามทันเอง
-  const CFG_OK = {
-    Num: (v) => Number.isFinite(Number(v)) && Number(v) > 0,
-    Color: (v) => /^#[0-9a-fA-F]{6}$/.test(v.trim()),
-    Label: (v) => v.trim() !== '' && !/[<>"]/.test(v),
-  }
-  const cfgBad = cfgFm === null ? [] : cfgKeys.filter((k) => {
+  // คีย์ครบแต่ค่าใช้ไม่ได้ = ตกไปค่าเริ่มต้นเงียบ ๆ ⇒ ต้องเป็นคนละข้อ ไม่รวบ · กฎคือ `core.isConfigValue` ตัวเดียวกับหน้า
+  const cfgBad = cfgFm === null || !core ? [] : cfgKeys.filter((k) => {
     const v = cfgFm.get(k)
-    return v !== undefined && !CFG_OK[cfgWant.get(k)](v)
+    return v !== undefined && !core.isConfigValue(k, v)
   })
-  check(cfgFm !== null && cfgBad.length === 0,
+  check(cfgFm !== null && cfgKeys.length > 0 && cfgBad.length === 0,
     'ค่าทุกคีย์ใน Wayfinder Config ใช้ได้จริง (ไม่ตกไปค่าเริ่มต้นเงียบ ๆ)',
-    cfgFm === null ? 'อ่าน frontmatter ของโน้ต Config ไม่ได้ — ดูข้อบน'
+    cfgFm === null || cfgKeys.length === 0 ? 'อ่าน frontmatter ของโน้ต Config หรือ core ไม่ได้ — ดูข้อบน'
       : cfgBad.length
-        ? cfgBad.map((k) => `${k}="${cfgFm.get(k)}" ผ่าน cfg${cfgWant.get(k)}() ไม่ได้`).join(' · ')
+        ? cfgBad.map((k) => `${k}="${cfgFm.get(k)}" ใช้ไม่ได้ (ค่าเริ่มต้น ${core.CONFIG_DEFAULTS[k]})`).join(' · ')
         : `ตรวจแล้ว ${cfgKeys.filter((k) => cfgFm.get(k) !== undefined).length} ค่า`)
 
   // `Wayfinder Picks` — section `🎯 หยิบอันไหนต่อ` ที่ย้ายออกจากท้าย Dashboard (ใบ 01)
@@ -856,6 +844,9 @@ console.log(`
   • Dashboard แต่ละ view เรนเดอร์เป็นตาราง ไม่ใช่กล่องแดง "Dataview: <error>"
     (view ว่างขึ้นบรรทัดเอียง "ไม่มี…" · 🩺 สะอาดขึ้น "✅ lint clean" = ปกติ ไม่ใช่พัง)
   • 🔥 Frontier บน Dashboard ตรงกับ \`node _tools/wf.mjs frontier\` · 🩺 ตรงกับ \`wf lint\`
+  • Efforts · Effort Tickets · Picks เรนเดอร์ผ่าน loader · frontier ตรงกับ Dashboard ทุกหน้า
+    (Picks เรียงเหมือน \`wf frontier\` · แก้ \`sort:\` แล้วทั้งสองเปลี่ยนตาม) · blocker ข้าม effort ขึ้นสถานะเดียวกันทุกหน้า
+  • คลิกตัวเลขใบ (\`44/47\`) บน Efforts ⇒ เปิด Effort Tickets พร้อมเลือก effort นั้น
   • แก้ _tools/lib/core.mjs แล้ว Dashboard รอบถัดไปเห็นของใหม่โดยไม่ต้องรีสตาร์ต Obsidian
   • core พัง (ลองใส่ syntax error) ⇒ ทุกบล็อกขึ้น "โหลด core ไม่ได้" ที่บอกชื่อไฟล์ + doctor
   • Graph View ระบายสี node ตาม status จริง`)
