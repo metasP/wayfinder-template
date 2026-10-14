@@ -5,15 +5,18 @@
 import { fileURLToPath } from "node:url"
 import { main } from "./lib/cli.mjs"
 import block from "./lib/verbs/block.mjs"
+import bumpRuns from "./lib/verbs/bump-runs.mjs"
+import chart from "./lib/verbs/chart.mjs"
 import claim from "./lib/verbs/claim.mjs"
 import frontier from "./lib/verbs/frontier.mjs"
 import lint from "./lib/verbs/lint.mjs"
+import mapStatus from "./lib/verbs/map-status.mjs"
 import release from "./lib/verbs/release.mjs"
 import resolve from "./lib/verbs/resolve.mjs"
 import newTicket from "./lib/verbs/new.mjs"
 import wait from "./lib/verbs/wait.mjs"
 
-const VERBS = [frontier, lint, newTicket, claim, release, wait, resolve, block]
+const VERBS = [frontier, lint, chart, mapStatus, newTicket, claim, release, wait, resolve, block, bumpRuns]
 
 const { code, stdout, stderr } = main(process.argv.slice(2), {
   verbs: VERBS,
