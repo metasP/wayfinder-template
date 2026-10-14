@@ -216,6 +216,9 @@ A migration is therefore two commands rather than one: install, then update.
    that is the working surface.
 4. If the hook was just wired: open `/hooks` in Claude Code once, or restart it, so the new
    configuration is loaded.
+5. If Claude Code runs Bash in its sandbox: add the vault path to the sandbox's writable paths,
+   or `wf` cannot write there, and deny the paths inside it that hold code — see step 3 of
+   [Upgrading from 0.4.x](#upgrading-from-04x).
 
 ---
 
@@ -248,11 +251,8 @@ node template/_tools/bootstrap.mjs --vault ~/Documents/Git/wayfinder-vault --yes
 (`wf migrate`) and rewrites parts of `~/.claude/` (below), so you read the plan first. Run
 without `--plan` or `--yes`, an update prints the plan, writes nothing, and exits 2.
 
-> **From 0.4.x, use one of the commands above, not the vault's own `_tools/bootstrap.mjs`.**
-> The vault's copy is the previous installer: it knows nothing of `wf migrate` or the new hooks.
-> `node <vault>/_tools/bootstrap.mjs --from <repo> --yes` is fine from 0.5 on. A vault that
-> predates this repo has no manifest at all — the `npx` command installs instead, questions and
-> all; see [Installing onto a vault you already have](#installing-onto-a-vault-you-already-have).
+> **Coming from 0.4.x?** 0.5.0 is a breaking release: follow
+> [Upgrading from 0.4.x](#upgrading-from-04x) below, in order.
 
 **Update asks nothing.** The five answers from install are recorded in the vault's manifest
 (`.wayfinder-template.json` — which pieces, where the skills went, which vault path was
@@ -261,6 +261,93 @@ could be answered differently by mistake.
 
 Which command you use does not matter — the mode is decided by whether the vault already has a
 manifest, not by which copy of the script you ran.
+
+### Upgrading from 0.4.x
+
+0.5.0 changes the vault itself: notes move to vault schema 2, agents change tracker state with
+`wf` instead of editing frontmatter, and the Dataview pages load one shared core. Every 0.4.x
+vault needs `wf migrate` once; the update runs it for you. Four steps, in this order:
+
+1. **Run the new installer, not the vault's own copy.** `<vault>/_tools/bootstrap.mjs` is the
+   0.4 installer: it knows nothing of `wf migrate` or the new hooks. Use the `npx` command or a
+   freshly pulled clone's `template/_tools/bootstrap.mjs`, as above. From 0.5 on,
+   `node <vault>/_tools/bootstrap.mjs --from <repo> --yes` is fine again. A vault that predates
+   this repo has no manifest at all — the `npx` command installs instead, questions and all; see
+   [Installing onto a vault you already have](#installing-onto-a-vault-you-already-have).
+
+2. **Plan, read the `wf migrate` diff, then apply.** Start from a clean vault (`git status`
+   shows nothing), because the update's commit takes everything in the working tree. A vault
+   somewhere other than `~/Documents/Git/wayfinder-vault` needs `--vault <path>` on both commands.
+
+   ```bash
+   npx https://github.com/metasP/wayfinder-template --plan
+   ```
+
+   The plan's `wf migrate → vault schema 2` part shows every note it would rewrite, line by line,
+   and the `~/.claude/settings.json` and `~/.claude/CLAUDE.md` diffs follow it. When they read
+   right:
+
+   ```bash
+   npx https://github.com/metasP/wayfinder-template --yes
+   ```
+
+   That lands two commits in the vault: `chore(vault): update wayfinder template …`, then
+   `wf(migrate): vault schema 2`. To back out, revert both, newest first — see
+   [Undoing an update you do not like](#undoing-an-update-you-do-not-like).
+
+3. **Let Claude Code's sandbox write to the vault.** `wf` writes notes and commits in the vault,
+   which sits outside your project folders, so a sandboxed Bash command is refused there and
+   `wf` says the vault is probably outside the sandbox's writable paths. Add the vault to those
+   paths yourself in `~/.claude/settings.json`; agents can't, and the installer doesn't. Grant
+   the vault, and deny the parts that code outside the sandbox runs:
+
+   ```json
+   {
+     "sandbox": {
+       "filesystem": {
+         "allowWrite": ["~/Documents/Git/wayfinder-vault"],
+         "denyWrite": [
+           "~/Documents/Git/wayfinder-vault/_tools",
+           "~/Documents/Git/wayfinder-vault/.git/hooks",
+           "~/Documents/Git/wayfinder-vault/.git/config",
+           "~/Documents/Git/wayfinder-vault/.git/modules",
+           "~/Documents/Git/wayfinder-vault/.obsidian",
+           "~/Documents/Git/wayfinder-vault/.claude",
+           "~/Documents/Git/wayfinder-vault/.mcp.json"
+         ]
+       }
+     }
+   }
+   ```
+
+   **Keep the `denyWrite` list.** The hooks run `_tools/` scripts outside the sandbox, and the
+   autocommit hook runs git there, which reads `.git/hooks`, `.git/config` and `.git/modules`;
+   Obsidian runs the plugin code in `.obsidian/`; a Claude Code session started in the vault
+   loads settings, hooks and MCP servers from `.claude/` and `.mcp.json`. Writable, any of
+   them lets a sandboxed command run code outside the sandbox. `denyWrite` wins over
+   `allowWrite`, and `wf` writes none of them. Claude Code protects `.git/hooks` and
+   `.git/config` on its own only in the session's working directory, and the vault usually
+   isn't one.
+
+   One way out stays open: the pages run Dataview JS, so Obsidian runs any `dataviewjs` block in
+   a note when you open that note, and notes are what `wf` writes. Treat a block you didn't put
+   there as you would an unknown script, and look at what agents changed (`git log -p` in the
+   vault) before opening a page they touched.
+
+   Merge the JSON into the `sandbox` key you already have, if any; a vault elsewhere uses its own
+   path in every entry. With the sandbox off, skip this step. Then restart Claude Code, so the
+   new hooks and this setting load.
+
+4. **Run `doctor`.**
+
+   ```bash
+   node ~/Documents/Git/wayfinder-vault/_tools/doctor.mjs
+   ```
+
+   The update ran it once already; run it again after step 3. Every check should pass,
+   `wf lint` included. Then open the vault in Obsidian and walk the list `doctor` prints last —
+   the checks no script can make: every page renders, and the pages and
+   `node _tools/wf.mjs frontier` agree on the frontier.
 
 ### What an update changes outside the template files
 
@@ -330,10 +417,11 @@ place, the installer says so, and stops tracking it. A personal skill named `way
 take precedence over the plugin's `/wayfinder`, so delete it yourself if it is not the one you
 want.
 
-> **Caveat for that one update.** Run through the vault's *own* older `_tools/bootstrap.mjs
-> --from <repo>`, the update uses the previous installer, which deletes the old copy without
-> that check and may leave an empty `wayfinder/` folder behind. For this update, prefer the
-> `npx` one-liner or the repo's own `template/_tools/bootstrap.mjs`.
+> **Caveat for that one update.** The vault's *own* older `_tools/bootstrap.mjs --from <repo>`
+> is the previous installer, which deletes the old copy without that check and may leave an
+> empty `wayfinder/` folder behind — one more reason to update as
+> [Upgrading from 0.4.x](#upgrading-from-04x) says, with the `npx` one-liner or the repo's own
+> `template/_tools/bootstrap.mjs`.
 
 ### What is never touched
 
@@ -360,8 +448,9 @@ state is in history:
 cd ~/Documents/Git/wayfinder-vault && git log --oneline
 ```
 
-Then `git revert <the "chore(vault): update wayfinder template …" commit>`. For a single
-file, `git log -p -- "<file>"` shows what it looked like before.
+Then `git revert <the "chore(vault): update wayfinder template …" commit>`. An update that
+migrated the vault made a second commit right after it, `wf(migrate): vault schema 2`: revert
+that one first. For a single file, `git log -p -- "<file>"` shows what it looked like before.
 
 Files written **outside** the vault get a copy next to themselves the first time they are
 modified, if they already existed: `~/.claude/settings.json.bak`, `~/.claude/CLAUDE.md.bak`,

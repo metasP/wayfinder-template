@@ -194,6 +194,9 @@ node ~/Documents/Git/wayfinder-vault/_tools/doctor.mjs
    ตัวปลั๊กอิน Dataview · ค่าตั้งของมัน · สี Graph View มากับ repo นี้แล้ว **ไม่ต้องโหลดอะไรเพิ่ม**
 3. เปิดโน้ต **Wayfinder Dashboard** กับ **Wayfinder Efforts** ค้างไว้ — นั่นคือหน้างานจริง
 4. ถ้าเพิ่งต่อ hook: เปิด `/hooks` ใน Claude Code หนึ่งครั้ง หรือรีสตาร์ตมัน ให้ config โหลดใหม่
+5. ถ้า Claude Code รัน Bash ใน sandbox: เพิ่ม path ของ vault เข้าไปใน path ที่ sandbox เขียนได้
+   ไม่งั้น `wf` เขียนลง vault ไม่ได้ และห้ามเขียน path ใน vault ที่เก็บโค้ด — ดูขั้นที่ 3 ของ
+   [อัปเกรดจาก 0.4.x](#อัปเกรดจาก-04x)
 
 ---
 
@@ -225,16 +228,93 @@ node template/_tools/bootstrap.mjs --vault ~/Documents/Git/wayfinder-vault --yes
 และแก้บางส่วนของ `~/.claude/` (ดูข้างล่าง) ⇒ อ่านแผนก่อน · รันโดยไม่มีทั้ง `--plan` และ `--yes`
 = พิมพ์แผน ไม่เขียนอะไร แล้วออกด้วย code 2
 
-> **จาก 0.4.x ให้ใช้คำสั่งข้างบน ไม่ใช่ `_tools/bootstrap.mjs` ของ vault เอง** — สำเนาใน vault คือ
-> installer รุ่นก่อน ไม่รู้จัก `wf migrate` หรือ hook ใหม่ · ตั้งแต่ 0.5 ขึ้นไปใช้
-> `node <vault>/_tools/bootstrap.mjs --from <repo> --yes` ได้ · vault ที่เกิดก่อน repo นี้ยังไม่มี manifest
-> เลย — คำสั่ง `npx` จะติดตั้งให้พร้อมถาม 5 ข้อตามปกติ ดู [ติดตั้งลง vault ที่มีอยู่ก่อนแล้ว](#ติดตั้งลง-vault-ที่มีอยู่ก่อนแล้ว)
+> **มาจาก 0.4.x?** 0.5.0 เป็น release ที่ breaking — ทำตาม [อัปเกรดจาก 0.4.x](#อัปเกรดจาก-04x)
+> ข้างล่าง ตามลำดับ
 
 **update ไม่ถามอะไรเลย** — คำตอบ 5 ข้อจากตอน install ถูกจดไว้ใน manifest ของ vault
 (`.wayfinder-template.json`: ติดตั้งชิ้นไหน · สกิลไปลงที่ไหน · เรนเดอร์ path ไหนเข้าไป)
 แล้วเอามาใช้ตามนั้น · update ที่ถามใหม่ = update ที่มีโอกาสถูกตอบผิดจากเดิมโดยไม่ตั้งใจ
 
 รันสำเนาไหนก็ได้ผลเหมือนกัน — **โหมดตัดสินจากว่า vault มี manifest แล้วหรือยัง ไม่ใช่จากว่ารันสำเนาไหนของสคริปต์**
+
+### อัปเกรดจาก 0.4.x
+
+0.5.0 เปลี่ยนตัว vault เอง: โน้ตย้ายไป vault schema 2 · agent เปลี่ยนสถานะ tracker ด้วย `wf` แทนการแก้
+frontmatter · หน้า Dataview โหลด core กลางตัวเดียว · vault 0.4.x ทุกอันต้องผ่าน `wf migrate` หนึ่งครั้ง
+และ update รันให้เอง · มี 4 ขั้น ทำตามลำดับนี้:
+
+1. **รัน installer ตัวใหม่ ไม่ใช่สำเนาใน vault** — `<vault>/_tools/bootstrap.mjs` คือ installer ของ 0.4
+   ไม่รู้จัก `wf migrate` หรือ hook ใหม่ · ใช้คำสั่ง `npx` หรือ `template/_tools/bootstrap.mjs` ของ clone
+   ที่เพิ่ง pull ตามข้างบน · ตั้งแต่ 0.5 ขึ้นไปกลับมาใช้ `node <vault>/_tools/bootstrap.mjs --from <repo> --yes`
+   ได้ · vault ที่เกิดก่อน repo นี้ยังไม่มี manifest เลย — คำสั่ง `npx` จะติดตั้งให้พร้อมถาม 5 ข้อตามปกติ
+   ดู [ติดตั้งลง vault ที่มีอยู่ก่อนแล้ว](#ติดตั้งลง-vault-ที่มีอยู่ก่อนแล้ว)
+
+2. **ดูแผน อ่าน diff ของ `wf migrate` แล้วค่อยลงมือ** — เริ่มจาก vault ที่สะอาด (`git status` ว่าง)
+   เพราะ commit ของ update เก็บทุกอย่างใน working tree ไปด้วย · vault ที่ไม่ได้อยู่
+   `~/Documents/Git/wayfinder-vault` ต้องใส่ `--vault <path>` ทั้งสองคำสั่ง
+
+   ```bash
+   npx https://github.com/metasP/wayfinder-template --plan
+   ```
+
+   ส่วน `wf migrate → vault schema 2` ในแผนแสดงทุกโน้ตที่จะถูกเขียนใหม่ทีละบรรทัด ตามด้วย diff ของ
+   `~/.claude/settings.json` กับ `~/.claude/CLAUDE.md` · อ่านแล้วถูกต้อง:
+
+   ```bash
+   npx https://github.com/metasP/wayfinder-template --yes
+   ```
+
+   จะได้ commit สองอันใน vault: `chore(vault): update wayfinder template …` แล้วตามด้วย
+   `wf(migrate): vault schema 2` · ถ้าจะถอย ให้ revert ทั้งสอง เริ่มจากอันใหม่สุด — ดู
+   [ถ้าอัปเดตแล้วไม่ชอบ จะกู้คืนยังไง](#ถ้าอัปเดตแล้วไม่ชอบ-จะกู้คืนยังไง)
+
+3. **ให้ sandbox ของ Claude Code เขียนลง vault ได้** — `wf` เขียนโน้ตและ commit ใน vault ซึ่งอยู่นอก
+   โฟลเดอร์โปรเจกต์ คำสั่ง Bash ใน sandbox จึงถูกปฏิเสธ และ `wf` จะบอกว่า vault น่าจะอยู่นอก path ที่
+   sandbox เขียนได้ · เพิ่ม vault เข้าไปเองใน `~/.claude/settings.json` (agent ทำแทนไม่ได้ installer ก็ไม่ทำ)
+   ให้สิทธิ์ทั้ง vault แล้วห้ามเขียนส่วนที่โค้ดนอก sandbox เอาไปรัน:
+
+   ```json
+   {
+     "sandbox": {
+       "filesystem": {
+         "allowWrite": ["~/Documents/Git/wayfinder-vault"],
+         "denyWrite": [
+           "~/Documents/Git/wayfinder-vault/_tools",
+           "~/Documents/Git/wayfinder-vault/.git/hooks",
+           "~/Documents/Git/wayfinder-vault/.git/config",
+           "~/Documents/Git/wayfinder-vault/.git/modules",
+           "~/Documents/Git/wayfinder-vault/.obsidian",
+           "~/Documents/Git/wayfinder-vault/.claude",
+           "~/Documents/Git/wayfinder-vault/.mcp.json"
+         ]
+       }
+     }
+   }
+   ```
+
+   **อย่าตัดรายการ `denyWrite` ทิ้ง** — hook รันสคริปต์ใน `_tools/` นอก sandbox และ hook autocommit รัน git
+   นอก sandbox ซึ่งอ่าน `.git/hooks` · `.git/config` · `.git/modules` · Obsidian รันโค้ดปลั๊กอินใน `.obsidian/`
+   · Claude Code ที่เปิดใน vault โหลด settings · hook · MCP server จาก `.claude/` กับ `.mcp.json`
+   · ถ้าเขียนได้ คำสั่งใน sandbox จะใช้ตัวไหนก็ได้รันโค้ด
+   นอก sandbox · `denyWrite` ชนะ `allowWrite` และ `wf` ไม่เขียนสักตัว · Claude Code กัน `.git/hooks` กับ
+   `.git/config` ให้เองเฉพาะใน working directory ของ session ซึ่ง vault มักไม่ใช่
+
+   ยังเหลือทางหลุดหนึ่งทาง: หน้าต่าง ๆ ใช้ Dataview JS ⇒ Obsidian รันบล็อก `dataviewjs` ในโน้ตทุกครั้งที่เปิดโน้ตนั้น
+   และโน้ตคือสิ่งที่ `wf` เขียน · บล็อกที่คุณไม่ได้ใส่เองให้ถือเหมือนสคริปต์ที่ไม่รู้ที่มา และดูว่า agent แก้อะไรไป
+   (`git log -p` ใน vault) ก่อนเปิดหน้าที่มันแตะ
+
+   ถ้ามีคีย์ `sandbox` อยู่แล้วให้รวม JSON เข้าไป · vault ที่อยู่ที่อื่นใช้ path ของมันเองในทุกรายการ
+   · ถ้าไม่ได้เปิด sandbox ข้ามขั้นนี้ได้ · จากนั้นรีสตาร์ต Claude Code ให้ hook ใหม่กับค่านี้โหลด
+
+4. **รัน `doctor`**
+
+   ```bash
+   node ~/Documents/Git/wayfinder-vault/_tools/doctor.mjs
+   ```
+
+   update รันให้ไปแล้วรอบหนึ่ง ให้รันอีกครั้งหลังขั้นที่ 3 · ทุกข้อต้องผ่าน รวม `wf lint` · จากนั้นเปิด vault
+   ใน Obsidian แล้วไล่รายการที่ `doctor` พิมพ์ไว้ท้ายสุด — ข้อที่สคริปต์ตรวจแทนไม่ได้: ทุกหน้าเรนเดอร์ได้
+   และหน้าต่าง ๆ กับ `node _tools/wf.mjs frontier` แสดง frontier ชุดเดียวกัน
 
 ### สิ่งที่ update เปลี่ยนนอกไฟล์ template
 
@@ -290,9 +370,10 @@ npx https://github.com/metasP/wayfinder-template --plan
 มันจะถูกปล่อยไว้ที่เดิม installer บอกไว้บนจอ แล้วเลิกติดตามไฟล์นั้น · สกิลส่วนตัวชื่อ `wayfinder`
 อาจมีลำดับเหนือ `/wayfinder` ของ plugin ⇒ ถ้าไม่ใช่ตัวที่ต้องการ ให้ลบเองด้วยมือ
 
-> **ข้อควรระวังสำหรับ update รอบนี้รอบเดียว** — ถ้ารันผ่าน `_tools/bootstrap.mjs --from <repo>` ของ
-> *vault เอง* ที่เป็นรุ่นเก่า update จะใช้ installer รุ่นก่อน ซึ่งลบสำเนาเก่าโดยไม่เช็คแบบข้างบน
-> และอาจทิ้งโฟลเดอร์ `wayfinder/` ว่างไว้ · รอบนี้ให้ใช้คำสั่ง `npx` หรือ `template/_tools/bootstrap.mjs`
+> **ข้อควรระวังสำหรับ update รอบนี้รอบเดียว** — `_tools/bootstrap.mjs --from <repo>` ของ *vault เอง*
+> คือ installer รุ่นก่อน ซึ่งลบสำเนาเก่าโดยไม่เช็คแบบข้างบน และอาจทิ้งโฟลเดอร์ `wayfinder/` ว่างไว้
+> — อีกเหตุผลที่ต้องอัปเดตตาม [อัปเกรดจาก 0.4.x](#อัปเกรดจาก-04x) ด้วยคำสั่ง `npx` หรือ
+> `template/_tools/bootstrap.mjs` ของ repo
 > ของ repo เอง
 
 ### อะไรที่ไม่ถูกแตะ
@@ -319,7 +400,8 @@ vault เป็น git repo และ installer commit ให้ทุกรอ�
 cd ~/Documents/Git/wayfinder-vault && git log --oneline
 ```
 
-แล้ว `git revert <commit ที่ขึ้นว่า "chore(vault): update wayfinder template …">` ·
+แล้ว `git revert <commit ที่ขึ้นว่า "chore(vault): update wayfinder template …">` · update ที่ migrate vault
+ด้วยจะมี commit ที่สองตามมาทันที คือ `wf(migrate): vault schema 2` — revert อันนั้นก่อน ·
 ถ้าอยากได้คืนแค่ไฟล์เดียว `git log -p -- "<ไฟล์>"` จะให้เห็นว่าก่อนหน้านี้มันหน้าตายังไง
 
 ส่วนไฟล์ที่เขียน **นอก vault** จะถูกก็อบเก็บไว้ข้าง ๆ ตัวเองในครั้งแรกที่ถูกแก้ **ถ้าไฟล์นั้นมีอยู่ก่อน**:
