@@ -195,7 +195,8 @@ node ~/Documents/Git/wayfinder-vault/_tools/doctor.mjs
 3. เปิดโน้ต **Wayfinder Dashboard** กับ **Wayfinder Efforts** ค้างไว้ — นั่นคือหน้างานจริง
 4. ถ้าเพิ่งต่อ hook: เปิด `/hooks` ใน Claude Code หนึ่งครั้ง หรือรีสตาร์ตมัน ให้ config โหลดใหม่
 5. ถ้า Claude Code รัน Bash ใน sandbox: เพิ่ม path ของ vault เข้าไปใน path ที่ sandbox เขียนได้
-   ไม่งั้น `wf` เขียนลง vault ไม่ได้ — ดูขั้นที่ 3 ของ [อัปเกรดจาก 0.4.x](#อัปเกรดจาก-04x)
+   ไม่งั้น `wf` เขียนลง vault ไม่ได้ และห้ามเขียน path ข้างในที่เก็บโค้ด — ดูขั้นที่ 3 ของ
+   [อัปเกรดจาก 0.4.x](#อัปเกรดจาก-04x) · installer พิมพ์ทั้งสองอย่างของ vault คุณไว้ให้แล้ว
 
 ---
 
@@ -269,20 +270,42 @@ frontmatter · หน้า Dataview โหลด core กลางตัวเ�
 
 3. **ให้ sandbox ของ Claude Code เขียนลง vault ได้** — `wf` เขียนโน้ตและ commit ใน vault ซึ่งอยู่นอก
    โฟลเดอร์โปรเจกต์ คำสั่ง Bash ใน sandbox จึงถูกปฏิเสธ และ `wf` จะบอกว่า vault น่าจะอยู่นอก path ที่
-   sandbox เขียนได้ · เพิ่ม vault เข้าไปเองใน `~/.claude/settings.json` (agent ทำแทนไม่ได้ installer ก็ไม่ทำ):
+   sandbox เขียนได้ · เพิ่ม vault เข้าไปเองใน `~/.claude/settings.json` (agent ทำแทนไม่ได้ installer ก็ไม่ทำ)
+   พร้อมรายการ `denyWrite` ครบทุกบรรทัด:
 
    ```json
    {
      "sandbox": {
        "filesystem": {
-         "allowWrite": ["~/Documents/Git/wayfinder-vault"]
+         "allowWrite": ["~/Documents/Git/wayfinder-vault"],
+         "denyWrite": [
+           "~/Documents/Git/wayfinder-vault/_tools",
+           "~/Documents/Git/wayfinder-vault/.git/hooks",
+           "~/Documents/Git/wayfinder-vault/.git/config",
+           "~/Documents/Git/wayfinder-vault/.git/modules",
+           "~/Documents/Git/wayfinder-vault/.obsidian",
+           "~/Documents/Git/wayfinder-vault/.claude",
+           "~/Documents/Git/wayfinder-vault/.mcp.json"
+         ]
        }
      }
    }
    ```
 
+   ส่วน deny ขาดไม่ได้ · hook, git และ Obsidian รันนอก sandbox ด้วยสิทธิ์เต็มของคุณ และโหลดโค้ดจาก path
+   พวกนี้: สคริปต์ hook ใน `_tools/` · hooks กับ config ของ git (hook autocommit รัน `git commit`) ·
+   ปลั๊กอินของ Obsidian · ค่าตั้งของ session Claude Code ที่เปิดใน vault · ให้เขียน vault โดยไม่มี deny
+   = คำสั่งใน sandbox แก้ hook ได้ แล้ว hook นั้นรันนอก sandbox ตอน Write/Edit ครั้งถัดไป · `wf` ไม่เขียน
+   path ไหนในนี้เลย · Claude Code กัน `.git/hooks` กับ `.git/config` ให้เองเฉพาะใน working directory ของ
+   session ซึ่งปกติ vault ไม่ใช่
+
+   ยังเหลือทางหนึ่งที่ปิดไม่ได้: หน้าต่าง ๆ ใช้ Dataview JS ⇒ Obsidian รันบล็อก `dataviewjs` ในโน้ตตอนคุณ
+   เปิดโน้ตนั้น และโน้ตคือสิ่งที่ `wf` เขียน · บล็อกที่คุณไม่ได้ใส่เองให้ถือเป็นสคริปต์แปลกหน้า และดูว่า agent
+   แก้อะไรไป (`git log -p` ใน vault) ก่อนเปิดหน้าที่มันแตะ
+
+   vault ที่อยู่ที่อื่นใช้ path ของมันเองทุกบรรทัด — installer พิมพ์รายการของ vault คุณไว้ท้ายการรัน ·
    ถ้ามีคีย์ `sandbox` อยู่แล้วให้รวมเข้าไป · ถ้าไม่ได้เปิด sandbox ข้ามขั้นนี้ได้ · จากนั้นรีสตาร์ต
-   Claude Code ให้ hook ใหม่กับค่านี้โหลด
+   Claude Code ให้ hook ใหม่กับค่านี้โหลด · `doctor` ไม่ผ่านตราบที่ให้เขียน vault แต่ deny ไม่ครบ
 
 4. **รัน `doctor`**
 

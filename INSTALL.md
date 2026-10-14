@@ -217,7 +217,8 @@ A migration is therefore two commands rather than one: install, then update.
 4. If the hook was just wired: open `/hooks` in Claude Code once, or restart it, so the new
    configuration is loaded.
 5. If Claude Code runs Bash in its sandbox: add the vault path to the sandbox's writable paths,
-   or `wf` cannot write there — see step 3 of [Upgrading from 0.4.x](#upgrading-from-04x).
+   or `wf` cannot write there, and deny the paths inside it that hold code — see step 3 of
+   [Upgrading from 0.4.x](#upgrading-from-04x). The installer prints both for your vault.
 
 ---
 
@@ -297,20 +298,45 @@ vault needs `wf migrate` once; the update runs it for you. Four steps, in this o
 3. **Let Claude Code's sandbox write to the vault.** `wf` writes notes and commits in the vault,
    which sits outside your project folders, so a sandboxed Bash command is refused there and
    `wf` says the vault is probably outside the sandbox's writable paths. Add the vault to those
-   paths yourself in `~/.claude/settings.json`; agents can't, and the installer doesn't:
+   paths yourself in `~/.claude/settings.json`; agents can't, and the installer doesn't. Add the
+   `denyWrite` list with it, every entry:
 
    ```json
    {
      "sandbox": {
        "filesystem": {
-         "allowWrite": ["~/Documents/Git/wayfinder-vault"]
+         "allowWrite": ["~/Documents/Git/wayfinder-vault"],
+         "denyWrite": [
+           "~/Documents/Git/wayfinder-vault/_tools",
+           "~/Documents/Git/wayfinder-vault/.git/hooks",
+           "~/Documents/Git/wayfinder-vault/.git/config",
+           "~/Documents/Git/wayfinder-vault/.git/modules",
+           "~/Documents/Git/wayfinder-vault/.obsidian",
+           "~/Documents/Git/wayfinder-vault/.claude",
+           "~/Documents/Git/wayfinder-vault/.mcp.json"
+         ]
        }
      }
    }
    ```
 
-   Merge it into the `sandbox` key you already have, if any. With the sandbox off, skip this
-   step. Then restart Claude Code, so the new hooks and this setting load.
+   The denies matter. Hooks, git, and Obsidian run outside the sandbox, with your full rights,
+   and they load code from those paths: the hook scripts in `_tools/`, git's hooks and config
+   (the autocommit hook runs `git commit`), Obsidian's plugins, and the settings of a Claude Code
+   session started in the vault. Grant the vault without them, and a sandboxed command can
+   rewrite a hook that then runs unsandboxed at the next Write/Edit. `wf` writes none of them.
+   Claude Code protects `.git/hooks` and `.git/config` on its own only in the session's working
+   directory, and the vault usually isn't one.
+
+   One way out stays open: the pages run Dataview JS, so Obsidian runs any `dataviewjs` block in
+   a note when you open that note, and notes are what `wf` writes. Treat a block you didn't put
+   there as you would an unknown script, and look at what agents changed (`git log -p` in the
+   vault) before opening a page they touched.
+
+   A vault elsewhere uses its own path in every entry; the installer prints the list for yours
+   at the end of its run. Merge it into the `sandbox` key you already have, if any. With the
+   sandbox off, skip this step. Then restart Claude Code, so the new hooks and this setting load.
+   `doctor` fails while the vault is granted without every deny.
 
 4. **Run `doctor`.**
 
