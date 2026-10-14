@@ -1,7 +1,6 @@
 ---
-repo: example-repo
-effort: getting-started
 kind: map
+title: เริ่มใช้ wayfinder
 status: active
 status_since: __TODAY__
 ---
@@ -45,15 +44,15 @@ status_since: __TODAY__
 กับ *"รอเหตุการณ์นอกมือเราอยู่จริง"* ใบปลอมที่แปะสองค่านี้จะสอนให้คุณใช้มันผิด และไปนั่งโป่งอยู่ใน
 view ที่ออกแบบมาให้ **สั้นจนตัวรายการเองเป็นสัญญาณ**
 
+## Tickets
+
+<!-- wf:tickets -->
+- [[01-where-the-vault-lives]] · research · resolved · vault อยู่ที่ไหน และทำไมไม่อยู่ใน repo
+- [[02-chart-your-first-map]] · task · open · ชาร์ต map แรกจากงานจริงของคุณ
+- [[03-remove-this-example]] · task · open · ลบ effort ตัวอย่างนี้ทิ้ง ⛔
+<!-- /wf:tickets -->
+
 ## Decisions so far
 
 - **map เก็บนอก repo ที่ทำงานอยู่** — worktree ตายเมื่อไหร่ map ตายด้วย และ map หนึ่งอันมักกินหลาย repo
   (ใบ 01)
-
-## The Map
-
-| ใบ | ทำอะไร | ติดใคร |
-|---|---|---|
-| [[01-where-the-vault-lives]] | vault อยู่ที่ไหน และทำไมไม่อยู่ใน repo | — |
-| [[02-chart-your-first-map]] | ชาร์ต map แรกจากงานจริงของคุณ | — |
-| [[03-remove-this-example]] | ลบ effort ตัวอย่างนี้ทิ้ง | 02 |

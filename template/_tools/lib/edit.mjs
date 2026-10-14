@@ -12,10 +12,12 @@ const TICKETS_HEADING_RE = /^##\s+Tickets\s*$/
 const NOTES_HEADING_RE = /^##\s+Notes\s*$/
 const SECTION_HEADING_RE = /^#{1,2}\s/
 
-// Lines with their own terminators, so joining them gives the text back unchanged.
-const linesOf = (text) => text.split(/(?<=\n)/)
-const contentOf = (line) => line.replace(/\r?\n$/, "")
-const eolOf = (lines) => (lines.find((l) => l.endsWith("\n"))?.endsWith("\r\n") ? "\r\n" : "\n")
+/** A text's lines with their own terminators, so joining them gives the text back unchanged. */
+export const linesOf = (text) => text.split(/(?<=\n)/)
+/** A line without its terminator. */
+export const contentOf = (line) => line.replace(/\r?\n$/, "")
+/** The line ending the text uses (`\r\n` or `\n`). */
+export const eolOf = (lines) => (lines.find((l) => l.endsWith("\n"))?.endsWith("\r\n") ? "\r\n" : "\n")
 
 /**
  * A string or number as a YAML scalar that `parseNote` reads back as the same value: plain when it
@@ -84,21 +86,24 @@ const blockLines = (rendered) => [BLOCK_OPEN, ...rendered.split("\n"), BLOCK_CLO
 
 const FENCE_RE = /^\s{0,3}(`{3,}|~{3,})/
 
-// Per line, whether it is a Markdown heading: outside fenced code, where `# comment` is just code.
-const headingMask = (lines) => {
+/** Per line, whether it is fenced code (a fence line or inside one), where `# comment` is not a heading. */
+export const codeMask = (lines) => {
   let fence = null
   return lines.map((l) => {
     const open = FENCE_RE.exec(contentOf(l))?.[1]
     if (fence) {
       if (open && open[0] === fence[0] && open.length >= fence.length) fence = null
-      return false
+      return true
     }
-    if (open) {
-      fence = open
-      return false
-    }
-    return SECTION_HEADING_RE.test(contentOf(l))
+    if (open) fence = open
+    return Boolean(open)
   })
+}
+
+// Per line, whether it is a `#`/`##` Markdown heading outside fenced code.
+const headingMask = (lines) => {
+  const isCode = codeMask(lines)
+  return lines.map((l, i) => !isCode[i] && SECTION_HEADING_RE.test(contentOf(l)))
 }
 
 const headingIndex = (lines, isHeading, re, from = 0) =>
@@ -138,6 +143,22 @@ export function withTicketsBlock(text, rendered, path = "the map") {
   const section = ["## Tickets", "", ...blockLines(rendered), ""]
   const needsGap = at > 0 && contentOf(lines[at - 1]).trim() !== ""
   return insertLines(lines, at, needsGap ? ["", ...section] : section, eol)
+}
+
+// A fence that Dataview would run (```dataview, ```dataviewjs) — inside a callout it still renders.
+const LIVE_FENCE_RE = /^(\s*)(`{3,}|~{3,})\s*dataview(?:js)?\s*$/
+
+/**
+ * `content` lines folded in a `> [!quote]- title` callout, blank lines at either end dropped; [] when
+ * nothing is left. A Dataview fence becomes a `text` fence, so the folded query is shown, not run.
+ */
+export function foldedCallout(title, content) {
+  const first = content.findIndex((l) => l.trim() !== "")
+  if (first === -1) return []
+  const last = content.length - 1 - [...content].reverse().findIndex((l) => l.trim() !== "")
+  const inert = (l) => l.replace(LIVE_FENCE_RE, "$1$2text")
+  const quoted = content.slice(first, last + 1).map((l) => (l.trim() === "" ? ">" : `> ${inert(l)}`))
+  return [`> [!quote]- ${title}`, ...quoted]
 }
 
 const headingRe = (heading) => new RegExp(`^##\\s+${heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`)

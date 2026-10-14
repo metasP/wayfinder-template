@@ -1,7 +1,6 @@
 ---
-repo: example-repo
-effort: getting-started
 type: research
+title: vault อยู่ที่ไหน และทำไมไม่อยู่ใน repo
 status: resolved
 status_since: __TODAY__
 blockers: []

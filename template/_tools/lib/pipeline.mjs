@@ -7,7 +7,8 @@
 // A write verb is a read verb's shape plus `writes(args) → boolean`, `plan(ctx, args) → { ref,
 // edits: [{ path, text, create? }], data }` (runs under the lock; throws to refuse) and optionally
 // `prepare(args) → args` (runs before the lock: read stdin, check flags) and `report(outcome, args) →
-// { data, text, exitCode?, message?, warnings? }`. An edit with `create: true` makes a new file and
+// { data, text, exitCode?, message?, warnings? }`. Only a verb with `writesOlderSchema` (migrate)
+// writes a vault older than the supported schema. An edit with `create: true` makes a new file and
 // refuses to overwrite one that appeared meanwhile.
 import { buildIndex, formatRef, isoDate, lint, parseRef, renderTicketsBlock } from "./core.mjs"
 import { withTicketsBlock } from "./edit.mjs"
@@ -67,12 +68,12 @@ const writeAndCommit = (vault, edits, message, creates) => {
 
 // Steps 2–6, under the lock (step 1 and 7 are runWrite's).
 const transact = (verb, args, { vault, checkout, gitDir }) => {
-  checkSchema(vault)
+  checkSchema(vault, { allowOlder: verb.writesOlderSchema === true })
   assertCommittable(vault, gitDir)
   const { notes, config, sort } = readVault(vault)
   const today = isoDate(new Date())
   const before = buildIndex(notes)
-  const ctx = { vault, roots: [vault, checkout], index: before, config, sort, today, textOf: (path) => readText(vault, path) }
+  const ctx = { vault, roots: [vault, checkout], notes, index: before, config, sort, today, textOf: (path) => readText(vault, path) }
   const plan = verb.plan(ctx, args)
   const planned = plan.edits.map(parsedEdit)
   const rendered = buildIndex(notesAfter(notes, planned))
@@ -109,7 +110,7 @@ export function report(outcome, text) {
 export function runWrite(verb, given, { toolsDir }) {
   const args = verb.prepare ? verb.prepare(given) : given
   const { vault, checkout } = locateVault(toolsDir)
-  checkSchema(vault)
+  checkSchema(vault, { allowOlder: verb.writesOlderSchema === true })
   const { gitDir, commonDir } = gitDirs(vault)
   const lock = takeLock(commonDir, vault)
   let outcome
