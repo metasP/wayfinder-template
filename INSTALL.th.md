@@ -269,19 +269,31 @@ frontmatter · หน้า Dataview โหลด core กลางตัวเ�
 
 3. **ให้ sandbox ของ Claude Code เขียนลง vault ได้** — `wf` เขียนโน้ตและ commit ใน vault ซึ่งอยู่นอก
    โฟลเดอร์โปรเจกต์ คำสั่ง Bash ใน sandbox จึงถูกปฏิเสธ และ `wf` จะบอกว่า vault น่าจะอยู่นอก path ที่
-   sandbox เขียนได้ · เพิ่ม vault เข้าไปเองใน `~/.claude/settings.json` (agent ทำแทนไม่ได้ installer ก็ไม่ทำ):
+   sandbox เขียนได้ · เพิ่ม vault เข้าไปเองใน `~/.claude/settings.json` (agent ทำแทนไม่ได้ installer ก็ไม่ทำ)
+   ให้สิทธิ์ทั้ง vault แล้วห้ามเขียนส่วนที่โค้ดนอก sandbox เอาไปรัน:
 
    ```json
    {
      "sandbox": {
        "filesystem": {
-         "allowWrite": ["~/Documents/Git/wayfinder-vault"]
+         "allowWrite": ["~/Documents/Git/wayfinder-vault"],
+         "denyWrite": [
+           "~/Documents/Git/wayfinder-vault/_tools",
+           "~/Documents/Git/wayfinder-vault/.git/hooks",
+           "~/Documents/Git/wayfinder-vault/.git/config",
+           "~/Documents/Git/wayfinder-vault/.git/modules",
+           "~/Documents/Git/wayfinder-vault/.obsidian"
+         ]
        }
      }
    }
    ```
 
-   ถ้ามีคีย์ `sandbox` อยู่แล้วให้รวมเข้าไป · ถ้าไม่ได้เปิด sandbox ข้ามขั้นนี้ได้ · จากนั้นรีสตาร์ต
+   **อย่าตัดรายการ `denyWrite` ทิ้ง** — hook รันสคริปต์ใน `_tools/` นอก sandbox และ hook autocommit รัน git
+   นอก sandbox ซึ่งอ่าน `.git/hooks` · `.git/config` · `.git/modules` · Obsidian รันโค้ดปลั๊กอินใน `.obsidian/`
+   · ถ้าเขียนได้ คำสั่งใน sandbox จะใช้ตัวไหนก็ได้รันโค้ด
+   นอก sandbox · `denyWrite` ชนะ `allowWrite` และ `wf` ไม่เขียนสักตัว · ถ้ามีคีย์ `sandbox` อยู่แล้วให้รวมเข้าไป
+   ถ้า vault อยู่ที่อื่นให้ใช้ path ของคุณ · ถ้าไม่ได้เปิด sandbox ข้ามขั้นนี้ได้ · จากนั้นรีสตาร์ต
    Claude Code ให้ hook ใหม่กับค่านี้โหลด
 
 4. **รัน `doctor`**
