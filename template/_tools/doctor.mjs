@@ -543,10 +543,13 @@ await section('§5 dashboard', async () => {
 // อ่าน vault ไม่ได้ (core/store โหลดไม่ขึ้น หรือ frontmatter นอก YAML subset) = ตรวจไม่ได้ ⇒ ไม่ผ่าน ห้ามเขียว
 // vault schema เก่ากว่าก็ยังลินต์ (เหมือน `wf lint`) เพื่อให้ finding ของฟิลด์ legacy ยังโผล่
 let lintReport = null
+let foldFindings = null
 await section('§6 เนื้อ vault', async () => {
   const label = 'เนื้อ vault ผ่าน wf lint (ไม่มี error)'
   try {
-    const { buildIndex, isoDate, lint } = await import('./lib/core.mjs')
+    const core = await import('./lib/core.mjs')
+    const { buildIndex, isoDate, lint } = core
+    foldFindings = core.foldFindings
     const { readVault } = await import('./lib/store.mjs')
     const { notes, config, sort } = readVault(VAULT)
     const findings = lint(buildIndex(notes), { today: isoDate(new Date()), config, sort })
@@ -873,13 +876,22 @@ function printReport() {
     console.log(`${icon}  ${r.label.padEnd(pad)}  ${r.detail}`.trimEnd())
   }
 
-  // finding ทีละบรรทัดแบบเดียวกับ `wf lint` — ข้อ §6 บอกแค่จำนวน
+  // finding ทีละบรรทัดแบบเดียวกับ `wf lint` — ข้อ §6 บอกแค่จำนวน · warning กฎเดียวที่ท่วม (เช่น unknown-key
+  // หลายร้อยบรรทัด) ยุบเป็นบรรทัดเดียว และ error พิมพ์ท้ายสุดติดบรรทัด "ผ่าน" ⇒ terminal ที่ตัดเหลือแต่ท้าย
+  // ยังเห็น error ครบ · `--json` ยังคืนทุก finding
   if (lintReport?.findings.length) {
     console.log(`\n🩺 wf lint — ${lintReport.errors} error · ${lintReport.warnings} warning`)
-    for (const f of lintReport.findings) {
+    const { warnings, folded, errors } = foldFindings(lintReport.findings)
+    const line = (f) => {
       console.log(`  ${f.severity === 'error' ? '❌' : '⚠️ '}  ${f.rule}  ${f.ref}  ${f.message}`)
       if (f.fix) console.log(`        fix: ${f.fix}`)
     }
+    warnings.forEach(line)
+    for (const g of folded) {
+      const efforts = `${g.efforts} effort${g.efforts === 1 ? '' : 's'}`
+      console.log(`  ⚠️   ${g.rule}  ${g.count} warnings in ${efforts} — all of them: node _tools/wf.mjs lint --rule ${g.rule}`)
+    }
+    errors.forEach(line)
   }
 
   console.log(`\n${hard.length - failed.length}/${hard.length} ผ่าน` +
