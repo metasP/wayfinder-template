@@ -270,14 +270,18 @@ manifest, not by which copy of the script you ran.
 - **`~/.claude/settings.json`** (the `hook` piece): the frontmatter guard on PreToolUse
   `Write|Edit`, the autocommit on PostToolUse `Write|Edit` only, and one permission allow rule,
   `Bash(node <vault>/_tools/wf.mjs:*)`, so agents can run `wf` by absolute path without a prompt.
-  Older autocommit entries for this vault — the `Bash` matcher, `|| true`, duplicates — are
-  removed. Every other key, `env.PATH` included, is left as it is. The previous file is kept as
+  Older autocommit entries for this vault — the `Bash` matcher, `|| true`, duplicates, the path
+  spelled as `~/…` or `$HOME/…` — are removed; an entry on a matcher spelled `Edit|Write` or
+  `^(Edit|Write)$` counts as `Write|Edit` and stays where it is. Every other key, `env.PATH`
+  included, is left as it is. The file is read again right before it is written, so an edit Claude
+  Code made meanwhile is kept. The file as it was before bootstrap first changed it is kept as
   `settings.json.bak`.
 - **`~/.claude/CLAUDE.md`** (the `memory` piece): the block that tells agents to change tracker
   state with `node <vault>/_tools/wf.mjs <verb>` and to write prose with Write/Edit. It sits
   between `<!-- wayfinder-template:begin … -->` and `<!-- wayfinder-template:end -->` and is
   replaced there on every run; the block older versions wrote (same heading, no markers) is
-  found and replaced in place, never duplicated. The previous file is kept as `CLAUDE.md.bak`.
+  found and replaced in place, never duplicated. The file as it was before bootstrap first changed
+  it is kept as `CLAUDE.md.bak`.
 
 The plan shows the diff of both `~/.claude` files line by line: they are outside the vault, so
 git cannot give them back.
@@ -361,7 +365,9 @@ file, `git log -p -- "<file>"` shows what it looked like before.
 
 Files written **outside** the vault get a copy next to themselves the first time they are
 modified, if they already existed: `~/.claude/settings.json.bak`, `~/.claude/CLAUDE.md.bak`,
-and Obsidian's `obsidian.json.bak`. (Nothing existed, nothing to back up — no `.bak`.)
+and Obsidian's `obsidian.json.bak`. A `.bak` already there — from an earlier run, or one you made
+yourself — is never overwritten, so it is the oldest copy, not the latest. (Nothing existed,
+nothing to back up — no `.bak`.)
 
 ---
 

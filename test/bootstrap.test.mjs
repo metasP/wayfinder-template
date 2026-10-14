@@ -387,3 +387,86 @@ describe("bootstrap: the wf block in ~/.claude/CLAUDE.md", () => {
     assert.equal(readFileSync(claudeMd(m), "utf8"), once, "a rerun leaves it as it is")
   })
 })
+
+describe("bootstrap: the .bak next to a ~/.claude file is the one from before the first change", () => {
+  test("a second run that changes both files again leaves both .bak files as they were before the first", () => {
+    const m = oldInstall()
+    const settings0 = readFileSync(settingsFile(m), "utf8")
+    const claudeMd0 = readFileSync(claudeMd(m), "utf8")
+    assert.equal(update(m, "--yes").code, 0)
+    // Something to change again: the allow rule gone, the block gone stale.
+    const wired = settingsOf(m)
+    writeFileSync(settingsFile(m), `${JSON.stringify({ ...wired, permissions: unrelated.permissions }, null, 2)}\n`)
+    writeFileSync(claudeMd(m), readFileSync(claudeMd(m), "utf8").split(m.vault).join("/somewhere/else"))
+    const r = update(m, "--yes")
+    assert.equal(r.code, 0, r.out)
+    assert.ok(settingsOf(m).permissions.allow.includes(`Bash(node ${m.vault}/_tools/wf.mjs:*)`), "the second run did change it")
+    assert.equal(readFileSync(`${settingsFile(m)}.bak`, "utf8"), settings0)
+    assert.equal(readFileSync(`${claudeMd(m)}.bak`, "utf8"), claudeMd0)
+  })
+})
+
+describe("bootstrap: old hooks of this vault, whatever the spelling", () => {
+  test("$HOME/…, ${HOME}/… and ~/… spellings of the vault path are removed like the absolute one", () => {
+    const m = oldInstall()
+    const rel = m.vault.slice(m.home.length + 1)
+    const spelled = (prefix, q = "") => ({ type: "command", command: `${q}${prefix}/${rel}/_tools/autocommit.sh${q} 2>/dev/null || true`, timeout: 15 })
+    writeFileSync(settingsFile(m), `${JSON.stringify({
+      ...unrelated,
+      hooks: {
+        PostToolUse: [
+          { matcher: "Write|Edit", hooks: [spelled("$HOME")] },
+          { matcher: "Bash", hooks: [{ type: "command", command: "/opt/other-plugin/hook.sh" }, spelled("~"), spelled("${HOME}", '"')] },
+        ],
+      },
+    }, null, 2)}\n`)
+    const r = update(m, "--yes")
+    assert.equal(r.code, 0, r.out)
+    assert.deepEqual(settingsOf(m).hooks.PostToolUse, [
+      {
+        matcher: "Write|Edit",
+        hooks: [{ type: "command", command: `${m.vault}/_tools/autocommit.sh`, timeout: 15, statusMessage: "Committing wayfinder-vault..." }],
+      },
+      { matcher: "Bash", hooks: [{ type: "command", command: "/opt/other-plugin/hook.sh" }] },
+    ])
+  })
+})
+
+describe("bootstrap: a matcher spelled differently from Write|Edit", () => {
+  test("our entries on Edit|Write and ^(Edit|Write)$ are kept where they are, and nothing is written", () => {
+    const m = machine()
+    install(m)
+    const wired = settingsOf(m)
+    const respelled = {
+      ...wired,
+      hooks: {
+        PreToolUse: wired.hooks.PreToolUse.map((b) => ({ ...b, matcher: "^(Edit|Write)$" })),
+        PostToolUse: wired.hooks.PostToolUse.map((b) => ({ ...b, matcher: "Edit|Write" })),
+      },
+    }
+    writeFileSync(settingsFile(m), `${JSON.stringify(respelled, null, 2)}\n`)
+    const before = readFileSync(settingsFile(m), "utf8")
+    const r = update(m, "--yes")
+    assert.equal(r.code, 0, r.out)
+    assert.equal(readFileSync(settingsFile(m), "utf8"), before)
+    assert.deepEqual(failedChecks(m), [])
+  })
+
+  test("a missing entry is added to the Edit|Write block that is there, not to a new one", () => {
+    const m = machine()
+    install(m)
+    const wired = settingsOf(m)
+    writeFileSync(settingsFile(m), `${JSON.stringify({
+      ...wired,
+      hooks: { ...wired.hooks, PostToolUse: [{ matcher: "Edit|Write", hooks: [{ type: "command", command: "/opt/other-plugin/fmt.sh" }] }] },
+    }, null, 2)}\n`)
+    assert.equal(update(m, "--yes").code, 0)
+    assert.deepEqual(settingsOf(m).hooks.PostToolUse, [{
+      matcher: "Edit|Write",
+      hooks: [
+        { type: "command", command: "/opt/other-plugin/fmt.sh" },
+        { type: "command", command: `${m.vault}/_tools/autocommit.sh`, timeout: 15, statusMessage: "Committing wayfinder-vault..." },
+      ],
+    }])
+  })
+})

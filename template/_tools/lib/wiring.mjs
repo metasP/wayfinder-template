@@ -45,29 +45,55 @@ const HOOKS = [
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
+// The ways a command can spell `path`: as it is, quoted as one shell word, and — under `home` — through
+// `~`, `$HOME` or `${HOME}`, the way an older install or the owner may have written it.
+const spellings = (path, home) => {
+  const out = [path, shellWord(path)]
+  if (home && path.startsWith(`${home}/`)) {
+    const rel = path.slice(home.length)
+    out.push(`~${rel}`, `$HOME${rel}`, `\${HOME}${rel}`)
+  }
+  return out
+}
+
 // Whether `command` runs one of `scripts` of one of `vaults`: the path as a whole word, bare or quoted,
 // so `/x/vault` does not match `/y/x/vault` or `/x/vault2`.
-const runsScript = (command, vaults, scripts) =>
+const runsScript = (command, vaults, scripts, home) =>
   typeof command === "string" &&
   vaults.some((vault) =>
     scripts.some((script) => {
-      const path = toolPath(vault, script)
-      return new RegExp(`(?:^|[\\s"'])(?:${escapeRe(path)}|${escapeRe(shellWord(path))})(?=$|[\\s"';|&])`).test(command)
+      const alternatives = spellings(toolPath(vault, script), home).map(escapeRe).join("|")
+      return new RegExp(`(?:^|[\\s"'])(?:${alternatives})(?=$|[\\s"';|&])`).test(command)
     }))
 
+// Whether `matcher` names exactly the tools `Write` and `Edit`: `Write|Edit` or `Edit|Write`, bare or as
+// one group anchored at both ends, `^(…)$` / `^(?:…)$` — the spellings that match those two tools and no
+// other however the regex is applied. Anything else (`.*`, `Write|Edit|Bash`, `^Write|Edit$` or an
+// unanchored `(Edit|Write)`, which a search would match in `MultiEdit`) is not, so our entry there is
+// moved to a `Write|Edit` block.
+const WRITE_EDIT = ["Edit", "Write"]
+const ANCHORED_GROUP = /^\^\((?:\?:)?([^()]*)\)\$$/
+export const isWriteEdit = (matcher) => {
+  if (typeof matcher !== "string") return false
+  const bare = matcher.match(ANCHORED_GROUP)?.[1] ?? matcher
+  const tools = bare.split("|").sort()
+  return tools.length === WRITE_EDIT.length && tools.every((tool, i) => tool === WRITE_EDIT[i])
+}
+
 /**
- * One event's blocks with exactly one wired entry of ours, on `Write|Edit`. An entry already there
- * (same command, on a `Write|Edit` block) is kept as it is, timeout and all; otherwise the first entry of
- * ours on a `Write|Edit` block is replaced in place, or the entry is appended. Every other entry of ours
- * is removed — the Bash matcher, a duplicate — and a block left empty by that goes too.
+ * One event's blocks with exactly one wired entry of ours, on `Write|Edit` (any spelling `isWriteEdit`
+ * accepts). An entry already there (same command, on such a block) is kept as it is, timeout and all;
+ * otherwise the first entry of ours on such a block is replaced in place, or the entry is appended to the
+ * first such block. Every other entry of ours is removed — the Bash matcher, a duplicate — and a block
+ * left empty by that goes too.
  * Returns `{ blocks, changes }`; `changes` are `{ event, matcher, action: add|replace|remove, command }`.
  */
-const wireEvent = (blocks, { event, scripts, entry }, vault, vaults) => {
+const wireEvent = (blocks, { event, scripts, entry }, vault, vaults, home) => {
   const wanted = entry(vault)
-  const ours = (h) => runsScript(h?.command, vaults, scripts)
-  const isWanted = (block, h) => block?.matcher === MATCHER && h?.command === wanted.command
+  const ours = (h) => runsScript(h?.command, vaults, scripts, home)
+  const isWanted = (block, h) => isWriteEdit(block?.matcher) && h?.command === wanted.command
   const keptAt = blocks.findIndex((b) => (b?.hooks ?? []).some((h) => isWanted(b, h)))
-  const replaceAt = keptAt === -1 ? blocks.findIndex((b) => b?.matcher === MATCHER && (b.hooks ?? []).some(ours)) : -1
+  const replaceAt = keptAt === -1 ? blocks.findIndex((b) => isWriteEdit(b?.matcher) && (b.hooks ?? []).some(ours)) : -1
   const changes = []
   let placed = keptAt !== -1
   const next = []
@@ -90,10 +116,10 @@ const wireEvent = (blocks, { event, scripts, entry }, vault, vaults) => {
     if (kept.length) next.push({ ...block, hooks: kept })
   }
   if (!placed) {
-    const at = next.findIndex((b) => b?.matcher === MATCHER && Array.isArray(b.hooks))
+    const at = next.findIndex((b) => isWriteEdit(b?.matcher) && Array.isArray(b.hooks))
     if (at === -1) next.push({ matcher: MATCHER, hooks: [wanted] })
     else next[at] = { ...next[at], hooks: [...next[at].hooks, wanted] }
-    changes.push({ event, matcher: MATCHER, action: "add", command: wanted.command })
+    changes.push({ event, matcher: at === -1 ? MATCHER : next[at].matcher, action: "add", command: wanted.command })
   }
   return { blocks: changes.length ? next : blocks, changes }
 }
@@ -130,17 +156,18 @@ export function settingsShapeError(settings) {
  * `settings` (parsed `~/.claude/settings.json`, or null) wired for the vault at `vault`. Call
  * `settingsShapeError` first: a part with another shape is replaced, not merged. `vaults` are every
  * path the vault has been wired under before (its path as given, an older recorded path) — entries that
- * run their scripts are ours too. Returns `{ settings, changes }`; `settings` is the input itself when
+ * run their scripts are ours too, spelled as the path or, under `home`, through `~`, `$HOME` or
+ * `${HOME}`. Returns `{ settings, changes }`; `settings` is the input itself when
  * `changes` is empty. Changes: hook changes as `wireEvent` gives them, and `{ action: "allow", rule }`.
  */
-export function wireSettings(settings, { vault, vaults = [] }) {
+export function wireSettings(settings, { vault, vaults = [], home = null }) {
   const base = settings && typeof settings === "object" && !Array.isArray(settings) ? settings : {}
   const known = [...new Set([vault, ...vaults.filter(Boolean)])]
   const changes = []
   let hooks = base.hooks && typeof base.hooks === "object" ? base.hooks : {}
   for (const spec of HOOKS) {
     const current = Array.isArray(hooks[spec.event]) ? hooks[spec.event] : []
-    const wired = wireEvent(current, spec, vault, known)
+    const wired = wireEvent(current, spec, vault, known, home)
     if (wired.changes.length) {
       hooks = { ...hooks, [spec.event]: wired.blocks }
       changes.push(...wired.changes)
