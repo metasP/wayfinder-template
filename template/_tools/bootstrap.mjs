@@ -30,7 +30,7 @@
 //
 // `--wire-hook` / `--wire-memory` ยัง opt-in เหมือนเดิม (ใช้กับ vault ที่ติดตั้งอยู่แล้ว)
 // — ในโหมด install ทั้งสองชิ้นมาจากคำตอบข้อ 2 (`hook` / `memory`) แทน
-// `--help` / `-h` พิมพ์บล็อกนี้แล้วออก · flag ที่ไม่อยู่ในรายชื่อ (ดู § args) = error ก่อนแตะอะไร
+// `--help` / `-h` พิมพ์บล็อกนี้แล้วออก · flag ที่ไม่อยู่ในรายชื่อ (ดู lib/bootstrap/args.mjs) = error ก่อนแตะอะไร
 
 // ตัวที่ **เขียน** เข้ามาด้วยชื่อ `fs*` แล้วถูกห่อใหม่ที่เดียวข้างล่าง (จุดเดียวที่ `--plan` ปิดได้)
 // ตัวที่อ่านอย่างเดียวเข้ามาตรง ๆ — แยกสองกลุ่มตั้งแต่บรรทัด import เพื่อให้ "จุดที่เขียนได้" นับด้วยตาเปล่าได้
@@ -45,9 +45,15 @@ import { createHash } from 'node:crypto'
 import { join, dirname, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { homedir } from 'node:os'
-import { createInterface } from 'node:readline/promises'
-import { settingsShapeError, wfCommand, wireSettings, withWfBlock } from './lib/wiring.mjs'
-import { unifiedDiff } from './lib/diff.mjs'
+import { settingsShapeError, wireSettings, withWfBlock } from './lib/wiring.mjs'
+import { parseArgs, usage } from './lib/bootstrap/args.mjs'
+import { ask, questions } from './lib/bootstrap/questions.mjs'
+import { readClaudeFiles, wireClaudeFiles } from './lib/bootstrap/claude.mjs'
+import { wireObsidian } from './lib/bootstrap/obsidian.mjs'
+import { finishPlan, fingerprint } from './lib/bootstrap/plan-check.mjs'
+import { pruneDropped } from './lib/bootstrap/prune.mjs'
+import { findRepo, isRepoRoot } from './lib/bootstrap/find-repo.mjs'
+import { die, log } from './lib/bootstrap/say.mjs'
 
 const run = promisify(execFile)
 const HOME = homedir()
@@ -81,7 +87,6 @@ const isSeed = (rel) => {
 const SKIP_NAMES = new Set(['.DS_Store', '.git', 'workspace.json', 'workspace-mobile.json'])
 
 // ── helper ──────────────────────────────────────────────────────────────────
-const log = (s = '') => console.log(s)
 const exists = (p) => stat(p).then(() => true, () => false)
 const sha = (buf) => createHash('sha256').update(buf).digest('hex')
 const expand = (p) => (p.startsWith('~/') ? join(HOME, p.slice(2)) : p)
@@ -98,44 +103,10 @@ const walk = async (root, base = root, acc = []) => {
   return acc
 }
 
-const die = (msg, code = 1) => { console.error(`❌ ${msg}`); process.exit(code) }
-
-// ── args ────────────────────────────────────────────────────────────────────
-// รายชื่อ flag ที่รู้จัก **ปิดตาย** — เมื่อก่อน parser รับทุก `--x` แล้วข้ามทุกอย่างที่ไม่ขึ้นต้นด้วย `--`
-// ⇒ `--help` · `-h` · flag พิมพ์ผิด (`--pln`) ถูกเงียบ แล้วรันจริงเต็มรอบ: บน vault ที่มี manifest
-// คือ update ทับทุกไฟล์ + commit ลง `main` (เกิดจริงแล้วกับ `--help`) · ตรวจตรงนี้ **ก่อนแตะอะไรทั้งนั้น**
-// boolean ไม่กินคำถัดไปเด็ดขาด — ไม่งั้น `--yes ~/vault` กลืน path ทิ้งเงียบ ๆ แทนที่จะฟ้อง
-const BOOL_FLAGS = new Set(['plan', 'yes', 'wire-hook', 'wire-memory'])
-const VALUE_FLAGS = new Set(['from', 'vault', 'parts', 'on-conflict', 'skills-dir', 'allow-brew'])
-
-const usage = async () => {
-  const src = (await readFile(fileURLToPath(import.meta.url), 'utf8')).split('\n')
-  const from = src.findIndex((l) => l.startsWith('// ใช้:'))
-  const to = src.findIndex((l, i) => i > from && !l.startsWith('//'))
-  return src.slice(from, to).map((l) => l.replace(/^\/\/ ?/, '')).join('\n').trimEnd()
-}
-
+// ── args ──── รายชื่อ flag ปิดตาย ตรวจ **ก่อนแตะอะไรทั้งนั้น** (เหตุผลอยู่ใน lib/bootstrap/args.mjs) ──
 const argv = process.argv.slice(2)
-if (argv.includes('--help') || argv.includes('-h')) { console.log(await usage()); process.exit(0) }
-
-const flags = new Map()
-const bare = new Set()
-for (let i = 0; i < argv.length; i++) {
-  const a = argv[i]
-  if (!a.startsWith('--')) die(`ไม่รู้จัก argument "${a}" — ทุกตัวต้องเป็น --flag (ดู --help)`, 2)
-  const eq = a.indexOf('=')
-  const name = a.slice(2, eq === -1 ? undefined : eq)
-  if (BOOL_FLAGS.has(name)) {
-    if (eq !== -1) die(`--${name} ไม่รับค่า (เจอ "${a}")`, 2)
-    bare.add(name)
-  } else if (VALUE_FLAGS.has(name)) {
-    const value = eq !== -1 ? a.slice(eq + 1) : argv[++i]
-    if (value === undefined || value === '' || (eq === -1 && value.startsWith('-'))) die(`--${name} ต้องมีค่าตามมา`, 2)
-    flags.set(name, value)
-  } else die(`ไม่รู้จัก flag "--${name}" — ดู --help`, 2)
-}
-const opt = (k) => flags.get(k)
-const has = (k) => bare.has(k) || flags.has(k)
+if (argv.includes('--help') || argv.includes('-h')) { console.log(await usage(fileURLToPath(import.meta.url))); process.exit(0) }
+const { opt, has } = parseArgs(argv)
 
 // ── `--plan` = dry run · **จุดเดียวที่ตัดสินว่าเขียนได้ไหม** ────────────────────────────────
 // เมื่อก่อนธงนี้ถูกอ่านที่สาขา `else if (has('plan'))` ซึ่งอยู่ **หลัง** `if (MODE === 'update')`
@@ -155,27 +126,7 @@ const has = (k) => bare.has(k) || flags.has(k)
 // ก่อนหน้านี้ไม่มีอะไรเขียนเลย (ขั้น 1a/1b อ่านอย่างเดียว)
 
 // ── ขั้นที่ 1 — ตรวจ (ยังไม่เขียนอะไร) ──────────────────────────────────────
-// 1a. หา template repo: `<repo>/{template,skills,LICENSE}` คือลายเซ็นของราก repo
-//     ใช้ของที่ repo มีอยู่แล้วเป็นตัวชี้ ไม่ต้องมีไฟล์ marker เพิ่ม
-const isRepoRoot = async (d) =>
-  (await exists(join(d, 'template'))) && (await exists(join(d, 'skills'))) && (await exists(join(d, 'LICENSE')))
-
-const findRepo = async () => {
-  if (has('from')) {
-    const d = resolve(expand(opt('from')))
-    if (await isRepoRoot(d)) return d
-    if (await isRepoRoot(dirname(d))) return dirname(d) // ชี้มาที่ `template/` ก็รับ
-    die(`--from ${d} ไม่ใช่ราก template repo (ต้องมี template/ · skills/ · LICENSE)`)
-  }
-  let d = dirname(SELF_DIR)                    // `<x>/_tools/..` = `<x>`
-  for (let i = 0; i < 4; i++) {
-    if (await isRepoRoot(d)) return d
-    const up = dirname(d)
-    if (up === d) break
-    d = up
-  }
-  return null
-}
+// 1a. หา template repo (lib/bootstrap/find-repo.mjs)
 
 // 1b. หา vault ปลายทาง
 const selfVault = dirname(SELF_DIR)
@@ -205,7 +156,7 @@ const runWrite = PLAN ? async () => ({ stdout: '', stderr: '' }) : run
 const MARK = PLAN ? '📋' : '✅'
 const WILL = PLAN ? 'จะ' : ''
 
-let REPO = await findRepo()
+let REPO = await findRepo({ from: has('from') ? resolve(expand(opt('from'))) : null, selfDir: SELF_DIR })
 if (!REPO && oldManifest?.source_repo && await isRepoRoot(oldManifest.source_repo)) REPO = oldManifest.source_repo
 if (!REPO) {
   die(`หา template repo ไม่เจอ — สคริปต์นี้ต้องรันจาก <repo>/template/_tools/bootstrap.mjs
@@ -253,7 +204,7 @@ const env = {
 const VAULT_REAL = await realpath(VAULT).catch(() => VAULT)
 const pastVaults = [VAULT, oldManifest?.vault, oldManifest?.vault_as_given]
 // settings.json ที่รูปไม่ตรงกับที่ Claude Code อ่าน = รายงานว่าแก้ไม่ได้ (ขั้น 3b หยุดให้) ไม่ใช่ crash ตั้งแต่รายงาน
-const hookChanges = settingsShapeError(env.settings) ? null : wireSettings(env.settings, { vault: VAULT_REAL, vaults: pastVaults }).changes
+const hookChanges = settingsShapeError(env.settings) ? null : wireSettings(env.settings, { vault: VAULT_REAL, vaults: pastVaults, home: HOME }).changes
 const memoryStatus = withWfBlock(env.claudeMd, VAULT_REAL).status
 
 // ── ขั้นที่ 2 — รายงานก่อนแตะอะไร ───────────────────────────────────────────
@@ -274,59 +225,10 @@ const report = () => {
   if (!env.darwin) log(`  ⚠️  ไม่ใช่ macOS — ข้อ Obsidian/brew ใช้ไม่ได้`)
 }
 
-// ── ขั้นที่ 3 — คำถาม 5 ข้อ ─────────────────────────────────────────────────
-// สคริปต์ **ไม่เดาคำตอบให้** — ในโหมด install ถ้าไม่มีคำตอบมาทาง flag และ stdin ไม่ใช่ TTY
-// (= agent เป็นคนรัน) มันจะพิมพ์คำถามแล้วออกด้วย code 2 ให้ agent เอาไปถามเจ้าของเครื่องทีละข้อ
-// ตามโปรโตคอลขั้นที่ 3 ของ setup — ไม่ใช่ตอบแทนเขาเงียบ ๆ
-const QUESTIONS = `
-── ขั้นที่ 3: ถาม 5 ข้อ (ถามทีละข้อ รอคำตอบ) ────────────────────────────────
-
-  1. vault จะวางที่ path ไหน?                    --vault <path>
-     ค่าเริ่มต้น ${DEFAULT_VAULT}
-
-  2. จะติดตั้งชิ้นไหนบ้าง? (เลือกได้หลายข้อ · ค่าเริ่มต้น = ทุกข้อ)   --parts a,b,c
-     skills   สกิล /wayfinder-next                     (นอก vault · /wayfinder มาจากปลั๊กอิน)
-     vault    เนื้อ vault + _tools + git               (ใน vault)
-     hook     guard + autocommit + allow rule ของ wf  (~/.claude/settings.json)
-     obsidian ค่าตั้ง .obsidian + Dataview + ลงทะเบียน vault
-     memory   ย่อหน้ากติกา + วิธีเรียก wf ใน ~/.claude/CLAUDE.md
-
-     ⚠️ ต้องบอกตรง ๆ ตอนถามข้อ memory แล้วเคารพคำตอบ ไม่ตื๊อ:
-        ย่อหน้าใน CLAUDE.md เป็นที่ **เดียว** ที่บอก /wayfinder ว่า vault อยู่ไหน
-        ไม่เติม = เรียก /wayfinder แล้วมันจะไปทำตาม docs/agents/issue-tracker.md
-        ของ repo ที่เปิดอยู่แทน ⇒ map ไม่ลงใน vault ต้องพิมพ์ path บอกเองทุกครั้ง
-
-  3. เจอของเดิมอยู่แล้วเอายังไง?                  --on-conflict skip|backup
-     ค่าเริ่มต้น skip (ข้าม ไม่ทับ) · อีกทาง backup (สำรอง .bak แล้วทับ)
-     คำตอบนี้คุมเฉพาะ **เอกสารกับค่าตั้ง** — \`_tools/\` กับสกิลทับเสมอไม่ว่าตอบอะไร
-     (ค้างรุ่นเก่าเมื่อไหร่ update รอบหน้าไม่ทำงาน แล้วไม่มีอะไรเตือน)
-
-  4. อนุญาต \`brew install --cask obsidian\` ไหม?  --allow-brew yes|no
-     **ไม่มีค่าเริ่มต้น ต้องตอบเอง** (ถามเฉพาะตอนเลือก obsidian และยังไม่มีแอป)
-     Dataview ไม่ต้องถาม — ship มากับ repo แล้ว
-
-  5. สกิลจะวางที่ไหน?                             --skills-dir <path>
-     ค่าเริ่มต้น ${DEFAULT_SKILLS}
-     ถ้า <dir>/<ชื่อสกิล> เป็น symlink อยู่แล้ว จะเดินตามไปทับที่ปลายทาง ไม่ทำลาย layout เดิม
-
-  ตอบครบแล้วรันด้วย flag ข้างบน · หรือ --yes ถ้าเอาค่าเริ่มต้นทุกข้อ
-`
-
-const ask = async () => {
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
-  const q = async (text, def) => {
-    const a = (await rl.question(`${text}${def ? ` [${def}]` : ''} `)).trim()
-    return a || def
-  }
-  const a = {}
-  a.vault = resolve(expand(await q('1. vault path?', DEFAULT_VAULT)))
-  a.parts = (await q(`2. ติดตั้งชิ้นไหน? (${ALL_PARTS.join(',')})`, 'all'))
-  a.onConflict = await q('3. เจอของเดิม? (skip/backup)', 'skip')
-  a.skillsDir = resolve(expand(await q('5. สกิลวางที่ไหน?', DEFAULT_SKILLS)))
-  a.allowBrew = 'no'
-  rl.close()
-  return a
-}
+// ── ขั้นที่ 3 — คำถาม 5 ข้อ (ข้อความกับตัวถามอยู่ใน lib/bootstrap/questions.mjs) ───────────────
+// สคริปต์ **ไม่เดาคำตอบให้** — install ที่ไม่มีคำตอบมาทาง flag และ stdin ไม่ใช่ TTY (= agent รัน)
+// พิมพ์คำถามแล้วออก code 2 ให้ agent ถามเจ้าของเครื่องทีละข้อ
+const QUESTIONS = questions({ defaultVault: DEFAULT_VAULT, defaultSkills: DEFAULT_SKILLS })
 
 let answers
 if (MODE === 'update') {
@@ -355,7 +257,8 @@ if (MODE === 'update') {
   // ⇒ `--plan --parts …` บนเครื่องเปล่ากลายเป็น dry run ของ install เต็มรูปแบบ ไม่ใช่คำถามซ้ำ
   report(); log(QUESTIONS); process.exit(0)
 } else if (process.stdin.isTTY) {
-  report(); log(QUESTIONS); answers = await ask()
+  report(); log(QUESTIONS)
+  answers = await ask({ defaultVault: DEFAULT_VAULT, defaultSkills: DEFAULT_SKILLS, allParts: ALL_PARTS, toPath: (p) => resolve(expand(p)) })
 } else {
   report(); log(QUESTIONS)
   console.error(`❌ ยังไม่มีคำตอบ 5 ข้อ — ถามเจ้าของเครื่องทีละข้อก่อน แล้วรันใหม่พร้อม --parts …
@@ -369,29 +272,13 @@ const parts = new Set(
   : answers.parts.split(',').map((s) => s.trim()).filter(Boolean)
 )
 for (const p of parts) if (!ALL_PARTS.includes(p)) die(`ไม่รู้จักชิ้น "${p}" — เลือกจาก ${ALL_PARTS.join(', ')}`)
-// ── ขั้นที่ 3b — อ่านไฟล์ของเครื่องที่จะเขียน **ก่อนเขียนอะไรทั้งนั้น** ─────────────────────────────
-// settings.json ที่ parse ไม่ได้ หรือ CLAUDE.md ที่อ่านไม่ได้ (ไม่ใช่ "ไม่มีไฟล์") = หยุดตรงนี้
-// ไม่งั้นขั้น 4f/4g จะเขียนทับด้วยของที่สร้างจากไฟล์ว่าง ⇒ ค่าตั้งทั้งหมดของเขาหายเงียบ ๆ
-// (ขั้น 1c อ่านแบบหลวม ๆ เพื่อรายงานเท่านั้น)
+// ── ขั้นที่ 3b — อ่านไฟล์ของ Claude Code ที่จะเขียน **ก่อนเขียนอะไรทั้งนั้น** (lib/bootstrap/claude.mjs) ──
+// อ่านไม่ออก = หยุดตรงนี้ · ขั้น 4f/4g อ่านซ้ำอีกรอบก่อนเขียน (ระหว่างนั้น Claude Code เขียนไฟล์ได้)
 const SETTINGS = join(CLAUDE, 'settings.json')
 const CLAUDE_MD = join(CLAUDE, 'CLAUDE.md')
 const WIRE_HOOK = parts.has('hook') || has('wire-hook')
 const WIRE_MEMORY = parts.has('memory') || has('wire-memory')
-const readOwn = (p) => readFile(p, 'utf8').catch((e) => (e.code === 'ENOENT' ? null : die(`อ่าน ${p} ไม่ได้ (${e.message}) — ยังไม่มีอะไรถูกเขียน`)))
-const globalNow = { settings: { text: null, value: null }, claudeMd: '' }
-if (WIRE_HOOK) {
-  const text = await readOwn(SETTINGS)
-  let value = null
-  try { value = text === null ? null : JSON.parse(text) } catch (e) {
-    die(`${SETTINGS} ไม่ใช่ JSON (${e.message}) — แก้ให้ถูกก่อน installer ไม่เขียนทับไฟล์ที่อ่านไม่ออก · ยังไม่มีอะไรถูกเขียน`)
-  }
-  // ส่วนที่ installer เขียนต้องมีรูปที่ Claude Code อ่านอยู่แล้ว — รูปอื่น (เช่น `hooks.PostToolUse` เป็น object)
-  // ถ้าปล่อยให้ wireSettings เขียน = ค่าเดิมของเขาถูกแทนทั้งก้อนเงียบ ๆ
-  const shape = settingsShapeError(value)
-  if (shape) die(`${SETTINGS}: ${shape} — แก้ให้ถูกก่อน installer ไม่เขียนทับส่วนที่อ่านไม่ออก · ยังไม่มีอะไรถูกเขียน`)
-  globalNow.settings = { text, value }
-}
-if (WIRE_MEMORY) globalNow.claudeMd = (await readOwn(CLAUDE_MD)) ?? ''
+const claudeSeen = await readClaudeFiles({ settingsPath: SETTINGS, claudeMdPath: CLAUDE_MD, wireHook: WIRE_HOOK, wireMemory: WIRE_MEMORY })
 
 
 // path ของ vault ต้องเป็น path ที่ **resolve symlink แล้ว** ก่อนเอาไปเรนเดอร์ที่ไหนก็ตาม
@@ -450,21 +337,21 @@ const skillDest = (rel) => {
   const base = oldManifest?.skills_targets?.[name] ?? join(answers.skillsDir, name)
   return join(base, rel.slice(name.length + 1))
 }
-const fingerprint = async () => {
-  const out = new Map()
-  const at = async (key, abs) => out.set(key, await readFile(abs).then(sha, () => 'ø'))
+// ไฟล์นอก vault นับ `.bak` ของมันด้วย — ตัวเขียนเอื้อมถึงทั้งคู่
+const OUTSIDE = [['~/.claude/settings.json', join(CLAUDE, 'settings.json')], ['~/.claude/CLAUDE.md', join(CLAUDE, 'CLAUDE.md')],
+  ['obsidian.json', join(HOME, 'Library/Application Support/obsidian/obsidian.json')]]
+const watched = () => {
   const vaultRels = new Set([MANIFEST, ...templateFiles, ...migration.files,
     ...Object.keys(oldManifest?.files ?? {}), ...Object.keys(oldManifest?.seeded_once ?? {})])
-  for (const rel of [...vaultRels].sort()) await at(`vault/${rel}`, join(TARGET, rel))
-  for (const rel of [...new Set([...skillFiles, ...Object.keys(oldManifest?.skills ?? {})])].sort())
-    await at(`skills/${rel}`, skillDest(rel))
-  await at('~/.claude/settings.json', join(CLAUDE, 'settings.json'))
-  await at('~/.claude/CLAUDE.md', join(CLAUDE, 'CLAUDE.md'))
-  await at('obsidian.json', join(HOME, 'Library/Application Support/obsidian/obsidian.json'))
-  out.set('git HEAD ของ vault', await run('git', ['-C', TARGET, 'rev-parse', 'HEAD']).then((r) => r.stdout.trim(), () => 'ø'))
-  return out
+  const skillRels = new Set([...skillFiles, ...Object.keys(oldManifest?.skills ?? {})])
+  return [
+    ...[...vaultRels].sort().map((rel) => [`vault/${rel}`, join(TARGET, rel)]),
+    ...[...skillRels].sort().map((rel) => [`skills/${rel}`, skillDest(rel)]),
+    ...OUTSIDE.flatMap(([key, abs]) => [[key, abs], [`${key}.bak`, `${abs}.bak`]]),
+  ]
 }
-const before = PLAN ? await fingerprint() : null
+const fingerprintNow = () => fingerprint(watched(), { vault: TARGET, run })
+const before = PLAN ? await fingerprintNow() : null
 
 log(`
 ── ${PLAN ? 'แผน — dry run ไม่เขียนอะไรเลยสักไบต์' : 'ลงมือ'} ────────────────────────────────────`)
@@ -664,39 +551,12 @@ if (stats.replaced.length)
      ${stats.replaced.join(' · ')}
      ของใน vault กู้ได้ที่ git log -p -- <ไฟล์> · สกิลอยู่นอก git ⇒ ใช้ --on-conflict backup ถ้าต้องเก็บ`)
 
-// ── 4d. ลบไฟล์ที่ template เลิกใช้แล้ว ───────────────────────────────────────
-// ขับด้วย **manifest เก่าเท่านั้น** — ของที่ไม่เคยอยู่ใน manifest (harness-kit, effort ของผู้ใช้)
-// ไม่มีทางเข้ามาถึงลูปนี้ได้เลย และ seed-once ก็ไม่เข้าเพราะอยู่คนละคีย์
+// ── 4d. ลบไฟล์ที่ template เลิกใช้แล้ว — ขับด้วย manifest เก่าเท่านั้น (lib/bootstrap/prune.mjs) ──────────
 const dropped = []
 if (MODE === 'update') {
-  const guard = (rel) => !isSeed(rel) && rel in (oldManifest.files ?? {})
-  for (const rel of Object.keys(oldManifest.files ?? {})) {
-    if (rel in files || !guard(rel)) continue
-    const p = join(TARGET, rel)
-    if (!(await exists(p))) continue
-    await rm(p)
-    dropped.push(rel)
-    for (let d = dirname(p); d !== TARGET; d = dirname(d))
-      if (!(await rmdir(d).then(() => true, () => false))) break
-  }
-  // สกิลอยู่นอก git ⇒ ลบเฉพาะไฟล์ที่ยังเป็นไบต์เดียวกับที่ installer วางไว้ (sha ตรง manifest)
-  // ตัวอย่างจริง: `skills/wayfinder` เลิก ship แล้วให้ลงจากปลั๊กอิน `mattpocock-skills` แทน — ถ้าเขา
-  // ลงสกิลนั้นทางอื่นมาทับที่เดิมไว้ (`npx skills add` = symlink ที่ชื่อเดียวกัน) ห้ามลบของเขาทิ้ง
-  const keptSkills = []
-  for (const rel of Object.keys(oldManifest.skills ?? {})) {
-    if (rel in skills) continue
-    const name = rel.split('/')[0]
-    const base = skillTargets[name]
-    if (!base) continue
-    const p = join(base, rel.slice(name.length + 1))
-    const now = await readFile(p).then(sha, () => null)
-    if (now === null) continue
-    if (now !== oldManifest.skills[rel]) { keptSkills.push(p); continue }
-    await rm(p)
-    dropped.push(`skills/${rel}`)
-    for (let d = dirname(p); d !== dirname(base); d = dirname(d))
-      if (!(await rmdir(d).then(() => true, () => false))) break
-  }
+  const pruned = await pruneDropped({ oldManifest, files, skills, skillTargets, vault: TARGET, isSeed, io: { rm, rmdir } })
+  dropped.push(...pruned.dropped)
+  const { keptSkills } = pruned
   if (dropped.length) log(`  🗑  ${WILL}ลบไฟล์ที่ template เลิกใช้ ${dropped.length} ตัว: ${dropped.join(' · ')}`)
   if (keptSkills.length)
     log(`  ↪️  ไม่ลบสกิลที่ template เลิก ship แต่เนื้อไม่ตรงกับที่เคยวาง (คุณแก้หรือลงทับเอง) ${keptSkills.length} ตัว
@@ -715,6 +575,9 @@ if (MODE === 'update') {
 
 // ของที่ขั้น 4e–4h จะเปลี่ยน (นอกไฟล์ template) — สรุปแผนใช้ตอบ "รันซ้ำแล้วไม่มีอะไรเปลี่ยน" ได้ตรง
 const otherChanges = []
+// ข้อที่ล้ม — ขั้น 4f/4g นับด้วย (ไฟล์ที่ถูกแก้ระหว่างรอบจนอ่านไม่ออก) · ขั้นที่ 5 ตรวจเพิ่มแล้วสรุปที่ท้ายไฟล์
+let bad = 0
+const verify = (ok, label, detail = '') => { if (!ok) bad++; log(`  ${ok ? '✅' : '❌'} ${label}${detail ? `  ${detail}` : ''}`) }
 
 // ── 4e. git ─────────────────────────────────────────────────────────────────
 if (parts.has('vault')) {
@@ -726,93 +589,21 @@ if (parts.has('vault')) {
   }
 }
 
-// ── 4f. hook + allow rule ของ wf ใน ~/.claude/settings.json (Q15 · Q7 · Q21) ────────────────────
-// ต่อ frontmatter guard (PreToolUse `Write|Edit`) กับ autocommit ใหม่ (PostToolUse `Write|Edit` **เท่านั้น**
-// ไม่มี `|| true`) · ถอด autocommit รุ่นเก่าทุกเส้นของ vault นี้ รวม matcher `Bash` ที่ spec ตัดทิ้ง
-// (`wf` commit งานของตัวเอง) · เติม allow rule ของ `node <wf>` ตรงตัว — **ไม่แตะ `PATH`** (Q21)
-// กฎว่าเส้นไหน "ของเรา" อยู่ใน lib/wiring.mjs ที่เดียว (ขั้นที่ 2 ใช้ตัวเดียวกันรายงาน) · key อื่นทุกตัว
-// อยู่ตามเดิม · เขียนเฉพาะเมื่อมีอะไรเปลี่ยน ⇒ รันซ้ำแล้วไม่มีไบต์ไหนขยับ
-// diff เต็มของไฟล์นอก vault โชว์ในแผนทุกบรรทัด — git ของ vault กู้ไฟล์พวกนี้ให้ไม่ได้ มีแค่ `.bak`
-const showDiff = (label, before, after) => log(`\n${unifiedDiff(label, before, after).trimEnd()}\n`)
-const hookLine = (c) =>
-  c.action === 'allow' ? `+ permissions.allow  ${c.rule}`
-  : c.action === 'add' ? `+ ${c.event} "${c.matcher}"  ${c.command}`
-  : c.action === 'replace' ? `↻ ${c.event} "${c.matcher}"  ${c.from}  →  ${c.command}`
-  : `− ${c.event} "${c.matcher}"  ${c.command}  (เส้นเก่า/ซ้ำของ vault นี้)`
-if (WIRE_HOOK) {
-  const { settings, changes } = wireSettings(globalNow.settings.value, { vault: TARGET, vaults: [TARGET_RAW, ...pastVaults] })
-  if (changes.length) {
-    const next = JSON.stringify(settings, null, 2) + '\n'
-    otherChanges.push('~/.claude/settings.json')
-    log(`  ${MARK} ${WILL}แก้ ~/.claude/settings.json ${changes.length} จุด${globalNow.settings.text === null ? '' : ' (สำรองไว้ที่ settings.json.bak)'}`)
-    for (const c of changes) log(`     ${hookLine(c)}`)
-    // diff **เฉพาะ key ที่ installer เป็นเจ้าของ** ไม่ใช่ทั้งไฟล์: settings.json มักมี token/API key อยู่ใน
-    // `env` และแผนนี้มักถูกรันโดย agent ⇒ diff ทั้งไฟล์ = ความลับไปโผล่ใน transcript (ไฟล์ที่เขียนบรรทัด
-    // เดียวทั้งก้อน re-serialize แล้ว diff ออกมาทุกบรรทัด) · key อื่นไม่เปลี่ยนค่า — บอกแค่ว่าจัดรูปใหม่ไหม
-    const owned = (s) => `${JSON.stringify({ hooks: s?.hooks ?? {}, permissions: { allow: s?.permissions?.allow ?? [] } }, null, 2)}\n`
-    showDiff('~/.claude/settings.json (hooks + permissions.allow)', owned(globalNow.settings.value), owned(settings))
-    const reformatted = globalNow.settings.text !== null &&
-      globalNow.settings.text !== `${JSON.stringify(globalNow.settings.value, null, 2)}\n`
-    if (reformatted) log('     ↪️  key อื่นค่าเดิมทุกตัว แต่ไฟล์จะถูกเขียนใหม่เป็น JSON เว้น 2 ช่อง (รูปแบบเดิมอยู่ใน .bak)')
-    await mkdir(CLAUDE, { recursive: true })
-    if (globalNow.settings.text !== null) await copyFile(SETTINGS, `${SETTINGS}.bak`)
-    await writeFile(SETTINGS, next)
-    log('     ⚠️ ต้องรีสตาร์ต Claude Code หรือเปิด /hooks หนึ่งครั้ง config ถึงจะโหลดใหม่')
-  } else log(`  ✅ hook (guard + autocommit) และ allow rule ของ wf ต่อไว้ครบแล้ว (ข้าม)`)
-} else log('  ⏭  ข้าม hook + allow rule ของ wf')
-
-// ── 4g. ย่อหน้าของ wf ใน ~/.claude/CLAUDE.md ─────────────────────────────────────────────
-// ย่อหน้านี้เป็น **ตัวชี้** ไม่ใช่ตัว format — layout · frontmatter · operation อยู่ใน README ของ vault
-// ที่ update ตามได้ · ที่ต้องอยู่ใน CLAUDE.md จริง ๆ มีแค่ที่อยู่ของ vault กับ **วิธีเรียก `wf`** (path
-// เต็ม เพราะไม่แตะ `PATH` · Q21) และกติกาว่า state เปลี่ยนผ่าน `wf` ส่วนเนื้อเขียนด้วย Write/Edit
-// อยู่ระหว่าง marker ⇒ รันซ้ำแทนที่ตรงที่เดิม · ย่อหน้ารุ่นก่อน marker (หัวข้อเดิม) ถูกหาเจอแล้วแทนที่
-// ไม่ซ้อนซ้ำ — ย่อหน้ารุ่นนั้นสั่ง "ปล่อย commit ให้ autocommit" ซึ่งผิดแล้วเมื่อ `wf` commit เอง
-if (WIRE_MEMORY) {
-  const cur = globalNow.claudeMd
-  const { text, status } = withWfBlock(cur, TARGET)
-  if (status === 'current') log('  ✅ ~/.claude/CLAUDE.md มีย่อหน้า wf รุ่นปัจจุบันแล้ว (ข้าม)')
-  else {
-    log(`  ${MARK} ${WILL}${status === 'added' ? 'เติม' : 'แทนที่ตรงที่เดิม —'} ย่อหน้า wf ใน ~/.claude/CLAUDE.md` +
-      `${cur ? ' (สำรองไว้ที่ CLAUDE.md.bak)' : ''} · agent เรียก ${wfCommand(TARGET)} <verb>`)
-    showDiff('~/.claude/CLAUDE.md', cur, text)
-    otherChanges.push('~/.claude/CLAUDE.md')
-    await mkdir(CLAUDE, { recursive: true })
-    if (cur) await copyFile(CLAUDE_MD, `${CLAUDE_MD}.bak`)
-    await writeFile(CLAUDE_MD, text)
-  }
-} else {
-  log(`  ⏭  ข้ามย่อหน้าใน ~/.claude/CLAUDE.md
-     ⚠️ นี่คือที่ **เดียว** ที่บอก /wayfinder ว่า vault อยู่ไหน และบอก agent ให้เปลี่ยน state ผ่าน wf
-        ไม่เติมแล้วมันจะไปทำตาม docs/agents/issue-tracker.md ของ repo ที่เปิดอยู่แทน`)
+// ── 4f/4g. hook + allow rule ของ wf ใน settings.json · ย่อหน้าของ wf ใน CLAUDE.md (lib/bootstrap/claude.mjs) ──
+// git ของ vault กู้สองไฟล์นี้ให้ไม่ได้ ⇒ แผนโชว์ diff ทุกบรรทัด · อ่านซ้ำก่อนเขียน · `.bak` ครั้งแรกไม่ถูกทับ
+const io = { readFile, writeFile, copyFile, mkdir }
+{
+  const wiring = { vault: TARGET, vaults: [TARGET_RAW, ...pastVaults], home: HOME }
+  const r = await wireClaudeFiles({ claudeDir: CLAUDE, settingsPath: SETTINGS, claudeMdPath: CLAUDE_MD, seen: claudeSeen,
+    wireHook: WIRE_HOOK, wireMemory: WIRE_MEMORY, wiring, io, MARK, WILL })
+  otherChanges.push(...r.changed)
+  bad += r.failed
 }
 
-// ── 4h. Obsidian ────────────────────────────────────────────────────────────
+// ── 4h. Obsidian (lib/bootstrap/obsidian.mjs) ───────────────────────────────
 if (parts.has('obsidian')) {
-  if (env.obsidianRunning)
-    log(`  ⚠️  Obsidian เปิดค้างอยู่ — ตอนแอปเปิด ไฟล์ใน .obsidian/ เป็น *output* ของมัน
-     มันจะ flush ทับค่าที่เพิ่งเขียน ⇒ ปิดให้สนิทแล้วรันซ้ำถ้า Graph View ไม่มีสี`)
-  if (!env.obsidianApp) {
-    if (answers.allowBrew === 'yes' && env.brew) {
-      otherChanges.push('brew install --cask obsidian')
-      await runWrite('brew', ['install', '--cask', 'obsidian']).then(
-        () => log(`  ${MARK} ${WILL}brew install --cask obsidian`),
-        (e) => log(`  ❌ brew ล้ม: ${String(e.message).split('\n')[0]}`))
-    } else log('  ⏭  ยังไม่มี Obsidian — โหลดเองจาก obsidian.md แล้ว "Open folder as vault" ที่ vault นี้')
-  }
-  const p = join(HOME, 'Library/Application Support/obsidian/obsidian.json')
-  const o = await readJson(p)
-  if (!o) log('  ⏭  ยังไม่มี obsidian.json — เปิดแอปครั้งแรกแล้วใช้ "Open folder as vault"')
-  else if (Object.values(o.vaults ?? {}).some((v) => v.path === TARGET)) log('  ✅ Obsidian รู้จัก vault นี้แล้ว')
-  else {
-    otherChanges.push('obsidian.json')
-    await copyFile(p, `${p}.bak`)
-    o.vaults ??= {}
-    let key
-    do { key = [...Array(16)].map(() => Math.floor(Math.random() * 16).toString(16)).join('') } while (o.vaults[key])
-    o.vaults[key] = { path: TARGET, ts: Date.now() }
-    await writeFile(p, JSON.stringify(o, null, 2) + '\n')
-    log(`  ${MARK} ${WILL}ลงทะเบียน vault กับ Obsidian (สำรองไว้ที่ obsidian.json.bak)`)
-  }
+  const obsidianJson = join(HOME, 'Library/Application Support/obsidian/obsidian.json')
+  otherChanges.push(...await wireObsidian({ env, allowBrew: answers.allowBrew, obsidianJson, vault: TARGET, io, runWrite, MARK, WILL }))
 } else log('  ⏭  ข้าม Obsidian')
 
 // ── 4i. manifest ────────────────────────────────────────────────────────────
@@ -871,63 +662,12 @@ log(`  ${MARK} ${WILL}เขียน ${MANIFEST} — managed ${Object.keys(file
 // ⇒ ในโหมด plan มันจะแดงมั่วทุกข้อ แล้วไปกลบข้อเดียวที่แผนต้องตอบจริง ๆ คือ "ไม่มีอะไรถูกแตะ"
 // (ออกตรงนี้ = ขั้นที่ 5 กับ git commit ท้ายไฟล์ **เอื้อมไม่ถึง** ในโหมด plan เชิงโครงสร้าง
 //  ไม่ต้องพึ่ง `if (!PLAN)` ที่เติมไว้ถูกทุกจุด)
-if (PLAN) {
-  const dirtyBefore = await run('git', ['-C', TARGET, 'status', '--porcelain']).then((r) => r.stdout.trim(), () => '')
-  const mine = stats.written > 0 || dropped.length > 0 || manifestChanged
-  log(`
-── สรุปแผน ──────────────────────────────────────────────────`)
-  log(`  จะเขียน ${stats.written} · จะลบ ${dropped.length} · เหมือนเดิม/ข้าม ${stats.skipped}` +
-      (stats.keptSeed ? ` · ไม่แตะ seed ${stats.keptSeed}` : ''))
-  log(`  ไม่แตะเด็ดขาด: effort ของคุณ · _tools/harness-kit/ · ทุกอย่างที่ไม่เคยอยู่ใน manifest`)
-  if (parts.has('vault')) {
-    // ⚠️ commit ปิดท้ายขับด้วย `git status` **ทั้ง working tree** ไม่ใช่เฉพาะไฟล์ที่ installer แตะ
-    // ⇒ vault ที่สกปรกอยู่ก่อนแล้วจะถูก commit ไปด้วยแม้ update จะไม่เปลี่ยนอะไรเลย — แผนต้องบอก
-    if (mine) log(`  จะ commit ลง vault: มี (${MODE})`)
-    else if (dirtyBefore) log(`  จะ commit ลง vault: มี — **แต่ไม่ใช่ของ update** · vault สกปรกอยู่ก่อนแล้ว
-     ${dirtyBefore.split('\n').length} รายการ แล้ว commit ปิดท้ายกวาด \`git add -A\` ทั้ง tree`)
-    else log(`  จะ commit ลง vault: ไม่มี (ไม่มีอะไรเปลี่ยน)`)
-  }
-  if (migration.files.length) log(`  จะ wf migrate: ${migration.files.length} ไฟล์ (commit แยก)`)
-  if (otherChanges.length) log(`  จะแก้นอกไฟล์ template: ${otherChanges.join(' · ')}`)
-  // บรรทัดเดียวที่ตอบ "รันซ้ำแล้วเป็น no-op ไหม" — เขียวได้เฉพาะเมื่อ **ทุก** ขั้นข้างบนว่าง
-  if (!mine && !dirtyBefore && !migration.files.length && !otherChanges.length)
-    log(`  ทั้งหมด: ไม่มีอะไรต้องเปลี่ยน — รันด้วย --yes ก็ไม่มีไบต์ไหนขยับ`)
-
-  // ตรวจว่าที่พูดมาทั้งหมดเป็นจริง — ตัวกัน `--plan` อยู่ที่ตัวห่อ fs/`runWrite` จุดเดียว แต่ "จุดเดียว"
-  // เป็นจริงได้ก็ต่อเมื่อไม่มีใครเผลอเรียกของเดิมตรง ๆ ในอนาคต ⇒ ข้อนี้เฝ้าสมมติฐานนั้นแทนคอมเมนต์เตือน
-  // **บั๊กที่ใบนี้แก้ เกิดจากธงที่ไม่เคยมีใครตรวจว่ามันทำงานจริงไหม — จะไม่ซ้ำรอยด้วยธงที่ไม่มีใครตรวจอีกอัน**
-  const after = await fingerprint()
-  const moved = [...after.keys()].filter((k) => before.get(k) !== after.get(k))
-  log(`
-── ตรวจว่า dry run ไม่ได้เขียนจริง ───────────────────────────`)
-  if (moved.length) {
-    log(`  ❌ มี ${moved.length} จุดขยับระหว่าง --plan: ${moved.join(' · ')}`)
-    console.error(`❌ \`--plan\` เขียนของจริง — นี่คือบั๊กของตัวกัน dry run เอง ไม่ใช่ของ vault คุณ
-   มีคนเรียก fsWriteFile/fsRm/fsMkdir/run ตรง ๆ แทนตัวห่อที่หัวไฟล์ (หรือ \`runWrite\`)
-   กู้ของที่ขยับ: git -C ${TARGET} log -p -1`)
-    process.exit(1)
-  }
-  log(`  ✅ ไม่มีไบต์ไหนขยับ — เทียบ ${after.size} จุด (ไฟล์ที่ manifest/template ครอบ · สกิล ·
-     ~/.claude/settings.json · ~/.claude/CLAUDE.md · obsidian.json · git HEAD ของ vault)`)
-  if (MODE === 'update') {
-    log(`
-ลงมือจริงด้วยคำสั่งเดิม${ASKED_PLAN ? 'โดยตัด `--plan` ออก แล้ว' : ''}เติม \`--yes\` — update ไม่ลงมือถ้าไม่มี \`--yes\`
-`)
-    if (!ASKED_PLAN) {
-      console.error('❌ update ต้องมี --yes ถึงจะลงมือ — ข้างบนคือแผน ยังไม่มีอะไรถูกเขียน (อ่านแผนก่อน แล้วรันซ้ำพร้อม --yes)')
-      process.exit(2)
-    }
-  } else log(`
-รันจริงด้วยคำสั่งเดิมโดย **ตัด \`--plan\` ออก**
-`)
-  process.exit(0)
-}
+if (PLAN) await finishPlan({ mode: MODE, askedPlan: ASKED_PLAN, target: TARGET, wiresVault: parts.has('vault'), stats, dropped,
+  manifestChanged, migrationFiles: migration.files, otherChanges, before, fingerprintNow, run })
 
 // ── ขั้นที่ 5 — ตรวจแล้วสรุป ────────────────────────────────────────────────
 log(`
 ── ตรวจ ─────────────────────────────────────────────────────`)
-let bad = 0
-const verify = (ok, label, detail = '') => { if (!ok) bad++; log(`  ${ok ? '✅' : '❌'} ${label}${detail ? `  ${detail}` : ''}`) }
 
 // 5a. placeholder ค้าง = hook ตายเงียบสนิท ⇒ ต้องกวาดจริง ไม่ใช่เชื่อว่า sed ทำงานแล้ว
 {
