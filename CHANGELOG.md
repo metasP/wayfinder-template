@@ -10,6 +10,18 @@ it reads the conventional-commit messages merged to `main`, keeps a release PR o
 GitHub release notes. `feat` bumps the minor version, `fix` the patch, and while the version is
 below 1.0.0 a breaking change (`feat!`) bumps the minor too.
 
+## [0.5.1](https://github.com/metasP/wayfinder-template/compare/v0.5.0...v0.5.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* fold a flood of lint warnings and print errors last ([a0febc0](https://github.com/metasP/wayfinder-template/commit/a0febc0c30c7ca7ab6ca0c44847115784c7c72be))
+* fold a flood of lint warnings and print errors last ([7499233](https://github.com/metasP/wayfinder-template/commit/74992336d20ad41b9071c133fcdc68301d6bbd7a))
+* give tickets claimed before wf a placeholder claimed_by on migrate ([262dd88](https://github.com/metasP/wayfinder-template/commit/262dd88ebbe22da2b842edd90f3c0981dbc6467d))
+* give tickets claimed before wf a placeholder claimed_by on migrate ([8d17015](https://github.com/metasP/wayfinder-template/commit/8d17015c4760ad3505a24570cc6ee9faaa70f5e7))
+* read wf:tickets markers only on their own line, and lint unindexed issue files ([06cf3f5](https://github.com/metasP/wayfinder-template/commit/06cf3f58298628a9e9c878327309c1f50a852ecd))
+* read wf:tickets markers only on their own line, and lint unindexed issue files ([da3713b](https://github.com/metasP/wayfinder-template/commit/da3713b8970a5f286963ba9357ff2357f056872c))
+
 ## [0.5.0](https://github.com/metasP/wayfinder-template/compare/v0.4.0...v0.5.0) (2026-10-14)
 
 
