@@ -544,7 +544,7 @@ const byEffort = new Map()
     const since = fm.get('status_since')
     if (!STATUS.includes(status)) bad.push(`${t.name}: status="${status}" ไม่ถูกต้อง`)
     if (!TYPES.includes(type)) bad.push(`${t.name}: type="${type}" ไม่ถูกต้อง`)
-    if (!fm.get('effort')) bad.push(`${t.name}: ไม่มี effort`)
+    // ไม่ตรวจ `effort` แล้ว — schema 2 เอาตัวตนจาก path (`wf migrate` ลบ `repo`/`effort` ออกจาก frontmatter)
     // `blockers` ต้อง **มีคีย์เสมอ** — ใบที่ไม่ติดใครเขียน `blockers: []`
     // DQL ของ Frontier กรองด้วย `all(map(blockers, …))` ซึ่งเป็นจริงบน list ว่าง แต่ **ไม่ใช่**
     // เมื่อคีย์หายไปทั้งอัน ⇒ ใบที่หยิบได้จริงหลุดจาก Frontier เงียบ ๆ · ทางแก้ที่ระดับ query

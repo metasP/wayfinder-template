@@ -1,0 +1,5216 @@
+--- a/.wayfinder-template.json
++++ b/.wayfinder-template.json
+@@ -1,3 +1,4 @@
+ {
+-  "schema": 1
++  "schema": 1,
++  "vault_schema": 2
+ }
+--- a/Wayfinder Config.md
++++ b/Wayfinder Config.md
+@@ -11,6 +11,7 @@
+ label_done: "✅ ปิดแล้ว"
+ label_dropped: "🗑 ทิ้งแล้ว"
+ language: th
++claim_stale_days: 3
+ ---
+ 
+ # Section
+--- a/Wayfinder Picks.md
++++ b/Wayfinder Picks.md
+@@ -1,41 +1,48 @@
+-# Section
++---
++sort:
++  - nn asc
++---
++# Wayfinder Picks
+ 
+-text — text
+-text [[Wayfinder Config]])
++**โน้ตนี้เป็นของคุณ ไม่ใช่ของ template** — สร้างให้ครั้งเดียวตอนติดตั้ง แล้วไม่มีอะไรมาแตะอีกเลย
++เขียนทับได้ตามใจ ตัวอัปเดตข้ามไฟล์นี้ตลอดกาล (ค่าคงที่ที่จูนได้อยู่คนละใบ: [[Wayfinder Config]])
+ 
+-text · text · text [[Wayfinder Dashboard]]
+-text [[Wayfinder Efforts]]
+-text [[Wayfinder Effort Tickets]]
++ระดับใบทั้ง vault (หยิบอะไรได้ตอนนี้ · ติดที่ใคร · ใครจับอยู่): [[Wayfinder Dashboard]]
++ระดับแมปทั้ง vault (แต่ละ effort เดินไปถึงไหน): [[Wayfinder Efforts]]
++ระดับใบของ effort เดียว (ปิดใบไหนแล้วอะไรเดินต่อ): [[Wayfinder Effort Tickets]]
+ 
+ ---
+ 
+-## Section
+-
+-text [[Wayfinder Dashboard]] text — text
++## 🎯 หยิบอันไหนต่อ — กฎอยู่ใน `sort:` ข้างบน
+ 
+-text
++Frontier ตอบว่า *"อะไรหยิบได้"* แต่ไม่ได้ตอบว่า *"ควรหยิบอะไร"* — ซึ่งเป็นการตัดสินใจที่มีแต่คุณตอบได้
++กฎนั้นคือ **`sort:` ใน frontmatter ของโน้ตนี้** (แก้ในแถบ Properties ได้) — บรรทัดเดียวที่ทุกคนอ่าน:
++ตารางข้างล่าง · 🔥 Frontier บน [[Wayfinder Dashboard]] · `wf frontier` · และ `/wayfinder-next`
++ไม่มี `sort:` หรือ key ผิดทั้งหมด = ค่าเริ่มต้น `[unblocks desc, nn asc]`
+ 
+-- text = text — text
+-- text — ticket text
+-- text — text
++| key | หมายถึง |
++|---|---|
++| `unblocks` | ใบนี้ปลดใบที่ยัง open อยู่กี่ใบ — นับจาก `blockers` ของใบอื่นจริง ๆ (ลิงก์ในเนื้อความไม่นับ) |
++| `afk_first` | `research` ก่อนชนิดอื่น — ยิงทิ้งไว้ตอนไม่ว่างนั่งเฝ้า ส่วน HITL เก็บไว้ตอนมีสมาธิ |
++| `same_effort` | ใบใน effort ที่ส่งมากับ `wf frontier --from` ก่อน (ไม่มี `--from` = ไม่มีผล) — กัน context switch |
++| `nn` | เลขใบ |
+ 
+-> text [[Wayfinder Effort Tickets]] — text
+-> text
+-> text · text
+-> text
++แต่ละ key ต่อท้ายด้วย `asc` หรือ `desc` ได้ (ไม่ใส่ = `asc`) · key ที่ไม่รู้จัก = ข้ามตอนเรียง
++และขึ้นเป็น error ใน 🩺 lint ของ Dashboard · ตัวอย่าง "AFK ก่อน แล้วค่อยปลดล็อกเยอะสุด":
++`sort: [afk_first, unblocks desc, nn asc]`
+ 
+-```dataview
+-TABLE WITHOUT ID
+-  file.link AS "Ticket",
+-  type AS "Type",
+-code
+-FROM "" AND -"_tools"
+-WHERE status = "open"
+-  AND link(repo + "/" + effort + "/map").status = "active"
+-  AND all(map(blockers, (b) => b.status = "resolved"))
+-SORT file.name ASC
++```dataviewjs
++await dv.view("_tools/views/wf-core", {
++  render: ({ core, index, sort, link, text }) => {
++    const { keys, unknown } = core.parsePickSort(sort)
++    const rule = keys.length ? keys.map((k) => `${k.key} ${k.dir}`).join(", ") : `${core.DEFAULT_PICK_SORT.join(", ")} (ค่าเริ่มต้น)`
++    dv.paragraph(`เรียงตาม: \`${rule}\`` + (unknown.length ? ` · ⚠️ ข้าม key ที่ไม่รู้จัก: ${unknown.map((u) => `\`${text(u)}\``).join(" ")}` : ""))
++    const tickets = core.frontier(index, { sort })
++    if (!tickets.length) return dv.paragraph("_ไม่มีใบที่หยิบได้ตอนนี้_")
++    dv.table(
++      ["Ticket", "Effort", "Type", "ปลดล็อกกี่ใบ"],
++      tickets.map((t) => [link(t.ref), link(t.effortKey), text(t.type), core.unblocks(index, t)]),
++    )
++  },
++})
+ ```
+-
+-> text — text
+-> text
+-> text type = text
+--- a/repo-a/effort-01/issues/01-slug-001.md
++++ b/repo-a/effort-01/issues/01-slug-001.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-01
+ type: grilling
+ status: resolved
+ status_since: 2026-09-20
+ blockers: []
++title: text + text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-01/issues/02-slug-002.md
++++ b/repo-a/effort-01/issues/02-slug-002.md
+@@ -1,11 +1,10 @@
+ ---
+-repo: repo-a
+-effort: effort-01
+ type: task
+ status: open
+ status_since: 2026-09-20
+ blockers:
+   - "[[01-slug-001]]"
++title: text + text · text 01
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-01/issues/03-slug-003.md
++++ b/repo-a/effort-01/issues/03-slug-003.md
+@@ -1,12 +1,11 @@
+ ---
+-repo: repo-a
+-effort: effort-01
+ type: grilling
+ status: open
+ status_since: 2026-10-11
+ status_note: "value"
+ blockers:
+   - "[[01-slug-001]]"
++title: 7 text / text / text · text 01
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-01/issues/04-slug-004.md
++++ b/repo-a/effort-01/issues/04-slug-004.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-01
+ type: grilling
+ status: open
+ status_since: 2026-09-20
+ blockers: []
++title: text 132 text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-01/issues/05-slug-005.md
++++ b/repo-a/effort-01/issues/05-slug-005.md
+@@ -1,11 +1,10 @@
+ ---
+-repo: repo-a
+-effort: effort-01
+ type: task
+ status: open
+ status_since: 2026-09-20
+ blockers:
+   - "[[04-slug-004]]"
++title: text · text 04
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-01/issues/06-slug-006.md
++++ b/repo-a/effort-01/issues/06-slug-006.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-01
+ type: grilling
+ status: open
+ status_since: 2026-09-20
+ blockers: []
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-01/issues/07-slug-007.md
++++ b/repo-a/effort-01/issues/07-slug-007.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-01
+ type: task
+ status: open
+ status_since: 2026-09-20
+ blockers: []
++title: text 3 text + text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-01/map.md
++++ b/repo-a/effort-01/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-01
+ kind: map
+ runs: 4
+ status: active
+@@ -50,13 +48,24 @@
+ 
+ ## Tickets
+ 
+-- [[01-slug-001]] — grilling — ✅ **resolved** — text + text
+-- [[02-slug-002]] — task — text + text · text 01
+-- [[03-slug-003]] — grilling — 7 text / text / text · text 01
+-- [[04-slug-004]] — grilling — text 132 text
+-- [[05-slug-005]] — task — text · text 04
+-- [[06-slug-006]] — grilling — text
+-- [[07-slug-007]] — task — text 3 text + text
++<!-- wf:tickets -->
++- [[01-slug-001]] · grilling · resolved · text + text
++- [[02-slug-002]] · task · open · text + text · text 01
++- [[03-slug-003]] · grilling · open · 7 text / text / text · text 01
++- [[04-slug-004]] · grilling · open · text 132 text
++- [[05-slug-005]] · task · open · text · text 04 ⛔
++- [[06-slug-006]] · grilling · open · text
++- [[07-slug-007]] · task · open · text 3 text + text
++<!-- /wf:tickets -->
++
++> [!quote]- รายการเดิม (ก่อน wf)
++> - [[01-slug-001]] — grilling — ✅ **resolved** — text + text
++> - [[02-slug-002]] — task — text + text · text 01
++> - [[03-slug-003]] — grilling — 7 text / text / text · text 01
++> - [[04-slug-004]] — grilling — text 132 text
++> - [[05-slug-005]] — task — text · text 04
++> - [[06-slug-006]] — grilling — text
++> - [[07-slug-007]] — task — text 3 text + text
+ 
+ ## Decisions so far
+ 
+--- a/repo-a/effort-02/issues/01-slug-008.md
++++ b/repo-a/effort-02/issues/01-slug-008.md
+@@ -1,11 +1,10 @@
+ ---
+-repo: repo-a
+-effort: effort-02
+ type: task
+ status: open
+ status_since: 2026-08-23
+ blockers:
+   - "[[04-slug-011]]"
++title: text ['*']` text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-02/issues/02-slug-009.md
++++ b/repo-a/effort-02/issues/02-slug-009.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-02
+ type: task
+ status: open
+ status_since: 2026-08-23
+ blockers: []
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-02/issues/03-slug-010.md
++++ b/repo-a/effort-02/issues/03-slug-010.md
+@@ -1,11 +1,10 @@
+ ---
+-repo: repo-a
+-effort: effort-02
+ type: task
+ status: open
+ status_since: 2026-08-23
+ blockers: []
+ key_1: ["value"]
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-02/issues/04-slug-011.md
++++ b/repo-a/effort-02/issues/04-slug-011.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-02
+ type: grilling
+ status: open
+ status_since: 2026-08-23
+ blockers: []
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-02/issues/05-slug-012.md
++++ b/repo-a/effort-02/issues/05-slug-012.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-02
+ type: task
+ status: open
+ status_since: 2026-09-13
+ blockers: []
++title: text + text · text · text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-02/issues/06-slug-013.md
++++ b/repo-a/effort-02/issues/06-slug-013.md
+@@ -1,11 +1,10 @@
+ ---
+-repo: repo-a
+-effort: effort-02
+ type: task
+ status: open
+ status_since: 2026-10-11
+ status_note: "value"
+ blockers: []
++title: text · text · text · text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-02/issues/07-slug-014.md
++++ b/repo-a/effort-02/issues/07-slug-014.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-02
+ type: task
+ status: open
+ status_since: 2026-09-19
+ blockers: []
++title: text · text · text · text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-02/issues/08-slug-015.md
++++ b/repo-a/effort-02/issues/08-slug-015.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-02
+ type: grilling
+ status: open
+ status_since: 2026-09-19
+ blockers: []
++title: text · text = text · text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-02/issues/09-slug-016.md
++++ b/repo-a/effort-02/issues/09-slug-016.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-02
+ type: task
+ status: open
+ status_since: 2026-09-20
+ blockers: []
++title: slug 016
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-02/issues/10-slug-017.md
++++ b/repo-a/effort-02/issues/10-slug-017.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-02
+ type: task
+ status: open
+ status_since: 2026-09-20
+ blockers: []
++title: slug 017
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-02/issues/11-slug-018.md
++++ b/repo-a/effort-02/issues/11-slug-018.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-02
+ type: grilling
+ status: open
+ status_since: 2026-09-20
+ blockers: []
++title: slug 018
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-02/map.md
++++ b/repo-a/effort-02/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-02
+ kind: map
+ status: active
+ status_since: 2026-08-23
+@@ -60,14 +58,29 @@
+ 
+ ## Tickets
+ 
+-- [[01-slug-008]] — task — text ['*']` text
+-- [[02-slug-009]] — task — text
+-- [[03-slug-010]] — task — text
+-- [[04-slug-011]] — grilling — text
+-- [[05-slug-012]] — task — text + text · text · text
+-- [[06-slug-013]] — task — text · text · text · text
+-- [[07-slug-014]] — task — text · text · text · text
+-- [[08-slug-015]] — grilling — text · text = text · text
++<!-- wf:tickets -->
++- [[01-slug-008]] · task · open · text ['*']` text ⛔
++- [[02-slug-009]] · task · open · text
++- [[03-slug-010]] · task · open · text
++- [[04-slug-011]] · grilling · open · text
++- [[05-slug-012]] · task · open · text + text · text · text
++- [[06-slug-013]] · task · open · text · text · text · text
++- [[07-slug-014]] · task · open · text · text · text · text
++- [[08-slug-015]] · grilling · open · text · text = text · text
++- [[09-slug-016]] · task · open · slug 016
++- [[10-slug-017]] · task · open · slug 017
++- [[11-slug-018]] · grilling · open · slug 018
++<!-- /wf:tickets -->
++
++> [!quote]- รายการเดิม (ก่อน wf)
++> - [[01-slug-008]] — task — text ['*']` text
++> - [[02-slug-009]] — task — text
++> - [[03-slug-010]] — task — text
++> - [[04-slug-011]] — grilling — text
++> - [[05-slug-012]] — task — text + text · text · text
++> - [[06-slug-013]] — task — text · text · text · text
++> - [[07-slug-014]] — task — text · text · text · text
++> - [[08-slug-015]] — grilling — text · text = text · text
+ 
+ ## Decisions so far
+ 
+--- a/repo-a/effort-03/issues/01-slug-019.md
++++ b/repo-a/effort-03/issues/01-slug-019.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-03
+ type: task
+ status: open
+ status_since: 2026-08-29
+ blockers: []
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-03/issues/02-slug-020.md
++++ b/repo-a/effort-03/issues/02-slug-020.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-03
+ type: task
+ status: open
+ status_since: 2026-08-29
+ blockers: []
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-03/issues/03-slug-021.md
++++ b/repo-a/effort-03/issues/03-slug-021.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-03
+ type: task
+ status: open
+ status_since: 2026-08-29
+ blockers: []
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-03/issues/04-slug-022.md
++++ b/repo-a/effort-03/issues/04-slug-022.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-03
+ type: task
+ status: open
+ status_since: 2026-08-29
+ blockers: []
++title: text 3 text · text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-03/issues/05-slug-023.md
++++ b/repo-a/effort-03/issues/05-slug-023.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-03
+ type: task
+ status: open
+ status_since: 2026-09-20
+ blockers: []
++title: slug 023
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-03/map.md
++++ b/repo-a/effort-03/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-03
+ kind: map
+ status: active
+ status_since: 2026-08-29
+@@ -88,10 +86,19 @@
+ 
+ ## Tickets
+ 
+-- [[01-slug-019]] — task — text
+-- [[02-slug-020]] — task — text
+-- [[03-slug-021]] — task — text
+-- [[04-slug-022]] — task — text 3 text · text
++<!-- wf:tickets -->
++- [[01-slug-019]] · task · open · text
++- [[02-slug-020]] · task · open · text
++- [[03-slug-021]] · task · open · text
++- [[04-slug-022]] · task · open · text 3 text · text
++- [[05-slug-023]] · task · open · slug 023
++<!-- /wf:tickets -->
++
++> [!quote]- รายการเดิม (ก่อน wf)
++> - [[01-slug-019]] — task — text
++> - [[02-slug-020]] — task — text
++> - [[03-slug-021]] — task — text
++> - [[04-slug-022]] — task — text 3 text · text
+ 
+ ## Decisions so far
+ 
+--- a/repo-a/effort-04/map.md
++++ b/repo-a/effort-04/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-04
+ kind: map
+ status: draft
+ status_since: 2026-09-20
+@@ -86,7 +84,12 @@
+ 
+ ## Tickets
+ 
+-text — text
++<!-- wf:tickets -->
++_ยังไม่มีใบ_
++<!-- /wf:tickets -->
++
++> [!quote]- รายการเดิม (ก่อน wf)
++> text — text
+ 
+ ## Decisions so far
+ 
+--- a/repo-a/effort-05/map.md
++++ b/repo-a/effort-05/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-05
+ kind: map
+ status: draft
+ status_since: 2026-09-20
+@@ -72,7 +70,12 @@
+ 
+ ## Tickets
+ 
+-text — text
++<!-- wf:tickets -->
++_ยังไม่มีใบ_
++<!-- /wf:tickets -->
++
++> [!quote]- รายการเดิม (ก่อน wf)
++> text — text
+ 
+ ## Decisions so far
+ 
+--- a/repo-a/effort-06/issues/01-slug-024.md
++++ b/repo-a/effort-06/issues/01-slug-024.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-06
+ type: task
+ status: open
+ status_since: 2026-09-19
+ blockers: []
++title: text 5 text + text · text / text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-06/map.md
++++ b/repo-a/effort-06/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-06
+ kind: map
+ status: active
+ status_since: 2026-09-19
+@@ -45,7 +43,12 @@
+ 
+ ## Tickets
+ 
+-- [[01-slug-024]] — task — text 5 text + text · text / text
++<!-- wf:tickets -->
++- [[01-slug-024]] · task · open · text 5 text + text · text / text
++<!-- /wf:tickets -->
++
++> [!quote]- รายการเดิม (ก่อน wf)
++> - [[01-slug-024]] — task — text 5 text + text · text / text
+ 
+ ## Decisions so far
+ 
+--- a/repo-a/effort-07/issues/01-slug-025.md
++++ b/repo-a/effort-07/issues/01-slug-025.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-07
+ type: task
+ status: open
+ status_since: 2026-09-13
+ blockers: []
++title: text · text · text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-07/map.md
++++ b/repo-a/effort-07/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-07
+ kind: map
+ status: active
+ status_since: 2026-09-13
+@@ -58,7 +56,12 @@
+ 
+ ## Tickets
+ 
+-- [[01-slug-025]] — task — text · text · text
++<!-- wf:tickets -->
++- [[01-slug-025]] · task · open · text · text · text
++<!-- /wf:tickets -->
++
++> [!quote]- รายการเดิม (ก่อน wf)
++> - [[01-slug-025]] — task — text · text · text
+ 
+ ## Decisions so far
+ 
+--- a/repo-a/effort-08/map.md
++++ b/repo-a/effort-08/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-08
+ kind: map
+ status: draft
+ status_since: 2026-09-20
+@@ -78,7 +76,12 @@
+ 
+ ## Tickets
+ 
+-text — text
++<!-- wf:tickets -->
++_ยังไม่มีใบ_
++<!-- /wf:tickets -->
++
++> [!quote]- รายการเดิม (ก่อน wf)
++> text — text
+ 
+ ## Decisions so far
+ 
+--- a/repo-a/effort-09/issues/01-slug-026.md
++++ b/repo-a/effort-09/issues/01-slug-026.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-09
+ type: task
+ status: resolved
+ status_since: 2026-09-19
+ blockers: []
++title: text + text + text + text ✅ resolved text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-09/issues/02-slug-027.md
++++ b/repo-a/effort-09/issues/02-slug-027.md
+@@ -1,11 +1,10 @@
+ ---
+-repo: repo-a
+-effort: effort-09
+ type: task
+ status: resolved
+ status_since: 2026-09-19
+ blockers:
+   - "[[01-slug-026]]"
++title: text 0002 · text ✅ resolved text
+ ---
+ <!-- text 17 text — text -->
+ 
+--- a/repo-a/effort-09/issues/03-slug-028.md
++++ b/repo-a/effort-09/issues/03-slug-028.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-a
+-effort: effort-09
+ type: grilling
+ status: open
+ status_since: 2026-09-20
+ blockers: []
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-a/effort-09/map.md
++++ b/repo-a/effort-09/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-09
+ kind: map
+ runs: 2
+ status: active
+@@ -84,14 +82,21 @@
+ 
+ ## Tickets
+ 
+-- [[01-slug-026]] — task — text + text + text + text ✅ resolved text
+-- [[02-slug-027]] — task — text 0002 · text ✅ resolved text
+-- [[03-slug-028]] — grilling — text
++<!-- wf:tickets -->
++- [[01-slug-026]] · task · resolved · text + text + text + text ✅ resolved text
++- [[02-slug-027]] · task · resolved · text 0002 · text ✅ resolved text
++- [[03-slug-028]] · grilling · open · text
++<!-- /wf:tickets -->
+ 
+-> text · text — text 02 text
+-> text · text = text
+-> text
+-> text [[03-slug-028|03]] text
++> [!quote]- รายการเดิม (ก่อน wf)
++> - [[01-slug-026]] — task — text + text + text + text ✅ resolved text
++> - [[02-slug-027]] — task — text 0002 · text ✅ resolved text
++> - [[03-slug-028]] — grilling — text
++>
++> > text · text — text 02 text
++> > text · text = text
++> > text
++> > text [[03-slug-028|03]] text
+ 
+ ## Decisions so far
+ 
+--- a/repo-a/effort-10/map.md
++++ b/repo-a/effort-10/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-10
+ kind: map
+ status: draft
+ status_since: 2026-09-20
+@@ -76,7 +74,12 @@
+ 
+ ## Tickets
+ 
+-text — text
++<!-- wf:tickets -->
++_ยังไม่มีใบ_
++<!-- /wf:tickets -->
++
++> [!quote]- รายการเดิม (ก่อน wf)
++> text — text
+ 
+ ## Decisions so far
+ 
+--- a/repo-a/effort-11/map.md
++++ b/repo-a/effort-11/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-11
+ kind: map
+ status: draft
+ status_since: 2026-09-20
+@@ -68,7 +66,12 @@
+ 
+ ## Tickets
+ 
+-text — text
++<!-- wf:tickets -->
++_ยังไม่มีใบ_
++<!-- /wf:tickets -->
++
++> [!quote]- รายการเดิม (ก่อน wf)
++> text — text
+ 
+ ## Decisions so far
+ 
+--- a/repo-a/effort-12/issues/01-slug-029.md
++++ b/repo-a/effort-12/issues/01-slug-029.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-12
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-a/effort-12/issues/02-slug-030.md
++++ b/repo-a/effort-12/issues/02-slug-030.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-12
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-a/effort-12/issues/03-slug-031.md
++++ b/repo-a/effort-12/issues/03-slug-031.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-12
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-a/effort-12/issues/04-slug-032.md
++++ b/repo-a/effort-12/issues/04-slug-032.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-12
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-a/effort-12/issues/05-slug-033.md
++++ b/repo-a/effort-12/issues/05-slug-033.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-12
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-a/effort-12/issues/06-slug-034.md
++++ b/repo-a/effort-12/issues/06-slug-034.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-12
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-a/effort-12/issues/07-slug-035.md
++++ b/repo-a/effort-12/issues/07-slug-035.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-12
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-a/effort-12/issues/08-slug-036.md
++++ b/repo-a/effort-12/issues/08-slug-036.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-12
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-a/effort-12/issues/09-slug-037.md
++++ b/repo-a/effort-12/issues/09-slug-037.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-12
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-a/effort-12/issues/10-slug-038.md
++++ b/repo-a/effort-12/issues/10-slug-038.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-12
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-a/effort-12/issues/11-slug-039.md
++++ b/repo-a/effort-12/issues/11-slug-039.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-12
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-a/effort-12/issues/12-slug-040.md
++++ b/repo-a/effort-12/issues/12-slug-040.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-12
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-a/effort-12/issues/13-slug-041.md
++++ b/repo-a/effort-12/issues/13-slug-041.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-12
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-a/effort-12/issues/14-slug-042.md
++++ b/repo-a/effort-12/issues/14-slug-042.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-12
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-a/effort-12/issues/15-slug-043.md
++++ b/repo-a/effort-12/issues/15-slug-043.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-12
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-a/effort-12/issues/16-slug-044.md
++++ b/repo-a/effort-12/issues/16-slug-044.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-12
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-a/effort-12/map.md
++++ b/repo-a/effort-12/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-12
+ kind: map
+ runs: 16
+ status: done
+@@ -87,6 +85,27 @@
+ - text [[07-slug-035]]. text
+   text
+   `## text
++
++## Tickets
++
++<!-- wf:tickets -->
++- [[01-slug-029]] · task · resolved · Title 29
++- [[02-slug-030]] · task · resolved · Title 30
++- [[03-slug-031]] · task · resolved · Title 31
++- [[04-slug-032]] · task · resolved · Title 32
++- [[05-slug-033]] · task · resolved · Title 33
++- [[06-slug-034]] · task · resolved · Title 34
++- [[07-slug-035]] · task · resolved · Title 35
++- [[08-slug-036]] · task · resolved · Title 36
++- [[09-slug-037]] · task · resolved · Title 37
++- [[10-slug-038]] · task · resolved · Title 38
++- [[11-slug-039]] · task · resolved · Title 39
++- [[12-slug-040]] · task · resolved · Title 40
++- [[13-slug-041]] · task · resolved · Title 41
++- [[14-slug-042]] · task · resolved · Title 42
++- [[15-slug-043]] · task · resolved · Title 43
++- [[16-slug-044]] · task · resolved · Title 44
++<!-- /wf:tickets -->
+ 
+ ## Decisions so far
+ 
+--- a/repo-a/effort-13/issues/01-slug-045.md
++++ b/repo-a/effort-13/issues/01-slug-045.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-13
+ kind: ticket
+ type: research
+ status: resolved
+--- a/repo-a/effort-13/issues/02-slug-046.md
++++ b/repo-a/effort-13/issues/02-slug-046.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-13
+ kind: ticket
+ type: research
+ status: resolved
+--- a/repo-a/effort-13/issues/03-slug-047.md
++++ b/repo-a/effort-13/issues/03-slug-047.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-13
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-a/effort-13/issues/04-slug-048.md
++++ b/repo-a/effort-13/issues/04-slug-048.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-13
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-a/effort-13/issues/05-slug-049.md
++++ b/repo-a/effort-13/issues/05-slug-049.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-13
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-a/effort-13/issues/06-slug-050.md
++++ b/repo-a/effort-13/issues/06-slug-050.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-13
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-a/effort-13/issues/07-slug-051.md
++++ b/repo-a/effort-13/issues/07-slug-051.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-13
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-a/effort-13/issues/08-slug-052.md
++++ b/repo-a/effort-13/issues/08-slug-052.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-13
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-a/effort-13/issues/09-slug-053.md
++++ b/repo-a/effort-13/issues/09-slug-053.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-13
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-a/effort-13/issues/10-slug-054.md
++++ b/repo-a/effort-13/issues/10-slug-054.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-13
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-a/effort-13/issues/11-slug-055.md
++++ b/repo-a/effort-13/issues/11-slug-055.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-a/effort-13/issues/12-slug-056.md
++++ b/repo-a/effort-13/issues/12-slug-056.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-13
+ kind: ticket
+ type: research
+ status: resolved
+--- a/repo-a/effort-13/map.md
++++ b/repo-a/effort-13/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-13
+ kind: map
+ runs: 11
+ status: done
+@@ -254,6 +252,23 @@
+   text ([[08-slug-052]] text — text
+ - text + text
+   text
++
++## Tickets
++
++<!-- wf:tickets -->
++- [[01-slug-045]] · research · resolved · Title 45
++- [[02-slug-046]] · research · resolved · Title 46
++- [[03-slug-047]] · grilling · resolved · Title 47
++- [[04-slug-048]] · grilling · resolved · Title 48
++- [[05-slug-049]] · grilling · resolved · Title 49
++- [[06-slug-050]] · grilling · resolved · Title 50
++- [[07-slug-051]] · grilling · resolved · Title 51
++- [[08-slug-052]] · grilling · resolved · Title 52
++- [[09-slug-053]] · grilling · resolved · Title 53
++- [[10-slug-054]] · grilling · resolved · Title 54
++- [[11-slug-055]] · task · resolved · Title 55
++- [[12-slug-056]] · research · resolved · Title 56
++<!-- /wf:tickets -->
+ 
+ ## Decisions so far
+ 
+--- a/repo-b/effort-14/issues/01-slug-057.md
++++ b/repo-b/effort-14/issues/01-slug-057.md
+@@ -1,10 +1,10 @@
+ ---
+-repo: repo-c
+-effort: effort-14
+ type: task
+ status: resolved
+ status_since: 2026-10-11
+ blockers: []
++target_repo: repo-c
++title: slug 057
+ ---
+ 
+ ## Question
+--- a/repo-b/effort-14/issues/02-slug-058.md
++++ b/repo-b/effort-14/issues/02-slug-058.md
+@@ -1,11 +1,11 @@
+ ---
+-repo: repo-c
+-effort: effort-14
+ type: task
+ status: resolved
+ status_since: 2026-10-11
+ blockers:
+   - "[[01-slug-057]]"
++target_repo: repo-c
++title: slug 058
+ ---
+ 
+ ## Question
+--- a/repo-b/effort-14/issues/03-slug-059.md
++++ b/repo-b/effort-14/issues/03-slug-059.md
+@@ -1,11 +1,11 @@
+ ---
+-repo: repo-g
+-effort: effort-14
+ type: task
+ status: resolved
+ status_since: 2026-10-11
+ blockers:
+   - "[[01-slug-057]]"
++target_repo: repo-g
++title: slug 059
+ ---
+ 
+ ## Question
+--- a/repo-b/effort-14/issues/04-slug-060.md
++++ b/repo-b/effort-14/issues/04-slug-060.md
+@@ -1,11 +1,11 @@
+ ---
+-repo: repo-c
+-effort: effort-14
+ type: task
+ status: resolved
+ status_since: 2026-10-11
+ blockers:
+   - "[[02-slug-058]]"
++target_repo: repo-c
++title: slug 060
+ ---
+ 
+ ## Question
+--- a/repo-b/effort-14/issues/05-slug-061.md
++++ b/repo-b/effort-14/issues/05-slug-061.md
+@@ -1,11 +1,11 @@
+ ---
+-repo: repo-d
+-effort: effort-14
+ type: task
+ status: resolved
+ status_since: 2026-10-11
+ blockers:
+   - "[[03-slug-059]]"
++target_repo: repo-d
++title: slug 061
+ ---
+ 
+ ## Question
+--- a/repo-b/effort-14/issues/06-slug-062.md
++++ b/repo-b/effort-14/issues/06-slug-062.md
+@@ -1,11 +1,11 @@
+ ---
+-repo: repo-a
+-effort: effort-14
+ type: task
+ status: resolved
+ status_since: 2026-10-11
+ blockers:
+   - "[[03-slug-059]]"
++target_repo: repo-a
++title: slug 062
+ ---
+ 
+ ## Question
+--- a/repo-b/effort-14/issues/07-slug-063.md
++++ b/repo-b/effort-14/issues/07-slug-063.md
+@@ -1,12 +1,12 @@
+ ---
+-repo: repo-d
+-effort: effort-14
+ type: task
+ status: resolved
+ status_since: 2026-10-14
+ blockers:
+   - "[[04-slug-060]]"
+   - "[[05-slug-061]]"
++target_repo: repo-d
++title: slug 063
+ ---
+ 
+ ## Question
+--- a/repo-b/effort-14/issues/08-slug-064.md
++++ b/repo-b/effort-14/issues/08-slug-064.md
+@@ -1,12 +1,12 @@
+ ---
+-repo: repo-a
+-effort: effort-14
+ type: task
+ status: resolved
+ status_since: 2026-10-11
+ blockers:
+   - "[[04-slug-060]]"
+   - "[[06-slug-062]]"
++target_repo: repo-a
++title: slug 064
+ ---
+ 
+ ## Question
+--- a/repo-b/effort-14/issues/09-slug-065.md
++++ b/repo-b/effort-14/issues/09-slug-065.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-b
+-effort: effort-14
+ type: grilling
+ status: resolved
+ status_since: 2026-10-14
+@@ -8,6 +6,7 @@
+   - "[[07-slug-063]]"
+   - "[[08-slug-064]]"
+   - "[[11-slug-067]]"
++title: slug 065
+ ---
+ 
+ ## Question
+--- a/repo-b/effort-14/issues/10-slug-066.md
++++ b/repo-b/effort-14/issues/10-slug-066.md
+@@ -1,12 +1,12 @@
+ ---
+-repo: repo-c
+-effort: effort-14
+ type: task
+ status: open
+ status_since: 2026-10-11
+ blockers:
+   - "[[09-slug-065]]"
+   - "[[12-slug-068]]"
++target_repo: repo-c
++title: slug 066
+ ---
+ 
+ ## Question
+--- a/repo-b/effort-14/issues/11-slug-067.md
++++ b/repo-b/effort-14/issues/11-slug-067.md
+@@ -1,11 +1,11 @@
+ ---
+-repo: repo-a
+-effort: effort-14
+ type: task
+ status: resolved
+ status_since: 2026-10-14
+ blockers:
+   - "[[08-slug-064]]"
++target_repo: repo-a
++title: slug 067
+ ---
+ 
+ ## Question
+--- a/repo-b/effort-14/issues/12-slug-068.md
++++ b/repo-b/effort-14/issues/12-slug-068.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-b
+-effort: effort-14
+ type: task
+ status: open
+ status_since: 2026-10-14
+ blockers: []
++title: slug 068
+ ---
+ 
+ ## Question
+--- a/repo-b/effort-14/map.md
++++ b/repo-b/effort-14/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-b
+-effort: effort-14
+ kind: map
+ runs: 13
+ status: active
+@@ -63,6 +61,23 @@
+ - text `|| text · text · text
+ - text 24 text
+ - text — text · text [[08-slug-064]])
++
++## Tickets
++
++<!-- wf:tickets -->
++- [[01-slug-057]] · task · resolved · slug 057
++- [[02-slug-058]] · task · resolved · slug 058
++- [[03-slug-059]] · task · resolved · slug 059
++- [[04-slug-060]] · task · resolved · slug 060
++- [[05-slug-061]] · task · resolved · slug 061
++- [[06-slug-062]] · task · resolved · slug 062
++- [[07-slug-063]] · task · resolved · slug 063
++- [[08-slug-064]] · task · resolved · slug 064
++- [[09-slug-065]] · grilling · resolved · slug 065
++- [[10-slug-066]] · task · open · slug 066 ⛔
++- [[11-slug-067]] · task · resolved · slug 067
++- [[12-slug-068]] · task · open · slug 068
++<!-- /wf:tickets -->
+ 
+ ## Decisions so far
+ 
+--- a/repo-b/effort-15/issues/01-slug-069.md
++++ b/repo-b/effort-15/issues/01-slug-069.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-b
+-effort: effort-15
+ type: task
+ status: resolved
+ status_since: 2026-09-19
+ blockers: []
++title: text 60 text
+ ---
+ 
+ ## Question
+--- a/repo-b/effort-15/issues/02-slug-070.md
++++ b/repo-b/effort-15/issues/02-slug-070.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-b
+-effort: effort-15
+ type: research
+ status: resolved
+ status_since: 2026-09-19
+ blockers: []
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-b/effort-15/issues/03-slug-071.md
++++ b/repo-b/effort-15/issues/03-slug-071.md
+@@ -1,11 +1,10 @@
+ ---
+-repo: repo-b
+-effort: effort-15
+ type: research
+ status: waiting
+ status_since: 2026-09-19
+ status_note: "value"
+ blockers: []
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-b/effort-15/map.md
++++ b/repo-b/effort-15/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-b
+-effort: effort-15
+ kind: map
+ runs: 2
+ status: active
+@@ -41,6 +39,14 @@
+ 
+ ## Tickets
+ 
+-- [[01-slug-069]] — text 60 text
+-- [[02-slug-070]] — text
+-- [[03-slug-071]] — text
++<!-- wf:tickets -->
++- [[01-slug-069]] · task · resolved · text 60 text
++- [[02-slug-070]] · research · resolved · text
++- [[03-slug-071]] · research · waiting · text
++<!-- /wf:tickets -->
++
++> [!quote]- รายการเดิม (ก่อน wf)
++> - [[01-slug-069]] — text 60 text
++> - [[02-slug-070]] — text
++> - [[03-slug-071]] — text
++
+--- a/repo-c/effort-16/issues/01-slug-072.md
++++ b/repo-c/effort-16/issues/01-slug-072.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-16
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-16/issues/02-slug-073.md
++++ b/repo-c/effort-16/issues/02-slug-073.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-16
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-16/issues/03-slug-074.md
++++ b/repo-c/effort-16/issues/03-slug-074.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-16
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-16/issues/04-slug-075.md
++++ b/repo-c/effort-16/issues/04-slug-075.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-16
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-16/issues/05-slug-076.md
++++ b/repo-c/effort-16/issues/05-slug-076.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-16
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-16/issues/06-slug-077.md
++++ b/repo-c/effort-16/issues/06-slug-077.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-16
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-16/issues/07-slug-078.md
++++ b/repo-c/effort-16/issues/07-slug-078.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-16
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-16/issues/08-slug-079.md
++++ b/repo-c/effort-16/issues/08-slug-079.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-16
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-16/issues/09-slug-080.md
++++ b/repo-c/effort-16/issues/09-slug-080.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-16
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-16/issues/10-slug-081.md
++++ b/repo-c/effort-16/issues/10-slug-081.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-16
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-16/issues/11-slug-082.md
++++ b/repo-c/effort-16/issues/11-slug-082.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-16
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-16/issues/12-slug-083.md
++++ b/repo-c/effort-16/issues/12-slug-083.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-16
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-16/issues/13-slug-084.md
++++ b/repo-c/effort-16/issues/13-slug-084.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-16
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-16/issues/14-slug-085.md
++++ b/repo-c/effort-16/issues/14-slug-085.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-16
+ kind: ticket
+ type: research
+ status: resolved
+--- a/repo-c/effort-16/issues/15-slug-086.md
++++ b/repo-c/effort-16/issues/15-slug-086.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-16
+ kind: ticket
+ type: task
+ status: waiting
+--- a/repo-c/effort-16/issues/16-slug-087.md
++++ b/repo-c/effort-16/issues/16-slug-087.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-16
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-16/issues/17-slug-088.md
++++ b/repo-c/effort-16/issues/17-slug-088.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-16
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-c/effort-16/map.md
++++ b/repo-c/effort-16/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-16
+ kind: map
+ runs: 17
+ status: active
+@@ -55,20 +53,41 @@
+ 
+ ### Tickets
+ 
+-15 tickets text 01 text 02 · 03 text
+-04 · 09 · 10 text
+-text `waiting` text
+-
+-text = `waiting` text · text — text
+-text + text · text + text · text +
+-text · text `## text
+-
+-text — text
+-text
++<!-- wf:tickets -->
++- [[01-slug-072]] · task · resolved · Title 72
++- [[02-slug-073]] · task · resolved · Title 73
++- [[03-slug-074]] · task · resolved · Title 74
++- [[04-slug-075]] · task · resolved · Title 75
++- [[05-slug-076]] · task · resolved · Title 76
++- [[06-slug-077]] · task · resolved · Title 77
++- [[07-slug-078]] · task · resolved · Title 78
++- [[08-slug-079]] · task · resolved · Title 79
++- [[09-slug-080]] · task · resolved · Title 80
++- [[10-slug-081]] · task · resolved · Title 81
++- [[11-slug-082]] · task · resolved · Title 82
++- [[12-slug-083]] · task · resolved · Title 83
++- [[13-slug-084]] · task · resolved · Title 84
++- [[14-slug-085]] · research · resolved · Title 85
++- [[15-slug-086]] · task · waiting · Title 86
++- [[16-slug-087]] · task · resolved · Title 87
++- [[17-slug-088]] · grilling · resolved · Title 88
++<!-- /wf:tickets -->
+ 
+-text · text
+-text — text waiting
+-text
++> [!quote]- รายการเดิม (ก่อน wf)
++> 15 tickets text 01 text 02 · 03 text
++> 04 · 09 · 10 text
++> text `waiting` text
++>
++> text = `waiting` text · text — text
++> text + text · text + text · text +
++> text · text `## text
++>
++> text — text
++> text
++>
++> text · text
++> text — text waiting
++> text
+ 
+ ## Decisions so far
+ 
+--- a/repo-c/effort-17/issues/01-slug-089.md
++++ b/repo-c/effort-17/issues/01-slug-089.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-17
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-17/issues/02-slug-090.md
++++ b/repo-c/effort-17/issues/02-slug-090.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-17
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-17/issues/03-slug-091.md
++++ b/repo-c/effort-17/issues/03-slug-091.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-17
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-17/issues/04-slug-092.md
++++ b/repo-c/effort-17/issues/04-slug-092.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-17
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-17/issues/05-slug-093.md
++++ b/repo-c/effort-17/issues/05-slug-093.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-17
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-17/issues/06-slug-094.md
++++ b/repo-c/effort-17/issues/06-slug-094.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-17
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-17/issues/07-slug-095.md
++++ b/repo-c/effort-17/issues/07-slug-095.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-17
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-17/issues/08-slug-096.md
++++ b/repo-c/effort-17/issues/08-slug-096.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-17
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-c/effort-17/issues/09-slug-097.md
++++ b/repo-c/effort-17/issues/09-slug-097.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-17
+ kind: ticket
+ type: task
+ status: waiting
+--- a/repo-c/effort-17/map.md
++++ b/repo-c/effort-17/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-c
+-effort: effort-17
+ kind: map
+ runs: 9
+ status: active
+@@ -47,6 +45,20 @@
+ text [[01-slug-089|alias]] text · text
+ text 02 · 03 · 04 · 05 text · 06 text · 07 text 08 text
+ 09 text `waiting`
++
++## Tickets
++
++<!-- wf:tickets -->
++- [[01-slug-089]] · task · resolved · Title 89
++- [[02-slug-090]] · task · resolved · Title 90
++- [[03-slug-091]] · task · resolved · Title 91
++- [[04-slug-092]] · task · resolved · Title 92
++- [[05-slug-093]] · task · resolved · Title 93
++- [[06-slug-094]] · task · resolved · Title 94
++- [[07-slug-095]] · task · resolved · Title 95
++- [[08-slug-096]] · task · resolved · Title 96
++- [[09-slug-097]] · task · waiting · Title 97
++<!-- /wf:tickets -->
+ 
+ ## Decisions so far
+ 
+--- a/repo-d/effort-13/issues/01-slug-157.md
++++ b/repo-d/effort-13/issues/01-slug-157.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: research
+ status: resolved
+--- a/repo-d/effort-13/issues/02-slug-158.md
++++ b/repo-d/effort-13/issues/02-slug-158.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-d/effort-13/issues/03-slug-159.md
++++ b/repo-d/effort-13/issues/03-slug-159.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-d/effort-13/issues/04-slug-160.md
++++ b/repo-d/effort-13/issues/04-slug-160.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: prototype
+ status: resolved
+--- a/repo-d/effort-13/issues/05-slug-161.md
++++ b/repo-d/effort-13/issues/05-slug-161.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-d/effort-13/issues/06-slug-162.md
++++ b/repo-d/effort-13/issues/06-slug-162.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-d/effort-13/issues/07-slug-163.md
++++ b/repo-d/effort-13/issues/07-slug-163.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-d/effort-13/issues/08-slug-164.md
++++ b/repo-d/effort-13/issues/08-slug-164.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-d/effort-13/issues/09-slug-165.md
++++ b/repo-d/effort-13/issues/09-slug-165.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/10-slug-166.md
++++ b/repo-d/effort-13/issues/10-slug-166.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-d/effort-13/issues/11-slug-167.md
++++ b/repo-d/effort-13/issues/11-slug-167.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/12-slug-168.md
++++ b/repo-d/effort-13/issues/12-slug-168.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/13-slug-169.md
++++ b/repo-d/effort-13/issues/13-slug-169.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/14-slug-170.md
++++ b/repo-d/effort-13/issues/14-slug-170.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/15-slug-171.md
++++ b/repo-d/effort-13/issues/15-slug-171.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/16-slug-172.md
++++ b/repo-d/effort-13/issues/16-slug-172.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/17-slug-173.md
++++ b/repo-d/effort-13/issues/17-slug-173.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/18-slug-174.md
++++ b/repo-d/effort-13/issues/18-slug-174.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/19-slug-175.md
++++ b/repo-d/effort-13/issues/19-slug-175.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/20-slug-176.md
++++ b/repo-d/effort-13/issues/20-slug-176.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/21-slug-177.md
++++ b/repo-d/effort-13/issues/21-slug-177.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/22-slug-178.md
++++ b/repo-d/effort-13/issues/22-slug-178.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/23-slug-179.md
++++ b/repo-d/effort-13/issues/23-slug-179.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/24-slug-180.md
++++ b/repo-d/effort-13/issues/24-slug-180.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/25-slug-181.md
++++ b/repo-d/effort-13/issues/25-slug-181.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/26-slug-182.md
++++ b/repo-d/effort-13/issues/26-slug-182.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/27-slug-183.md
++++ b/repo-d/effort-13/issues/27-slug-183.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/28-slug-184.md
++++ b/repo-d/effort-13/issues/28-slug-184.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/29-slug-185.md
++++ b/repo-d/effort-13/issues/29-slug-185.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/30-slug-186.md
++++ b/repo-d/effort-13/issues/30-slug-186.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/31-slug-187.md
++++ b/repo-d/effort-13/issues/31-slug-187.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/32-slug-188.md
++++ b/repo-d/effort-13/issues/32-slug-188.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/33-slug-189.md
++++ b/repo-d/effort-13/issues/33-slug-189.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/34-slug-190.md
++++ b/repo-d/effort-13/issues/34-slug-190.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/issues/35-slug-191.md
++++ b/repo-d/effort-13/issues/35-slug-191.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-13/map.md
++++ b/repo-d/effort-13/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-13
+ kind: map
+ runs: 26
+ status: done
+@@ -87,6 +85,46 @@
+ - text / text — text
+ - text
+   Ticket 27 text
++
++## Tickets
++
++<!-- wf:tickets -->
++- [[01-slug-157]] · research · resolved · Title 158
++- [[02-slug-158]] · grilling · resolved · Title 159
++- [[03-slug-159]] · grilling · resolved · Title 160
++- [[04-slug-160]] · prototype · resolved · Title 161
++- [[05-slug-161]] · grilling · resolved · Title 162
++- [[06-slug-162]] · grilling · resolved · Title 163
++- [[07-slug-163]] · grilling · resolved · Title 164
++- [[08-slug-164]] · grilling · resolved · Title 165
++- [[09-slug-165]] · task · resolved · Title 166
++- [[10-slug-166]] · grilling · resolved · Title 167
++- [[11-slug-167]] · task · resolved · Title 168
++- [[12-slug-168]] · task · resolved · Title 169
++- [[13-slug-169]] · task · resolved · Title 170
++- [[14-slug-170]] · task · resolved · Title 171
++- [[15-slug-171]] · task · resolved · Title 172
++- [[16-slug-172]] · task · resolved · Title 173
++- [[17-slug-173]] · task · resolved · Title 174
++- [[18-slug-174]] · task · resolved · Title 175
++- [[19-slug-175]] · task · resolved · Title 176
++- [[20-slug-176]] · task · resolved · Title 177
++- [[21-slug-177]] · task · resolved · Title 178
++- [[22-slug-178]] · task · resolved · Title 179
++- [[23-slug-179]] · task · resolved · Title 180
++- [[24-slug-180]] · task · resolved · Title 181
++- [[25-slug-181]] · task · resolved · Title 182
++- [[26-slug-182]] · task · resolved · Title 183
++- [[27-slug-183]] · task · resolved · Title 184
++- [[28-slug-184]] · task · resolved · Title 185
++- [[29-slug-185]] · task · resolved · Title 186
++- [[30-slug-186]] · task · resolved · Title 187
++- [[31-slug-187]] · task · resolved · Title 188
++- [[32-slug-188]] · task · resolved · Title 189
++- [[33-slug-189]] · task · resolved · Title 190
++- [[34-slug-190]] · task · resolved · Title 191
++- [[35-slug-191]] · task · resolved · Title 192
++<!-- /wf:tickets -->
+ 
+ ## Section
+ 
+--- a/repo-d/effort-18/issues/01-slug-098.md
++++ b/repo-d/effort-18/issues/01-slug-098.md
+@@ -1,12 +1,11 @@
+ ---
+-repo: repo-d
+-effort: effort-18
+ kind: ticket
+ type: research
+ status: open
+ status_since: 2026-08-29
+ blockers: []
+ key_2: value
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-18/issues/02-slug-099.md
++++ b/repo-d/effort-18/issues/02-slug-099.md
+@@ -1,12 +1,11 @@
+ ---
+-repo: repo-d
+-effort: effort-18
+ kind: ticket
+ type: research
+ status: open
+ status_since: 2026-08-29
+ blockers: []
+ key_2: value
++title: text — text
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-18/issues/03-slug-100.md
++++ b/repo-d/effort-18/issues/03-slug-100.md
+@@ -1,12 +1,11 @@
+ ---
+-repo: repo-d
+-effort: effort-18
+ kind: ticket
+ type: grilling
+ status: open
+ status_since: 2026-08-29
+ blockers: ["[[01-slug-098]]", "[[02-slug-099]]"]
+ key_2: value
++title: text + text = text
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-18/issues/04-slug-101.md
++++ b/repo-d/effort-18/issues/04-slug-101.md
+@@ -1,12 +1,11 @@
+ ---
+-repo: repo-d
+-effort: effort-18
+ kind: ticket
+ type: grilling
+ status: open
+ status_since: 2026-08-29
+ blockers: []
+ key_2: value
++title: text — text
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-18/map.md
++++ b/repo-d/effort-18/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-18
+ kind: map
+ status: active
+ status_since: 2026-08-29
+@@ -83,18 +81,28 @@
+ - text — text 22 text ([[note-55]])
+ - text ([[note-60]])
+ 
+-## Tickets (text)
++## Tickets
+ 
+-| id | type | title | status | blocked_by |
+-|----|------|-------|--------|------------|
+-| [01](issues/01-slug-098.md) | research | text | **open** | — |
+-| [02](issues/02-slug-099.md) | research | text — text | **open** | — |
+-| [03](issues/03-slug-100.md) | grilling | text + text = text | **open** | text 02 |
+-| [04](issues/04-slug-101.md) | grilling | text — text | **open** | — |
++<!-- wf:tickets -->
++- [[01-slug-098]] · research · open · text
++- [[02-slug-099]] · research · open · text — text
++- [[03-slug-100]] · grilling · open · text + text = text ⛔
++- [[04-slug-101]] · grilling · open · text — text
++<!-- /wf:tickets -->
+ 
+-text [[01-slug-098]] · [[02-slug-099]] text
+-[[04-slug-101]] — text 02 text
+-04 text
++> [!quote]- รายการเดิม (ก่อน wf)
++> ## Tickets (text)
++>
++> | id | type | title | status | blocked_by |
++> |----|------|-------|--------|------------|
++> | [01](issues/01-slug-098.md) | research | text | **open** | — |
++> | [02](issues/02-slug-099.md) | research | text — text | **open** | — |
++> | [03](issues/03-slug-100.md) | grilling | text + text = text | **open** | text 02 |
++> | [04](issues/04-slug-101.md) | grilling | text — text | **open** | — |
++>
++> text [[01-slug-098]] · [[02-slug-099]] text
++> [[04-slug-101]] — text 02 text
++> 04 text
+ 
+ ## Decisions so far
+ 
+--- a/repo-d/effort-19/issues/01-slug-102.md
++++ b/repo-d/effort-19/issues/01-slug-102.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-d
+-effort: effort-19
+ type: research
+ status: resolved
+ status_since: 2026-08-28
+ blockers: []
++title: text · text = text
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-19/issues/02-slug-103.md
++++ b/repo-d/effort-19/issues/02-slug-103.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-d
+-effort: effort-19
+ type: research
+ status: resolved
+ status_since: 2026-08-28
+ blockers: []
++title: slug 103
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-19/issues/03-slug-104.md
++++ b/repo-d/effort-19/issues/03-slug-104.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-d
+-effort: effort-19
+ type: research
+ status: resolved
+ status_since: 2026-08-28
+ blockers: []
++title: ✅ text 2026-08-28
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-19/issues/04-slug-105.md
++++ b/repo-d/effort-19/issues/04-slug-105.md
+@@ -1,12 +1,11 @@
+ ---
+-repo: repo-d
+-effort: effort-19
+ type: grilling
+ status: resolved
+ status_since: 2026-08-28
+ blockers:
+   - "[[01-slug-102]]"
+   - "[[02-slug-103]]"
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-19/issues/06-slug-106.md
++++ b/repo-d/effort-19/issues/06-slug-106.md
+@@ -1,11 +1,10 @@
+ ---
+-repo: repo-d
+-effort: effort-19
+ type: task
+ status: resolved
+ status_since: 2026-08-29
+ blockers:
+   - "[[03-slug-104]]"
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-19/issues/07-slug-107.md
++++ b/repo-d/effort-19/issues/07-slug-107.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-d
+-effort: effort-19
+ type: grilling
+ status: resolved
+ status_since: 2026-08-29
+ blockers: []
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-19/issues/08-slug-108.md
++++ b/repo-d/effort-19/issues/08-slug-108.md
+@@ -1,11 +1,10 @@
+ ---
+-repo: repo-d
+-effort: effort-19
+ type: task
+ status: resolved
+ status_since: 2026-08-29
+ blockers:
+   - "[[07-slug-107]]"
++title: text + text
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-19/issues/09-slug-109.md
++++ b/repo-d/effort-19/issues/09-slug-109.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-d
+-effort: effort-19
+ type: task
+ status: resolved
+ status_since: 2026-08-29
+ blockers: []
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-19/issues/10-slug-110.md
++++ b/repo-d/effort-19/issues/10-slug-110.md
+@@ -1,10 +1,10 @@
+ ---
+-repo: repo-a
+-effort: effort-19
+ type: task
+ status: resolved
+ status_since: 2026-08-28
+ blockers: []
++target_repo: repo-a
++title: text + text
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-19/issues/11-slug-111.md
++++ b/repo-d/effort-19/issues/11-slug-111.md
+@@ -1,10 +1,10 @@
+ ---
+-repo: repo-a
+-effort: effort-19
+ type: task
+ status: resolved
+ status_since: 2026-08-28
+ blockers: []
++target_repo: repo-a
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-19/issues/12-slug-112.md
++++ b/repo-d/effort-19/issues/12-slug-112.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-d
+-effort: effort-19
+ type: task
+ status: resolved
+ status_since: 2026-08-28
+ blockers: []
++title: text +
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-19/issues/13-slug-113.md
++++ b/repo-d/effort-19/issues/13-slug-113.md
+@@ -1,10 +1,10 @@
+ ---
+-repo: repo-a
+-effort: effort-19
+ type: task
+ status: resolved
+ status_since: 2026-08-29
+ blockers: []
++target_repo: repo-a
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-19/issues/14-slug-114.md
++++ b/repo-d/effort-19/issues/14-slug-114.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-d
+-effort: effort-19
+ type: grilling
+ status: resolved
+ status_since: 2026-08-29
+ blockers: []
++title: ✅ **resolved text
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-19/issues/15-slug-115.md
++++ b/repo-d/effort-19/issues/15-slug-115.md
+@@ -1,11 +1,11 @@
+ ---
+-repo: repo-a
+-effort: effort-19
+ type: task
+ status: resolved
+ status_since: 2026-08-29
+ blockers:
+   - "[[14-slug-114]]"
++target_repo: repo-a
++title: slug 115
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-19/issues/16-slug-116.md
++++ b/repo-d/effort-19/issues/16-slug-116.md
+@@ -1,10 +1,10 @@
+ ---
+-repo: repo-a
+-effort: effort-19
+ type: grilling
+ status: resolved
+ status_since: 2026-08-29
+ blockers: []
++target_repo: repo-a
++title: slug 116
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-19/issues/17-slug-117.md
++++ b/repo-d/effort-19/issues/17-slug-117.md
+@@ -1,11 +1,11 @@
+ ---
+-repo: repo-a
+-effort: effort-19
+ type: task
+ status: resolved
+ status_since: 2026-08-29
+ blockers:
+   - "[[16-slug-116]]"
++target_repo: repo-a
++title: slug 117
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-19/issues/18-slug-118.md
++++ b/repo-d/effort-19/issues/18-slug-118.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-d
+-effort: effort-19
+ type: task
+ status: resolved
+ status_since: 2026-08-29
+ blockers: []
++title: ✅ **resolved text
+ ---
+ 
+ ## Question
+--- a/repo-d/effort-19/map.md
++++ b/repo-d/effort-19/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-19
+ kind: map
+ status: done
+ status_since: 2026-08-29
+@@ -172,93 +170,114 @@
+ 
+ ## Tickets
+ 
+-- ~~[[01-slug-102]]~~ — research — ✅ **resolved** — text · text = text
+-- ~~[[02-slug-103]]~~ — research — ✅ resolved 2026-08-28
+-- ~~[[03-slug-104]]~~ — research — ✅ text 2026-08-28
+-- ~~[[04-slug-105]]~~ — grilling — ✅ **resolved text — text
+-  text · text 05 text
+-- ~~[[note-57]]~~ — task — ✅ **resolved text — text
+-  text 4 text · text
+-  text · text + text
+-  text — text
+-- ~~[[note-54]]~~ — task — ✅ **resolved text — text
+-  text + text + text
+-  text
+-  text
+-  text
+-  text 0 text · text
+-  text
+-- ~~[[note-61]]~~ — task — ✅ **resolved text — text
+-  text ✅ · text 1 · text 15 text
+-  text · text 7 / text 11 /
+-  text · text 01 text
+-- ~~[[06-slug-106]]~~ — task — ✅ **resolved text — text
+-  text + text · text
+-  text — text · text
+-  text = text — text
+-  text · text — text
+-  text · text 12 text
+-- ~~[[12-slug-112]]~~ — task — ✅ **resolved text — text +
+-  text · text
+-  text · text
+-  text
+-  text · text · text 13 text
+-- ~~[[10-slug-110]]~~ — task — ✅ **resolved text — text + text
+-  text · text · text
+-- ~~[[11-slug-111]]~~ — task — ✅ **resolved text — text
+-  text · text
+-  (+ text · text
+-  text
+-- ~~[[07-slug-107]]~~ — grilling — ✅ **resolved text — text
+-  text
+-  text · text + text · text 13
+-- ~~[[08-slug-108]]~~ — task — ✅ **resolved text — text + text
+-  text · text · text
+-  text + text · text
+-  text + text · text
+-  text 07 text · 19 text · text
+-  text — text
+-- ~~[[09-slug-109]]~~ — task — ✅ **resolved text — text
+-  text · text · text
+-  text + text
+-  text
+-  text = text
+-  text
+-- ~~[[13-slug-113]]~~ — task — ✅ **resolved text — text
+-  text + text · text
+-  text · text · text · text + text
+-  text · text
+-  text · text
++<!-- wf:tickets -->
++- [[01-slug-102]] · research · resolved · text · text = text
++- [[02-slug-103]] · research · resolved · slug 103
++- [[03-slug-104]] · research · resolved · ✅ text 2026-08-28
++- [[04-slug-105]] · grilling · resolved · text
++- [[06-slug-106]] · task · resolved · text
++- [[07-slug-107]] · grilling · resolved · text
++- [[08-slug-108]] · task · resolved · text + text
++- [[09-slug-109]] · task · resolved · text
++- [[10-slug-110]] · task · resolved · text + text
++- [[11-slug-111]] · task · resolved · text
++- [[12-slug-112]] · task · resolved · text +
++- [[13-slug-113]] · task · resolved · text
++- [[14-slug-114]] · grilling · resolved · ✅ **resolved text
++- [[15-slug-115]] · task · resolved · slug 115
++- [[16-slug-116]] · grilling · resolved · slug 116
++- [[17-slug-117]] · task · resolved · slug 117
++- [[18-slug-118]] · task · resolved · ✅ **resolved text
++<!-- /wf:tickets -->
+ 
+-- ~~[[14-slug-114]]~~ — grilling — ✅ **resolved text
+-  text = text · text
+-  + text · text
+-  [[15-slug-115]]
+-- ~~[[15-slug-115]]~~ — task — ✅ **resolved text — text
+-  text = text · text
+-  + text · text · text
+-  text + text · text
+-  text
+-  text 4 text · text 09 text
+-  text · text / text 93 text / text
+-  text
+-  text [[16-slug-116]]
+-- ~~[[16-slug-116]]~~ — grilling — ✅ **resolved text — text
+-  text 15 text
+-  text 1 text — text
+-  text [[17-slug-117]]
+-- ~~[[17-slug-117]]~~ — task — ✅ **resolved text
+-  text
+-  text + text · text
+-  text · text
+-- ~~[[18-slug-118]]~~ — task — ✅ **resolved text
+-  text
+-  text · text · text
+-  text + text · text
+-  text [[19-slug-212]]
+-- text [[19-slug-212]] — task — text
+-  [[repo-f/effort-24/map|alias]] text · text
+-  text — text
++> [!quote]- รายการเดิม (ก่อน wf)
++> - ~~[[01-slug-102]]~~ — research — ✅ **resolved** — text · text = text
++> - ~~[[02-slug-103]]~~ — research — ✅ resolved 2026-08-28
++> - ~~[[03-slug-104]]~~ — research — ✅ text 2026-08-28
++> - ~~[[04-slug-105]]~~ — grilling — ✅ **resolved text — text
++>   text · text 05 text
++> - ~~[[note-57]]~~ — task — ✅ **resolved text — text
++>   text 4 text · text
++>   text · text + text
++>   text — text
++> - ~~[[note-54]]~~ — task — ✅ **resolved text — text
++>   text + text + text
++>   text
++>   text
++>   text
++>   text 0 text · text
++>   text
++> - ~~[[note-61]]~~ — task — ✅ **resolved text — text
++>   text ✅ · text 1 · text 15 text
++>   text · text 7 / text 11 /
++>   text · text 01 text
++> - ~~[[06-slug-106]]~~ — task — ✅ **resolved text — text
++>   text + text · text
++>   text — text · text
++>   text = text — text
++>   text · text — text
++>   text · text 12 text
++> - ~~[[12-slug-112]]~~ — task — ✅ **resolved text — text +
++>   text · text
++>   text · text
++>   text
++>   text · text · text 13 text
++> - ~~[[10-slug-110]]~~ — task — ✅ **resolved text — text + text
++>   text · text · text
++> - ~~[[11-slug-111]]~~ — task — ✅ **resolved text — text
++>   text · text
++>   (+ text · text
++>   text
++> - ~~[[07-slug-107]]~~ — grilling — ✅ **resolved text — text
++>   text
++>   text · text + text · text 13
++> - ~~[[08-slug-108]]~~ — task — ✅ **resolved text — text + text
++>   text · text · text
++>   text + text · text
++>   text + text · text
++>   text 07 text · 19 text · text
++>   text — text
++> - ~~[[09-slug-109]]~~ — task — ✅ **resolved text — text
++>   text · text · text
++>   text + text
++>   text
++>   text = text
++>   text
++> - ~~[[13-slug-113]]~~ — task — ✅ **resolved text — text
++>   text + text · text
++>   text · text · text · text + text
++>   text · text
++>   text · text
++>
++> - ~~[[14-slug-114]]~~ — grilling — ✅ **resolved text
++>   text = text · text
++>   + text · text
++>   [[15-slug-115]]
++> - ~~[[15-slug-115]]~~ — task — ✅ **resolved text — text
++>   text = text · text
++>   + text · text · text
++>   text + text · text
++>   text
++>   text 4 text · text 09 text
++>   text · text / text 93 text / text
++>   text
++>   text [[16-slug-116]]
++> - ~~[[16-slug-116]]~~ — grilling — ✅ **resolved text — text
++>   text 15 text
++>   text 1 text — text
++>   text [[17-slug-117]]
++> - ~~[[17-slug-117]]~~ — task — ✅ **resolved text
++>   text
++>   text + text · text
++>   text · text
++> - ~~[[18-slug-118]]~~ — task — ✅ **resolved text
++>   text
++>   text · text · text
++>   text + text · text
++>   text [[19-slug-212]]
++> - text [[19-slug-212]] — task — text
++>   [[repo-f/effort-24/map|alias]] text · text
++>   text — text
+ 
+ ## Decisions so far
+ 
+--- a/repo-d/effort-20/issues/01-slug-119.md
++++ b/repo-d/effort-20/issues/01-slug-119.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-20/issues/02-slug-120.md
++++ b/repo-d/effort-20/issues/02-slug-120.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-d/effort-20/issues/03-slug-121.md
++++ b/repo-d/effort-20/issues/03-slug-121.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-d/effort-20/issues/04-slug-122.md
++++ b/repo-d/effort-20/issues/04-slug-122.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: prototype
+ status: resolved
+--- a/repo-d/effort-20/issues/05-slug-123.md
++++ b/repo-d/effort-20/issues/05-slug-123.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: research
+ status: resolved
+--- a/repo-d/effort-20/issues/06-slug-124.md
++++ b/repo-d/effort-20/issues/06-slug-124.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-d/effort-20/issues/07-slug-125.md
++++ b/repo-d/effort-20/issues/07-slug-125.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-20/issues/08-slug-126.md
++++ b/repo-d/effort-20/issues/08-slug-126.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-20/issues/09-slug-127.md
++++ b/repo-d/effort-20/issues/09-slug-127.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-20/issues/10-slug-128.md
++++ b/repo-d/effort-20/issues/10-slug-128.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-20/issues/11-slug-129.md
++++ b/repo-d/effort-20/issues/11-slug-129.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-20/issues/12-slug-130.md
++++ b/repo-d/effort-20/issues/12-slug-130.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-20/issues/13-slug-131.md
++++ b/repo-d/effort-20/issues/13-slug-131.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-20/issues/14-slug-132.md
++++ b/repo-d/effort-20/issues/14-slug-132.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-20/issues/15-slug-133.md
++++ b/repo-d/effort-20/issues/15-slug-133.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-20/issues/16-slug-134.md
++++ b/repo-d/effort-20/issues/16-slug-134.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-20/issues/17-slug-135.md
++++ b/repo-d/effort-20/issues/17-slug-135.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: research
+ status: resolved
+--- a/repo-d/effort-20/issues/18-slug-136.md
++++ b/repo-d/effort-20/issues/18-slug-136.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-20/issues/19-slug-137.md
++++ b/repo-d/effort-20/issues/19-slug-137.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: research
+ status: resolved
+--- a/repo-d/effort-20/issues/20-slug-138.md
++++ b/repo-d/effort-20/issues/20-slug-138.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-20/issues/21-slug-139.md
++++ b/repo-d/effort-20/issues/21-slug-139.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-d/effort-20/map.md
++++ b/repo-d/effort-20/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-20
+ kind: map
+ status: done
+ status_since: 2026-08-23
+@@ -148,6 +146,32 @@
+   text / text 19 / text / text
+ - text
+   text — text
++
++## Tickets
++
++<!-- wf:tickets -->
++- [[01-slug-119]] · task · resolved · Title 119
++- [[02-slug-120]] · grilling · resolved · Title 120
++- [[03-slug-121]] · grilling · resolved · Title 121
++- [[04-slug-122]] · prototype · resolved · Title 122
++- [[05-slug-123]] · research · resolved · Title 123
++- [[06-slug-124]] · grilling · resolved · Title 124
++- [[07-slug-125]] · task · resolved · Title 125
++- [[08-slug-126]] · task · resolved · Title 126
++- [[09-slug-127]] · task · resolved · Title 127
++- [[10-slug-128]] · task · resolved · Title 128
++- [[11-slug-129]] · task · resolved · Title 129
++- [[12-slug-130]] · task · resolved · Title 130
++- [[13-slug-131]] · task · resolved · Title 131
++- [[14-slug-132]] · task · resolved · Title 132
++- [[15-slug-133]] · task · resolved · Title 133
++- [[16-slug-134]] · task · resolved · Title 134
++- [[17-slug-135]] · research · resolved · Title 135
++- [[18-slug-136]] · task · resolved · Title 136
++- [[19-slug-137]] · research · resolved · Title 137
++- [[20-slug-138]] · task · resolved · Title 138
++- [[21-slug-139]] · grilling · resolved · Title 139
++<!-- /wf:tickets -->
+ 
+ ## Decisions so far
+ 
+--- a/repo-d/effort-21/issues/01-slug-131.md
++++ b/repo-d/effort-21/issues/01-slug-131.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-21
+ kind: ticket
+ type: research
+ status: resolved
+@@ -11,6 +9,7 @@
+ key_3: "value"
+ title: Title 140
+ key_1: ["value"]
++target_repo: repo-a
+ ---
+ 
+ # Section
+--- a/repo-d/effort-21/issues/02-slug-140.md
++++ b/repo-d/effort-21/issues/02-slug-140.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-21
+ kind: ticket
+ type: research
+ status: resolved
+@@ -11,6 +9,7 @@
+ key_3: "value"
+ title: Title 141
+ key_1: ["value"]
++target_repo: repo-a
+ ---
+ 
+ # Section
+--- a/repo-d/effort-21/issues/03-slug-141.md
++++ b/repo-d/effort-21/issues/03-slug-141.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-21
+ kind: ticket
+ type: research
+ status: resolved
+--- a/repo-d/effort-21/issues/04-slug-142.md
++++ b/repo-d/effort-21/issues/04-slug-142.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-21
+ kind: ticket
+ type: grilling
+ status: resolved
+@@ -13,6 +11,7 @@
+ key_3: "value"
+ title: Title 143
+ key_1: ["value"]
++target_repo: repo-a
+ ---
+ 
+ # Section
+--- a/repo-d/effort-21/issues/05-slug-143.md
++++ b/repo-d/effort-21/issues/05-slug-143.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-21
+ kind: ticket
+ type: grilling
+ status: resolved
+@@ -11,6 +9,7 @@
+ key_3: "value"
+ title: Title 144
+ key_1: ["value"]
++target_repo: repo-a
+ ---
+ 
+ # Section
+--- a/repo-d/effort-21/issues/06-slug-144.md
++++ b/repo-d/effort-21/issues/06-slug-144.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-21
+ kind: ticket
+ type: grilling
+ status: resolved
+@@ -13,6 +11,7 @@
+ key_3: "value"
+ title: Title 145
+ key_1: ["value"]
++target_repo: repo-a
+ ---
+ 
+ # Section
+--- a/repo-d/effort-21/issues/07-slug-145.md
++++ b/repo-d/effort-21/issues/07-slug-145.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-21
+ kind: ticket
+ type: grilling
+ status: resolved
+@@ -14,6 +12,7 @@
+ key_3: "value"
+ title: Title 146
+ key_1: ["value"]
++target_repo: repo-a
+ ---
+ 
+ # Section
+--- a/repo-d/effort-21/issues/08-slug-146.md
++++ b/repo-d/effort-21/issues/08-slug-146.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-21
+ kind: ticket
+ type: grilling
+ status: resolved
+@@ -11,6 +9,7 @@
+ key_3: "value"
+ title: Title 147
+ key_1: ["value"]
++target_repo: repo-a
+ ---
+ 
+ # Section
+--- a/repo-d/effort-21/issues/09-slug-147.md
++++ b/repo-d/effort-21/issues/09-slug-147.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-21
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-d/effort-21/issues/10-slug-148.md
++++ b/repo-d/effort-21/issues/10-slug-148.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-21
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-21/issues/11-slug-149.md
++++ b/repo-d/effort-21/issues/11-slug-149.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-21
+ kind: ticket
+ type: research
+ status: resolved
+@@ -11,6 +9,7 @@
+ key_3: "value"
+ title: Title 150
+ key_1: ["value"]
++target_repo: repo-a
+ ---
+ 
+ # Section
+--- a/repo-d/effort-21/issues/12-slug-150.md
++++ b/repo-d/effort-21/issues/12-slug-150.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-21
+ kind: ticket
+ type: research
+ status: resolved
+@@ -11,6 +9,7 @@
+ key_3: "value"
+ title: Title 151
+ key_1: ["value"]
++target_repo: repo-a
+ ---
+ 
+ # Section
+--- a/repo-d/effort-21/issues/13-slug-151.md
++++ b/repo-d/effort-21/issues/13-slug-151.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-a
+-effort: effort-21
+ kind: ticket
+ type: research
+ status: resolved
+@@ -11,6 +9,7 @@
+ key_3: "value"
+ title: Title 152
+ key_1: ["value"]
++target_repo: repo-a
+ ---
+ 
+ # Section
+--- a/repo-d/effort-21/map.md
++++ b/repo-d/effort-21/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-21
+ kind: map
+ status: done
+ status_since: 2026-08-09
+@@ -158,6 +156,24 @@
+ - text — text
+ - text + text ticket text
+   text — text
++
++## Tickets
++
++<!-- wf:tickets -->
++- [[01-slug-131]] · research · resolved · Title 140
++- [[02-slug-140]] · research · resolved · Title 141
++- [[03-slug-141]] · research · resolved · Title 142
++- [[04-slug-142]] · grilling · resolved · Title 143
++- [[05-slug-143]] · grilling · resolved · Title 144
++- [[06-slug-144]] · grilling · resolved · Title 145
++- [[07-slug-145]] · grilling · resolved · Title 146
++- [[08-slug-146]] · grilling · resolved · Title 147
++- [[09-slug-147]] · grilling · resolved · Title 148
++- [[10-slug-148]] · task · resolved · Title 149
++- [[11-slug-149]] · research · resolved · Title 150
++- [[12-slug-150]] · research · resolved · Title 151
++- [[13-slug-151]] · research · resolved · Title 152
++<!-- /wf:tickets -->
+ 
+ ## Decisions so far
+ 
+--- a/repo-d/effort-22/issues/01-slug-152.md
++++ b/repo-d/effort-22/issues/01-slug-152.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-22
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-d/effort-22/issues/02-slug-153.md
++++ b/repo-d/effort-22/issues/02-slug-153.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-22
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-22/issues/03-slug-154.md
++++ b/repo-d/effort-22/issues/03-slug-154.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-22
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-22/issues/04-slug-155.md
++++ b/repo-d/effort-22/issues/04-slug-155.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-22
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-22/issues/05-slug-156.md
++++ b/repo-d/effort-22/issues/05-slug-156.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-22
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-d/effort-22/map.md
++++ b/repo-d/effort-22/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-d
+-effort: effort-22
+ kind: map
+ status: done
+ status_since: 2026-08-23
+@@ -117,6 +115,16 @@
+   text [02](issues/02-slug-153.md) text
+ - text
+   text — text
++
++## Tickets
++
++<!-- wf:tickets -->
++- [[01-slug-152]] · grilling · resolved · Title 153
++- [[02-slug-153]] · task · resolved · Title 154
++- [[03-slug-154]] · task · resolved · Title 155
++- [[04-slug-155]] · task · resolved · Title 156
++- [[05-slug-156]] · task · resolved · Title 157
++<!-- /wf:tickets -->
+ 
+ ## Decisions so far
+ 
+--- a/repo-e/effort-23/issues/01-slug-192.md
++++ b/repo-e/effort-23/issues/01-slug-192.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-e
+-effort: effort-23
+ type: research
+ status: resolved
+ status_since: 2026-09-06
+ blockers: []
++title: slug 192
+ ---
+ 
+ ## Question
+--- a/repo-e/effort-23/issues/02-slug-193.md
++++ b/repo-e/effort-23/issues/02-slug-193.md
+@@ -1,11 +1,10 @@
+ ---
+-repo: repo-e
+-effort: effort-23
+ type: research
+ status: resolved
+ status_since: 2026-09-06
+ blockers:
+   - "[[01-slug-192]]"
++title: slug 193
+ ---
+ 
+ ## Question
+--- a/repo-e/effort-23/issues/03-slug-194.md
++++ b/repo-e/effort-23/issues/03-slug-194.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-e
+-effort: effort-23
+ type: task
+ status: resolved
+ status_since: 2026-09-06
+ blockers: []
++title: slug 194
+ ---
+ 
+ ## Question
+--- a/repo-e/effort-23/issues/04-slug-195.md
++++ b/repo-e/effort-23/issues/04-slug-195.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-e
+-effort: effort-23
+ type: prototype
+ status: resolved
+ status_since: 2026-09-06
+ blockers: []
++title: slug 195
+ ---
+ 
+ > text — text 2026-09-06 text [[09-slug-200]]**
+--- a/repo-e/effort-23/issues/05-slug-196.md
++++ b/repo-e/effort-23/issues/05-slug-196.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-e
+-effort: effort-23
+ type: grilling
+ status: resolved
+ status_since: 2026-09-06
+ blockers: []
++title: slug 196
+ ---
+ 
+ ## Question
+--- a/repo-e/effort-23/issues/06-slug-197.md
++++ b/repo-e/effort-23/issues/06-slug-197.md
+@@ -1,12 +1,11 @@
+ ---
+-repo: repo-e
+-effort: effort-23
+ type: task
+ status: resolved
+ status_since: 2026-09-06
+ blockers:
+   - "[[03-slug-194]]"
+   - "[[05-slug-196]]"
++title: slug 197
+ ---
+ 
+ ## Question
+--- a/repo-e/effort-23/issues/07-slug-198.md
++++ b/repo-e/effort-23/issues/07-slug-198.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-e
+-effort: effort-23
+ type: task
+ status: resolved
+ status_since: 2026-09-06
+@@ -8,6 +6,7 @@
+   - "[[01-slug-192]]"
+   - "[[02-slug-193]]"
+   - "[[03-slug-194]]"
++title: slug 198
+ ---
+ 
+ ## Question
+--- a/repo-e/effort-23/issues/08-slug-199.md
++++ b/repo-e/effort-23/issues/08-slug-199.md
+@@ -1,11 +1,10 @@
+ ---
+-repo: repo-e
+-effort: effort-23
+ type: task
+ status: resolved
+ status_since: 2026-09-06
+ blockers:
+   - "[[07-slug-198]]"
++title: slug 199
+ ---
+ 
+ ## Question
+--- a/repo-e/effort-23/issues/09-slug-200.md
++++ b/repo-e/effort-23/issues/09-slug-200.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-e
+-effort: effort-23
+ type: task
+ status: resolved
+ status_since: 2026-09-06
+@@ -8,6 +6,7 @@
+   - "[[04-slug-195]]"
+   - "[[06-slug-197]]"
+   - "[[10-slug-201]]"
++title: slug 200
+ ---
+ 
+ ## Question
+--- a/repo-e/effort-23/issues/10-slug-201.md
++++ b/repo-e/effort-23/issues/10-slug-201.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-e
+-effort: effort-23
+ type: task
+ status: resolved
+ status_since: 2026-09-06
+ blockers: []
++title: slug 201
+ ---
+ 
+ ## Question
+--- a/repo-e/effort-23/issues/11-slug-202.md
++++ b/repo-e/effort-23/issues/11-slug-202.md
+@@ -1,11 +1,10 @@
+ ---
+-repo: repo-e
+-effort: effort-23
+ type: task
+ status: open
+ status_since: 2026-09-13
+ blockers:
+   - "[[09-slug-200]]"
++title: slug 202
+ ---
+ 
+ ## Question
+--- a/repo-e/effort-23/issues/12-slug-203.md
++++ b/repo-e/effort-23/issues/12-slug-203.md
+@@ -1,11 +1,11 @@
+ ---
+-repo: repo-a
+-effort: effort-23
+ type: task
+ status: resolved
+ status_since: 2026-09-13
+ blockers:
+   - "[[09-slug-200]]"
++target_repo: repo-a
++title: slug 203
+ ---
+ 
+ ## Question
+--- a/repo-e/effort-23/issues/13-slug-204.md
++++ b/repo-e/effort-23/issues/13-slug-204.md
+@@ -1,10 +1,10 @@
+ ---
+-repo: repo-a
+-effort: effort-23
+ type: task
+ status: resolved
+ status_since: 2026-09-06
+ blockers: []
++target_repo: repo-a
++title: slug 204
+ ---
+ 
+ ## Question
+--- a/repo-e/effort-23/issues/14-slug-205.md
++++ b/repo-e/effort-23/issues/14-slug-205.md
+@@ -1,10 +1,10 @@
+ ---
+-repo: repo-a
+-effort: effort-23
+ type: task
+ status: resolved
+ status_since: 2026-09-06
+ blockers: []
++target_repo: repo-a
++title: slug 205
+ ---
+ 
+ ## Question
+--- a/repo-e/effort-23/issues/15-slug-206.md
++++ b/repo-e/effort-23/issues/15-slug-206.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-e
+-effort: effort-23
+ type: task
+ status: resolved
+ status_since: 2026-09-06
+ blockers: []
++title: slug 206
+ ---
+ 
+ ## Question
+--- a/repo-e/effort-23/issues/16-slug-207.md
++++ b/repo-e/effort-23/issues/16-slug-207.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-e
+-effort: effort-23
+ type: task
+ status: resolved
+ status_since: 2026-09-06
+ blockers: []
++title: slug 207
+ ---
+ 
+ ## Question
+--- a/repo-e/effort-23/issues/17-slug-208.md
++++ b/repo-e/effort-23/issues/17-slug-208.md
+@@ -1,11 +1,11 @@
+ ---
+-repo: repo-a
+-effort: effort-23
+ type: task
+ status: resolved
+ status_since: 2026-09-19
+ blockers:
+   - "[[12-slug-203]]"
++target_repo: repo-a
++title: slug 208
+ ---
+ 
+ ## Question
+--- a/repo-e/effort-23/issues/18-slug-209.md
++++ b/repo-e/effort-23/issues/18-slug-209.md
+@@ -1,10 +1,10 @@
+ ---
+-repo: repo-a
+-effort: effort-23
+ type: task
+ status: resolved
+ status_since: 2026-09-13
+ blockers: []
++target_repo: repo-a
++title: slug 209
+ ---
+ 
+ ## Question
+--- a/repo-e/effort-23/issues/19-slug-210.md
++++ b/repo-e/effort-23/issues/19-slug-210.md
+@@ -1,11 +1,11 @@
+ ---
+-repo: repo-a
+-effort: effort-23
+ type: task
+ status: open
+ status_since: 2026-10-11
+ status_note: "value"
+ blockers: []
++target_repo: repo-a
++title: slug 210
+ ---
+ 
+ ## Question
+--- a/repo-e/effort-23/issues/20-slug-211.md
++++ b/repo-e/effort-23/issues/20-slug-211.md
+@@ -1,11 +1,11 @@
+ ---
+-repo: repo-a
+-effort: effort-23
+ type: task
+ status: open
+ status_since: 2026-09-13
+ blockers:
+   - "[[18-slug-209]]"
++target_repo: repo-a
++title: slug 211
+ ---
+ 
+ ## Question
+--- a/repo-e/effort-23/map.md
++++ b/repo-e/effort-23/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-e
+-effort: effort-23
+ kind: map
+ runs: 21
+ status: active
+@@ -151,6 +149,31 @@
+   text
+ - text — text
+ - text + text `grilling`
++
++## Tickets
++
++<!-- wf:tickets -->
++- [[01-slug-192]] · research · resolved · slug 192
++- [[02-slug-193]] · research · resolved · slug 193
++- [[03-slug-194]] · task · resolved · slug 194
++- [[04-slug-195]] · prototype · resolved · slug 195
++- [[05-slug-196]] · grilling · resolved · slug 196
++- [[06-slug-197]] · task · resolved · slug 197
++- [[07-slug-198]] · task · resolved · slug 198
++- [[08-slug-199]] · task · resolved · slug 199
++- [[09-slug-200]] · task · resolved · slug 200
++- [[10-slug-201]] · task · resolved · slug 201
++- [[11-slug-202]] · task · open · slug 202
++- [[12-slug-203]] · task · resolved · slug 203
++- [[13-slug-204]] · task · resolved · slug 204
++- [[14-slug-205]] · task · resolved · slug 205
++- [[15-slug-206]] · task · resolved · slug 206
++- [[16-slug-207]] · task · resolved · slug 207
++- [[17-slug-208]] · task · resolved · slug 208
++- [[18-slug-209]] · task · resolved · slug 209
++- [[19-slug-210]] · task · open · slug 210
++- [[20-slug-211]] · task · open · slug 211
++<!-- /wf:tickets -->
+ 
+ ## Decisions so far
+ 
+--- a/repo-f/effort-24/issues/19-slug-212.md
++++ b/repo-f/effort-24/issues/19-slug-212.md
+@@ -1,12 +1,11 @@
+ ---
+-repo: repo-f
+-effort: effort-24
+ kind: ticket
+ type: task
+ status: resolved
+ status_since: 2026-08-29
+ blockers: []
+ key_2: value
++title: text
+ ---
+ 
+ > text
+--- a/repo-f/effort-24/issues/20-slug-213.md
++++ b/repo-f/effort-24/issues/20-slug-213.md
+@@ -1,12 +1,11 @@
+ ---
+-repo: repo-f
+-effort: effort-24
+ kind: ticket
+ type: task
+ status: open
+ status_since: 2026-08-29
+ blockers: []
+ key_2: value
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-f/effort-24/map.md
++++ b/repo-f/effort-24/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-24
+ kind: map
+ status: active
+ status_since: 2026-08-29
+@@ -91,17 +89,25 @@
+ - text — text
+   text
+ 
+-## Tickets (text)
+-
+-| id | type | title | status | blocked_by |
+-|----|------|-------|--------|------------|
+-| [19](issues/19-slug-212.md) | task | text | **resolved** | — |
+-| [20](issues/20-slug-213.md) | task | text | **open** | — |
++## Tickets
+ 
+-text [[20-slug-213]] — text
++<!-- wf:tickets -->
++- [[19-slug-212]] · task · resolved · text
++- [[20-slug-213]] · task · open · text
++<!-- /wf:tickets -->
+ 
+-> text — text
+-> text 18 text
++> [!quote]- รายการเดิม (ก่อน wf)
++> ## Tickets (text)
++>
++> | id | type | title | status | blocked_by |
++> |----|------|-------|--------|------------|
++> | [19](issues/19-slug-212.md) | task | text | **resolved** | — |
++> | [20](issues/20-slug-213.md) | task | text | **open** | — |
++>
++> text [[20-slug-213]] — text
++>
++> > text — text
++> > text 18 text
+ 
+ ## Decisions so far
+ 
+--- a/repo-f/effort-25/map.md
++++ b/repo-f/effort-25/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-25
+ kind: map
+ status: done
+ status_since: 2026-07-19
+@@ -272,91 +270,99 @@
+ - text — text
+   text
+ 
+-## Tickets (text)
+-
+-<!-- text = open + text +
+-     text tickets text -->
+-
+-| id | type | title | status | blocked_by |
+-|----|------|-------|--------|------------|
+-| [link](url) | task | text — `type` + text | text | — |
+-| [link](url) | task | text — `type` + text | text | text |
+-| [link](url) | task | text — text | text | text |
+-| [link](url) | task | text type text + text | text | — |
+-| [link](url) | task | text + text | text | text |
+-| [link](url) | task | text — text | text | text |
+-| [link](url) | task | text | text | text |
+-| [link](url) | task | text — text + text | text | text |
+-| [link](url) | task | text + text | text | text |
+-| [link](url) | task | text | text | text |
+-| [link](url) | task | text | text | text |
+-| [link](url) | task | text | text | — |
+-
+-text ticket text — text · text · text
+-text · text · text · text · text · text · text
+-text + text + text + text
+-text ticket text
+-- **[link](url)** — text
+-  text
+-  text
+-  text
+-  text open text
+-  text
+-
+-text 2026-07-19 text — text
+-text
+-text
+-text
+-- **[link](url)** — text
+-  text
+-  "+ text
+-
+-text 2026-07-19 text — text
+-text
+-text ticket
+-text
+-text — text
+-text — text
+-text
+-text
+-
+-text
+-text
+-text — text
+-text
+-
+-text
+-text — text
+-text
+-text
+-
+-text 2026-07-19 — text
+-text
+-[link](url)) text
+-- ✅ text — text
+-  text
+-- text
+-  text — text
+-  text status text
+-- text — text
+-  text
+-- text
+-  text — text
++## Tickets
+ 
+-text
+-text
+-text
++<!-- wf:tickets -->
++_ยังไม่มีใบ_
++<!-- /wf:tickets -->
+ 
+-text
+-text
+-text
+-text
+-text **Open text
+-text
++> [!quote]- รายการเดิม (ก่อน wf)
++> ## Tickets (text)
++>
++> <!-- text = open + text +
++>      text tickets text -->
++>
++> | id | type | title | status | blocked_by |
++> |----|------|-------|--------|------------|
++> | [link](url) | task | text — `type` + text | text | — |
++> | [link](url) | task | text — `type` + text | text | text |
++> | [link](url) | task | text — text | text | text |
++> | [link](url) | task | text type text + text | text | — |
++> | [link](url) | task | text + text | text | text |
++> | [link](url) | task | text — text | text | text |
++> | [link](url) | task | text | text | text |
++> | [link](url) | task | text — text + text | text | text |
++> | [link](url) | task | text + text | text | text |
++> | [link](url) | task | text | text | text |
++> | [link](url) | task | text | text | text |
++> | [link](url) | task | text | text | — |
++>
++> text ticket text — text · text · text
++> text · text · text · text · text · text · text
++> text + text + text + text
++> text ticket text
++> - **[link](url)** — text
++>   text
++>   text
++>   text
++>   text open text
++>   text
++>
++> text 2026-07-19 text — text
++> text
++> text
++> text
++> - **[link](url)** — text
++>   text
++>   "+ text
++>
++> text 2026-07-19 text — text
++> text
++> text ticket
++> text
++> text — text
++> text — text
++> text
++> text
++>
++> text
++> text
++> text — text
++> text
++>
++> text
++> text — text
++> text
++> text
++>
++> text 2026-07-19 — text
++> text
++> [link](url)) text
++> - ✅ text — text
++>   text
++> - text
++>   text — text
++>   text status text
++> - text — text
++>   text
++> - text
++>   text — text
++>
++> text
++> text
++> text
++>
++> text
++> text
++> text
++> text
++> text **Open text
++> text
++>
++> text — text
++> text / text / text / text
++> text + text
++> text + text — text
++> text
++> text
+ 
+-text — text
+-text / text / text / text
+-text + text
+-text + text — text
+-text
+-text
+--- a/repo-f/effort-26/map.md
++++ b/repo-f/effort-26/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-26
+ kind: map
+ status: done
+ status_since: 2026-07-23
+@@ -224,37 +222,45 @@
+   text [link](url) /
+   text 2 text
+ 
+-## Tickets (text)
+-
+-<!-- text = open + text + text -->
+-
+-| id | type | title | status | blocked_by |
+-|----|------|-------|--------|------------|
+-| [link](url) | grilling | text — text | text | — |
+-| [link](url) | research | text | text | — |
+-| [link](url) | grilling | text type text | text | text |
+-| [link](url) | grilling | text | text | text |
+-| [link](url) | prototype | text | text | text |
+-| [link](url) | grilling | text | text | text |
+-| [link](url) | grilling | text | text | text |
+-| [link](url) | grilling | text | text | text |
+-| [link](url) | grilling | text + text | text | text |
+-| [link](url) | task | text + text | text | text |
++## Tickets
+ 
+-text — text ticket text
+-text 2026-07-19 — text = text
+-text | text
+-text + text
+-text + text
+-text
++<!-- wf:tickets -->
++_ยังไม่มีใบ_
++<!-- /wf:tickets -->
+ 
+-text — text
+-text
+-text + text tickets text
+-text
++> [!quote]- รายการเดิม (ก่อน wf)
++> ## Tickets (text)
++>
++> <!-- text = open + text + text -->
++>
++> | id | type | title | status | blocked_by |
++> |----|------|-------|--------|------------|
++> | [link](url) | grilling | text — text | text | — |
++> | [link](url) | research | text | text | — |
++> | [link](url) | grilling | text type text | text | text |
++> | [link](url) | grilling | text | text | text |
++> | [link](url) | prototype | text | text | text |
++> | [link](url) | grilling | text | text | text |
++> | [link](url) | grilling | text | text | text |
++> | [link](url) | grilling | text | text | text |
++> | [link](url) | grilling | text + text | text | text |
++> | [link](url) | task | text + text | text | text |
++>
++> text — text ticket text
++> text 2026-07-19 — text = text
++> text | text
++> text + text
++> text + text
++> text
++>
++> text — text
++> text
++> text + text tickets text
++> text
++>
++> text
++> text — text
++> text
++> text
++> - text [[repo-f/effort-25/map|alias]] text 2026-09-27 text [[note-76]].
+ 
+-text
+-text — text
+-text
+-text
+-- text [[repo-f/effort-25/map|alias]] text 2026-09-27 text [[note-76]].
+--- a/repo-f/effort-27/issues/01-slug-214.md
++++ b/repo-f/effort-27/issues/01-slug-214.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-27/issues/02-slug-215.md
++++ b/repo-f/effort-27/issues/02-slug-215.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-27/issues/03-slug-216.md
++++ b/repo-f/effort-27/issues/03-slug-216.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-f/effort-27/issues/04-slug-125.md
++++ b/repo-f/effort-27/issues/04-slug-125.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-27/issues/05-slug-217.md
++++ b/repo-f/effort-27/issues/05-slug-217.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-27/issues/06-slug-218.md
++++ b/repo-f/effort-27/issues/06-slug-218.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-27/issues/07-slug-219.md
++++ b/repo-f/effort-27/issues/07-slug-219.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-27/issues/08-slug-220.md
++++ b/repo-f/effort-27/issues/08-slug-220.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-27/issues/09-slug-221.md
++++ b/repo-f/effort-27/issues/09-slug-221.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-27/issues/10-slug-222.md
++++ b/repo-f/effort-27/issues/10-slug-222.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-27/issues/11-slug-223.md
++++ b/repo-f/effort-27/issues/11-slug-223.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-27/issues/12-slug-224.md
++++ b/repo-f/effort-27/issues/12-slug-224.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-27/issues/13-slug-225.md
++++ b/repo-f/effort-27/issues/13-slug-225.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-27/issues/14-slug-226.md
++++ b/repo-f/effort-27/issues/14-slug-226.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-27/issues/15-slug-227.md
++++ b/repo-f/effort-27/issues/15-slug-227.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-f/effort-27/issues/16-slug-228.md
++++ b/repo-f/effort-27/issues/16-slug-228.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-27/issues/17-slug-229.md
++++ b/repo-f/effort-27/issues/17-slug-229.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-27/issues/18-slug-230.md
++++ b/repo-f/effort-27/issues/18-slug-230.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-f/effort-27/issues/19-slug-231.md
++++ b/repo-f/effort-27/issues/19-slug-231.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-27/issues/20-slug-232.md
++++ b/repo-f/effort-27/issues/20-slug-232.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-27/issues/21-slug-233.md
++++ b/repo-f/effort-27/issues/21-slug-233.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-27/issues/22-slug-234.md
++++ b/repo-f/effort-27/issues/22-slug-234.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-27/issues/23-slug-235.md
++++ b/repo-f/effort-27/issues/23-slug-235.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: ticket
+ type: task
+ status: open
+--- a/repo-f/effort-27/map.md
++++ b/repo-f/effort-27/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-27
+ kind: map
+ status: active
+ status_since: 2026-07-26
+@@ -911,66 +909,95 @@
+   text
+   text
+ 
+-## Tickets (text)
+-
+-<!-- text = open + text resolved + text -->
+-
+-| id | type | title | status | blocked_by |
+-|----|------|-------|--------|------------|
+-| [01](issues/01-slug-214.md) | task | text — text | **resolved** | — |
+-| [02](issues/02-slug-215.md) | task | text | **resolved** | — |
+-| [03](issues/03-slug-216.md) | grilling | text — text ticket text | **resolved** | — |
+-| [18](issues/18-slug-230.md) | grilling | text — text | **resolved** | — |
+-| [04](issues/04-slug-125.md) | task | text · text + text | **resolved** | — |
+-| [05](issues/05-slug-217.md) | task | text · text | **resolved** | — |
+-| [06](issues/06-slug-218.md) | task | text · text | **resolved** | — |
+-| [07](issues/07-slug-219.md) | task | text · text | **resolved** | — |
+-| [08](issues/08-slug-220.md) | task | text · text + text | **resolved** | — |
+-| [09](issues/09-slug-221.md) | task | text · text | **resolved** | — |
+-| [10](issues/10-slug-222.md) | task | text · text | **resolved** | — |
+-| [11](issues/11-slug-223.md) | task | text · text — text | **resolved** | — |
+-| [12](issues/12-slug-224.md) | task | text · text — text | **resolved** | — |
+-| [13](issues/13-slug-225.md) | task | text · text + text | **resolved** | — |
+-| [14](issues/14-slug-226.md) | task | text · text | **resolved** | — |
+-| [15](issues/15-slug-227.md) | grilling | text + text | **resolved** | — |
+-| [16](issues/16-slug-228.md) | task | text + text | **resolved** | — |
+-| [17](issues/17-slug-229.md) | task | text | **resolved** | — |
+-| [19](issues/19-slug-231.md) | task | text — text | **resolved** | — |
+-| [20](issues/20-slug-232.md) | task | text | **resolved** | — |
+-| [21](issues/21-slug-233.md) | task | text | **resolved** | — |
+-| [22](issues/22-slug-234.md) | task | text | **resolved** | — |
+-| [23](issues/23-slug-235.md) | task | text | **open** — text ✅ text 4 text | 18 |
+-
+-text — text 2026-08-02 text [23](issues/23-slug-235.md) text
+-text open text
+-
+-✅ text ticket text
+-text 18 text = text
+-text — text
++## Tickets
+ 
+-text 23 text
+-text
+-text ticket text
++<!-- wf:tickets -->
++- [[01-slug-214]] · task · resolved · Title 215
++- [[02-slug-215]] · task · resolved · Title 216
++- [[03-slug-216]] · grilling · resolved · Title 217
++- [[04-slug-125]] · task · resolved · Title 218
++- [[05-slug-217]] · task · resolved · Title 219
++- [[06-slug-218]] · task · resolved · Title 220
++- [[07-slug-219]] · task · resolved · Title 221
++- [[08-slug-220]] · task · resolved · Title 222
++- [[09-slug-221]] · task · resolved · Title 223
++- [[10-slug-222]] · task · resolved · Title 224
++- [[11-slug-223]] · task · resolved · Title 225
++- [[12-slug-224]] · task · resolved · Title 226
++- [[13-slug-225]] · task · resolved · Title 227
++- [[14-slug-226]] · task · resolved · Title 228
++- [[15-slug-227]] · grilling · resolved · Title 229
++- [[16-slug-228]] · task · resolved · Title 230
++- [[17-slug-229]] · task · resolved · Title 231
++- [[18-slug-230]] · grilling · resolved · Title 232
++- [[19-slug-231]] · task · resolved · Title 233
++- [[20-slug-232]] · task · resolved · Title 234
++- [[21-slug-233]] · task · resolved · Title 235
++- [[22-slug-234]] · task · resolved · Title 236
++- [[23-slug-235]] · task · open · Title 237
++<!-- /wf:tickets -->
+ 
+-| ticket | text | text |
+-|---|---|---|
+-| [link](issues/23-slug-235.md) | 18 | text **OPEN — text ✅ text = text ✅ text — text ✅ text 6 text [20](issues/20-slug-232.md) text open** — [22](issues/22-slug-234.md) text + text [19](issues/19-slug-231.md) text — text + text 1 text 7 text |
+-| ~~[link](issues/19-slug-231.md)~~ | 16 | **resolved** — text + text ✅ text — text = text — text = text 16 text ✅ · text ✅ text · text ✅ text ⛔ text — text — text — text ✅ · text ✅ text · text ✅ text — text |
+-| ~~[link](issues/20-slug-232.md)~~ | 17 | **resolved** — text — text ✅ text 18 text ⛔ text ticket — text · text — text ✅ · text ✅ text · text ✅ text |
+-| ~~[link](issues/22-slug-234.md)~~ | 15 | **resolved** — text ✅ text — text 2026-08-02 text = text |
+-| ~~[link](issues/21-slug-233.md)~~ | 14 | **resolved** — text · text · text 10 text [22](issues/22-slug-234.md) |
+-| ~~[link](issues/17-slug-229.md)~~ | 13 | **resolved** — text · text |
+-| ~~[link](issues/16-slug-228.md)~~ | 12 | **resolved** — text |
+-| ~~[link](issues/12-slug-224.md)~~ | 8 | **resolved** — text |
+-| ~~[link](issues/13-slug-225.md)~~ | 10 | **resolved** — text |
+-| ~~[link](issues/14-slug-226.md)~~ | 11 | **resolved** — text |
+-| ~~[link](issues/07-slug-219.md)~~ | 9 | **resolved** — text |
+-| ~~[link](issues/11-slug-223.md)~~ | 7 | **resolved** — text |
+-| ~~[link](issues/10-slug-222.md)~~ | 6 | **resolved** — text |
+-| ~~[link](issues/06-slug-218.md)~~ | 5 | **resolved** — text |
+-| ~~[link](issues/05-slug-217.md)~~ | 4 | **resolved** — text |
+-| ~~[link](issues/04-slug-125.md)~~ | 3 | **resolved** — text |
+-| ~~[link](issues/15-slug-227.md)~~ | 2 | **resolved** — [link](url) |
++> [!quote]- รายการเดิม (ก่อน wf)
++> ## Tickets (text)
++>
++> <!-- text = open + text resolved + text -->
++>
++> | id | type | title | status | blocked_by |
++> |----|------|-------|--------|------------|
++> | [01](issues/01-slug-214.md) | task | text — text | **resolved** | — |
++> | [02](issues/02-slug-215.md) | task | text | **resolved** | — |
++> | [03](issues/03-slug-216.md) | grilling | text — text ticket text | **resolved** | — |
++> | [18](issues/18-slug-230.md) | grilling | text — text | **resolved** | — |
++> | [04](issues/04-slug-125.md) | task | text · text + text | **resolved** | — |
++> | [05](issues/05-slug-217.md) | task | text · text | **resolved** | — |
++> | [06](issues/06-slug-218.md) | task | text · text | **resolved** | — |
++> | [07](issues/07-slug-219.md) | task | text · text | **resolved** | — |
++> | [08](issues/08-slug-220.md) | task | text · text + text | **resolved** | — |
++> | [09](issues/09-slug-221.md) | task | text · text | **resolved** | — |
++> | [10](issues/10-slug-222.md) | task | text · text | **resolved** | — |
++> | [11](issues/11-slug-223.md) | task | text · text — text | **resolved** | — |
++> | [12](issues/12-slug-224.md) | task | text · text — text | **resolved** | — |
++> | [13](issues/13-slug-225.md) | task | text · text + text | **resolved** | — |
++> | [14](issues/14-slug-226.md) | task | text · text | **resolved** | — |
++> | [15](issues/15-slug-227.md) | grilling | text + text | **resolved** | — |
++> | [16](issues/16-slug-228.md) | task | text + text | **resolved** | — |
++> | [17](issues/17-slug-229.md) | task | text | **resolved** | — |
++> | [19](issues/19-slug-231.md) | task | text — text | **resolved** | — |
++> | [20](issues/20-slug-232.md) | task | text | **resolved** | — |
++> | [21](issues/21-slug-233.md) | task | text | **resolved** | — |
++> | [22](issues/22-slug-234.md) | task | text | **resolved** | — |
++> | [23](issues/23-slug-235.md) | task | text | **open** — text ✅ text 4 text | 18 |
++>
++> text — text 2026-08-02 text [23](issues/23-slug-235.md) text
++> text open text
++>
++> ✅ text ticket text
++> text 18 text = text
++> text — text
++>
++> text 23 text
++> text
++> text ticket text
++>
++> | ticket | text | text |
++> |---|---|---|
++> | [link](issues/23-slug-235.md) | 18 | text **OPEN — text ✅ text = text ✅ text — text ✅ text 6 text [20](issues/20-slug-232.md) text open** — [22](issues/22-slug-234.md) text + text [19](issues/19-slug-231.md) text — text + text 1 text 7 text |
++> | ~~[link](issues/19-slug-231.md)~~ | 16 | **resolved** — text + text ✅ text — text = text — text = text 16 text ✅ · text ✅ text · text ✅ text ⛔ text — text — text — text ✅ · text ✅ text · text ✅ text — text |
++> | ~~[link](issues/20-slug-232.md)~~ | 17 | **resolved** — text — text ✅ text 18 text ⛔ text ticket — text · text — text ✅ · text ✅ text · text ✅ text |
++> | ~~[link](issues/22-slug-234.md)~~ | 15 | **resolved** — text ✅ text — text 2026-08-02 text = text |
++> | ~~[link](issues/21-slug-233.md)~~ | 14 | **resolved** — text · text · text 10 text [22](issues/22-slug-234.md) |
++> | ~~[link](issues/17-slug-229.md)~~ | 13 | **resolved** — text · text |
++> | ~~[link](issues/16-slug-228.md)~~ | 12 | **resolved** — text |
++> | ~~[link](issues/12-slug-224.md)~~ | 8 | **resolved** — text |
++> | ~~[link](issues/13-slug-225.md)~~ | 10 | **resolved** — text |
++> | ~~[link](issues/14-slug-226.md)~~ | 11 | **resolved** — text |
++> | ~~[link](issues/07-slug-219.md)~~ | 9 | **resolved** — text |
++> | ~~[link](issues/11-slug-223.md)~~ | 7 | **resolved** — text |
++> | ~~[link](issues/10-slug-222.md)~~ | 6 | **resolved** — text |
++> | ~~[link](issues/06-slug-218.md)~~ | 5 | **resolved** — text |
++> | ~~[link](issues/05-slug-217.md)~~ | 4 | **resolved** — text |
++> | ~~[link](issues/04-slug-125.md)~~ | 3 | **resolved** — text |
++> | ~~[link](issues/15-slug-227.md)~~ | 2 | **resolved** — [link](url) |
+ 
+ ## Section
+ 
+--- a/repo-f/effort-28/issues/01-slug-236.md
++++ b/repo-f/effort-28/issues/01-slug-236.md
+@@ -1,12 +1,11 @@
+ ---
+-repo: repo-f
+-effort: effort-28
+ type: research
+ status: resolved
+ status_since: 2026-08-23
+ key_4: value
+ blockers: []
+ key_1: ["value"]
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-f/effort-28/issues/02-slug-237.md
++++ b/repo-f/effort-28/issues/02-slug-237.md
+@@ -1,12 +1,11 @@
+ ---
+-repo: repo-f
+-effort: effort-28
+ type: research
+ status: resolved
+ status_since: 2026-08-23
+ key_4: value
+ blockers: []
+ key_1: ["value"]
++title: text / text
+ ---
+ 
+ ## Question
+--- a/repo-f/effort-28/issues/03-slug-238.md
++++ b/repo-f/effort-28/issues/03-slug-238.md
+@@ -1,12 +1,11 @@
+ ---
+-repo: repo-f
+-effort: effort-28
+ type: task
+ status: resolved
+ status_since: 2026-08-23
+ key_4: value
+ blockers: []
+ key_1: ["value"]
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-f/effort-28/issues/04-slug-239.md
++++ b/repo-f/effort-28/issues/04-slug-239.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-28
+ type: task
+ status: resolved
+ status_since: 2026-08-23
+@@ -10,6 +8,7 @@
+   - "[[02-slug-237]]"
+   - "[[09-slug-243]]"
+ key_1: ["value"]
++title: text + text
+ ---
+ 
+ ## Question
+--- a/repo-f/effort-28/issues/05-slug-240.md
++++ b/repo-f/effort-28/issues/05-slug-240.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-28
+ type: task
+ status: resolved
+ status_since: 2026-08-23
+@@ -9,6 +7,7 @@
+   - "[[01-slug-236]]"
+   - "[[04-slug-239]]"
+ key_1: ["value"]
++title: text + text
+ ---
+ 
+ ## Question
+--- a/repo-f/effort-28/issues/06-slug-241.md
++++ b/repo-f/effort-28/issues/06-slug-241.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-28
+ type: task
+ status: resolved
+ status_since: 2026-08-23
+@@ -8,6 +6,7 @@
+ blockers:
+   - "[[05-slug-240]]"
+ key_1: ["value"]
++title: text · text · text
+ ---
+ 
+ ## Question
+--- a/repo-f/effort-28/issues/07-slug-242.md
++++ b/repo-f/effort-28/issues/07-slug-242.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-28
+ type: task
+ status: open
+ status_since: 2026-08-23
+@@ -9,6 +7,7 @@
+   - "[[03-slug-238]]"
+   - "[[06-slug-241]]"
+ key_1: ["value"]
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-f/effort-28/issues/08-slug-229.md
++++ b/repo-f/effort-28/issues/08-slug-229.md
+@@ -1,11 +1,10 @@
+ ---
+-repo: repo-f
+-effort: effort-28
+ type: task
+ status: open
+ status_since: 2026-08-23
+ blockers:
+   - "[[07-slug-242]]"
++title: text
+ ---
+ 
+ ## Question
+--- a/repo-f/effort-28/issues/09-slug-243.md
++++ b/repo-f/effort-28/issues/09-slug-243.md
+@@ -1,12 +1,11 @@
+ ---
+-repo: repo-f
+-effort: effort-28
+ type: task
+ status: resolved
+ status_since: 2026-08-23
+ blockers: []
+ key_4: value
+ key_1: ["value"]
++title: text — text / text / text
+ ---
+ 
+ <!-- text
+--- a/repo-f/effort-28/map.md
++++ b/repo-f/effort-28/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-28
+ kind: map
+ status: active
+ status_since: 2026-08-23
+@@ -497,66 +495,82 @@
+ - text [link](url) text — text
+   text
+ 
+-## Tickets (text)
+-
+-<!-- text = open + text + text -->
+-
+-| id | type | title | status | blocked_by |
+-|----|------|-------|--------|------------|
+-| [01](issues/01-slug-236.md) | research | text | ✅ resolved | — |
+-| [02](issues/02-slug-237.md) | research | text / text | ✅ resolved | — |
+-| [03](issues/03-slug-238.md) | task | text | ✅ resolved | — |
+-| [09](issues/09-slug-243.md) | task | text — text / text / text | ✅ resolved | — |
+-| [04](issues/04-slug-239.md) | task | text + text | ✅ resolved | — |
+-| [05](issues/05-slug-240.md) | task | text + text | ✅ resolved | — |
+-| [06](issues/06-slug-241.md) | task | text · text · text | ✅ resolved | — |
+-| [07](issues/07-slug-242.md) | task | text | open | 03 · 06 |
+-| [08](issues/08-slug-229.md) | task | text | open | 07 |
+-
+-✅ text 2026-08-23 text · 09 text 4 · 04 text 5 text
+-05 text 6 · 06 text
+-text [07](issues/07-slug-242.md) text ticket text
+-
+-text — text [07](issues/07-slug-242.md)
+-text [08](issues/08-slug-229.md) text
+-text
+-
+-text [08](issues/08-slug-229.md) text — text
+-text + text [07](issues/07-slug-242.md) text
+-text
+-⛔ text · text 1 text
+-`## text [08](issues/08-slug-229.md)
+-text [07](issues/07-slug-242.md) text — text
+-text [03](issues/03-slug-238.md) text
+-text
+-
+-text [07](issues/07-slug-242.md) text 13 text
+-text [05](issues/05-slug-240.md) text · text · text
+-text · text · text · text
+-text [06](issues/06-slug-241.md) text · text
+-text · text · text · text
+-text `## text
+-text 13 text [link](url)
+-text
+-
+-text — text
+-[09](issues/09-slug-243.md) text
+-text
+-text — text
+-text **[04](issues/04-slug-239.md) text
+-04 text 05 text 06 text 07 text 08 text
++## Tickets
+ 
+-text [07](issues/07-slug-242.md) text — text
+-text
+-text · text Open text
+-text `## text
++<!-- wf:tickets -->
++- [[01-slug-236]] · research · resolved · text
++- [[02-slug-237]] · research · resolved · text / text
++- [[03-slug-238]] · task · resolved · text
++- [[04-slug-239]] · task · resolved · text + text
++- [[05-slug-240]] · task · resolved · text + text
++- [[06-slug-241]] · task · resolved · text · text · text
++- [[07-slug-242]] · task · open · text
++- [[08-slug-229]] · task · open · text ⛔
++- [[09-slug-243]] · task · resolved · text — text / text / text
++<!-- /wf:tickets -->
+ 
+-text 09 text
+-text — text 38 text
+-text
+-text
++> [!quote]- รายการเดิม (ก่อน wf)
++> ## Tickets (text)
++>
++> <!-- text = open + text + text -->
++>
++> | id | type | title | status | blocked_by |
++> |----|------|-------|--------|------------|
++> | [01](issues/01-slug-236.md) | research | text | ✅ resolved | — |
++> | [02](issues/02-slug-237.md) | research | text / text | ✅ resolved | — |
++> | [03](issues/03-slug-238.md) | task | text | ✅ resolved | — |
++> | [09](issues/09-slug-243.md) | task | text — text / text / text | ✅ resolved | — |
++> | [04](issues/04-slug-239.md) | task | text + text | ✅ resolved | — |
++> | [05](issues/05-slug-240.md) | task | text + text | ✅ resolved | — |
++> | [06](issues/06-slug-241.md) | task | text · text · text | ✅ resolved | — |
++> | [07](issues/07-slug-242.md) | task | text | open | 03 · 06 |
++> | [08](issues/08-slug-229.md) | task | text | open | 07 |
++>
++> ✅ text 2026-08-23 text · 09 text 4 · 04 text 5 text
++> 05 text 6 · 06 text
++> text [07](issues/07-slug-242.md) text ticket text
++>
++> text — text [07](issues/07-slug-242.md)
++> text [08](issues/08-slug-229.md) text
++> text
++>
++> text [08](issues/08-slug-229.md) text — text
++> text + text [07](issues/07-slug-242.md) text
++> text
++> ⛔ text · text 1 text
++> `## text [08](issues/08-slug-229.md)
++> text [07](issues/07-slug-242.md) text — text
++> text [03](issues/03-slug-238.md) text
++> text
++>
++> text [07](issues/07-slug-242.md) text 13 text
++> text [05](issues/05-slug-240.md) text · text · text
++> text · text · text · text
++> text [06](issues/06-slug-241.md) text · text
++> text · text · text · text
++> text `## text
++> text 13 text [link](url)
++> text
++>
++> text — text
++> [09](issues/09-slug-243.md) text
++> text
++> text — text
++> text **[04](issues/04-slug-239.md) text
++> 04 text 05 text 06 text 07 text 08 text
++>
++> text [07](issues/07-slug-242.md) text — text
++> text
++> text · text Open text
++> text `## text
++>
++> text 09 text
++> text — text 38 text
++> text
++> text
++>
++> text — text
++> text
++> text — text
++> text + text
+ 
+-text — text
+-text
+-text — text
+-text + text
+--- a/repo-f/effort-29/issues/01-slug-244.md
++++ b/repo-f/effort-29/issues/01-slug-244.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-29
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-29/issues/02-slug-245.md
++++ b/repo-f/effort-29/issues/02-slug-245.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-29
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-f/effort-29/issues/03-slug-246.md
++++ b/repo-f/effort-29/issues/03-slug-246.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-29
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-29/issues/04-slug-247.md
++++ b/repo-f/effort-29/issues/04-slug-247.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-29
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-29/issues/05-slug-248.md
++++ b/repo-f/effort-29/issues/05-slug-248.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-29
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-29/issues/06-slug-249.md
++++ b/repo-f/effort-29/issues/06-slug-249.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-29
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-29/issues/07-slug-250.md
++++ b/repo-f/effort-29/issues/07-slug-250.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-29
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-29/issues/08-slug-251.md
++++ b/repo-f/effort-29/issues/08-slug-251.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-29
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-29/issues/09-slug-229.md
++++ b/repo-f/effort-29/issues/09-slug-229.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-29
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-29/issues/10-slug-252.md
++++ b/repo-f/effort-29/issues/10-slug-252.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-29
+ kind: ticket
+ type: grilling
+ status: resolved
+--- a/repo-f/effort-29/issues/11-slug-253.md
++++ b/repo-f/effort-29/issues/11-slug-253.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-29
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-29/issues/12-slug-254.md
++++ b/repo-f/effort-29/issues/12-slug-254.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-29
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-29/issues/13-slug-255.md
++++ b/repo-f/effort-29/issues/13-slug-255.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-29
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-29/issues/14-slug-256.md
++++ b/repo-f/effort-29/issues/14-slug-256.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-29
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-29/issues/15-slug-257.md
++++ b/repo-f/effort-29/issues/15-slug-257.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-29
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-29/issues/16-slug-258.md
++++ b/repo-f/effort-29/issues/16-slug-258.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-29
+ kind: ticket
+ type: task
+ status: resolved
+--- a/repo-f/effort-29/issues/17-slug-259.md
++++ b/repo-f/effort-29/issues/17-slug-259.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-29
+ kind: ticket
+ type: task
+ status: open
+--- a/repo-f/effort-29/map.md
++++ b/repo-f/effort-29/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-29
+ kind: map
+ status: active
+ status_since: 2026-08-02
+@@ -475,39 +473,62 @@
+   text
+   text [link](issues/03-slug-246.md) text
+ 
+-## Tickets (text)
+-
+-<!-- text = open + text + text -->
++## Tickets
+ 
+-| id | type | title | status | blocked_by |
+-|----|------|-------|--------|------------|
+-| [01](issues/01-slug-244.md) | task | text | **resolved** | — |
+-| [02](issues/02-slug-245.md) | grilling | text | **resolved** | — |
+-| [03](issues/03-slug-246.md) | task | text | **resolved** | — |
+-| [04](issues/04-slug-247.md) | task | text | **resolved** | — |
+-| [05](issues/05-slug-248.md) | task | text | **resolved** | — |
+-| [06](issues/06-slug-249.md) | task | text | **resolved** | — |
+-| [07](issues/07-slug-250.md) | task | text | **resolved** | — |
+-| [08](issues/08-slug-251.md) | task | text | **resolved** text — text · text | — |
+-| [09](issues/09-slug-229.md) | task | text | **resolved** text · text · text — ✅ text | — |
+-| [10](issues/10-slug-252.md) | grilling | text — text | **resolved** | — |
+-| [11](issues/11-slug-253.md) | task | text | **resolved** | — |
+-| [12](issues/12-slug-254.md) | task | text | **resolved** text — text · text · text | — |
+-| [13](issues/13-slug-255.md) | task | text — text | **resolved** text · text + text | — |
+-| [14](issues/14-slug-256.md) | task | text | **resolved** text · text | — |
+-| [15](issues/15-slug-257.md) | task | text | **resolved** text · text | — |
+-| [16](issues/16-slug-258.md) | task | text | **resolved** text · text — ✅ text | — |
+-| [17](issues/17-slug-259.md) | task | text | text — text · text | — |
++<!-- wf:tickets -->
++- [[01-slug-244]] · task · resolved · Title 247
++- [[02-slug-245]] · grilling · resolved · Title 248
++- [[03-slug-246]] · task · resolved · Title 249
++- [[04-slug-247]] · task · resolved · Title 250
++- [[05-slug-248]] · task · resolved · Title 251
++- [[06-slug-249]] · task · resolved · Title 252
++- [[07-slug-250]] · task · resolved · Title 253
++- [[08-slug-251]] · task · resolved · Title 254
++- [[09-slug-229]] · task · resolved · Title 255
++- [[10-slug-252]] · grilling · resolved · Title 256
++- [[11-slug-253]] · task · resolved · Title 257
++- [[12-slug-254]] · task · resolved · Title 258
++- [[13-slug-255]] · task · resolved · Title 259
++- [[14-slug-256]] · task · resolved · Title 260
++- [[15-slug-257]] · task · resolved · Title 261
++- [[16-slug-258]] · task · resolved · Title 262
++- [[17-slug-259]] · task · open · Title 263
++<!-- /wf:tickets -->
+ 
+-✅ text — text 2026-08-02 text
+-text 8 text
+-text
+-text · text
+-text 8 text
+-text · text
+-✅ text — text
+-text ⛔ text
+-text — text
++> [!quote]- รายการเดิม (ก่อน wf)
++> ## Tickets (text)
++>
++> <!-- text = open + text + text -->
++>
++> | id | type | title | status | blocked_by |
++> |----|------|-------|--------|------------|
++> | [01](issues/01-slug-244.md) | task | text | **resolved** | — |
++> | [02](issues/02-slug-245.md) | grilling | text | **resolved** | — |
++> | [03](issues/03-slug-246.md) | task | text | **resolved** | — |
++> | [04](issues/04-slug-247.md) | task | text | **resolved** | — |
++> | [05](issues/05-slug-248.md) | task | text | **resolved** | — |
++> | [06](issues/06-slug-249.md) | task | text | **resolved** | — |
++> | [07](issues/07-slug-250.md) | task | text | **resolved** | — |
++> | [08](issues/08-slug-251.md) | task | text | **resolved** text — text · text | — |
++> | [09](issues/09-slug-229.md) | task | text | **resolved** text · text · text — ✅ text | — |
++> | [10](issues/10-slug-252.md) | grilling | text — text | **resolved** | — |
++> | [11](issues/11-slug-253.md) | task | text | **resolved** | — |
++> | [12](issues/12-slug-254.md) | task | text | **resolved** text — text · text · text | — |
++> | [13](issues/13-slug-255.md) | task | text — text | **resolved** text · text + text | — |
++> | [14](issues/14-slug-256.md) | task | text | **resolved** text · text | — |
++> | [15](issues/15-slug-257.md) | task | text | **resolved** text · text | — |
++> | [16](issues/16-slug-258.md) | task | text | **resolved** text · text — ✅ text | — |
++> | [17](issues/17-slug-259.md) | task | text | text — text · text | — |
++>
++> ✅ text — text 2026-08-02 text
++> text 8 text
++> text
++> text · text
++> text 8 text
++> text · text
++> ✅ text — text
++> text ⛔ text
++> text — text
+ 
+ ## Section
+ 
+--- a/repo-f/effort-30/map.md
++++ b/repo-f/effort-30/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-f
+-effort: effort-30
+ kind: map
+ status: done
+ status_since: 2026-07-26
+@@ -537,119 +535,126 @@
+ - text — text
+   text
+ 
+-## Tickets (text)
+-
+-<!-- text = open + text + text -->
+-
+-| id | type | title | status | blocked_by |
+-|----|------|-------|--------|------------|
+-| [link](url) | research | text + text + text | text | — |
+-| [link](url) | grilling | text + text | **resolved** | — |
+-| [link](url) | grilling | text + text | text | — |
+-| [link](url) | grilling | text + text | **resolved** | text |
+-| [link](url) | grilling | text | **resolved** | text |
+-| [link](url) | grilling | text + text | **resolved** | text |
+-| [link](url) | grilling | text + text | **resolved** | text |
+-| [link](url) | prototype | text prototype | **resolved** | text |
+-| [link](url) | task | text | **resolved** | text |
+-| [link](url) | grilling | text | **resolved** | — |
+-
+-text
+-
+-text
+-text — text
+-text prototype text
+-text ticket text
+-[link](url) text
+-text
+-[link](url) text
+-text
+-
+-text
+-text — text
+-text
+-
+-text tickets text resolved
+-text
+-text — text
+-text
+-grilling ticket text
+-text tickets text
+-text
+-
+-text resolved text resolved text — text
+-ticket text
+-text
+-text
+-text — text
+-text
+-text
+-tickets text
+-
+-text ticket text
+-text
+-text resolved text
+-text
+-text
+-text
+-text type text
+-text
+-text
+-
+-text ticket text
+-text
+-text
+-text — text
+-text
+-text grilling ticket text
+-text — text
+-text
+-text
+-text — text
+-text
+-text
+-
+-text ticket text
+-text — text
+-text — text
+-text
+-text tickets text
+-text
+-text — text
+-text — text
+-text
+-text prototype text
+-text
+-
+-text — text
+-text ticket text
+-text tickets text
+-text 409 text
+-text 404 text
+-text — text
+-text
+-text — text
+-text
+-
+-text
+-text
+-text — text
+-text 409 text
+-text
+-text resolved text
+-text
++## Tickets
+ 
+-text
+-text — text
+-text
+-text
+-text — text — text
+-text
+-text
+-text — text
+-text
++<!-- wf:tickets -->
++_ยังไม่มีใบ_
++<!-- /wf:tickets -->
+ 
+----
++> [!quote]- รายการเดิม (ก่อน wf)
++> ## Tickets (text)
++>
++> <!-- text = open + text + text -->
++>
++> | id | type | title | status | blocked_by |
++> |----|------|-------|--------|------------|
++> | [link](url) | research | text + text + text | text | — |
++> | [link](url) | grilling | text + text | **resolved** | — |
++> | [link](url) | grilling | text + text | text | — |
++> | [link](url) | grilling | text + text | **resolved** | text |
++> | [link](url) | grilling | text | **resolved** | text |
++> | [link](url) | grilling | text + text | **resolved** | text |
++> | [link](url) | grilling | text + text | **resolved** | text |
++> | [link](url) | prototype | text prototype | **resolved** | text |
++> | [link](url) | task | text | **resolved** | text |
++> | [link](url) | grilling | text | **resolved** | — |
++>
++> text
++>
++> text
++> text — text
++> text prototype text
++> text ticket text
++> [link](url) text
++> text
++> [link](url) text
++> text
++>
++> text
++> text — text
++> text
++>
++> text tickets text resolved
++> text
++> text — text
++> text
++> grilling ticket text
++> text tickets text
++> text
++>
++> text resolved text resolved text — text
++> ticket text
++> text
++> text
++> text — text
++> text
++> text
++> tickets text
++>
++> text ticket text
++> text
++> text resolved text
++> text
++> text
++> text
++> text type text
++> text
++> text
++>
++> text ticket text
++> text
++> text
++> text — text
++> text
++> text grilling ticket text
++> text — text
++> text
++> text
++> text — text
++> text
++> text
++>
++> text ticket text
++> text — text
++> text — text
++> text
++> text tickets text
++> text
++> text — text
++> text — text
++> text
++> text prototype text
++> text
++>
++> text — text
++> text ticket text
++> text tickets text
++> text 409 text
++> text 404 text
++> text — text
++> text
++> text — text
++> text
++>
++> text
++> text
++> text — text
++> text 409 text
++> text
++> text resolved text
++> text
++>
++> text
++> text — text
++> text
++> text
++> text — text — text
++> text
++> text
++> text — text
++> text
++>
++> ---
+ 
+ ## Section
+ 
+--- a/repo-g/effort-31/issues/01-slug-260.md
++++ b/repo-g/effort-31/issues/01-slug-260.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-g
+-effort: effort-31
+ type: prototype
+ status: resolved
+ status_since: 2026-10-14
+ blockers: []
++title: slug 260
+ ---
+ 
+ ## Question
+--- a/repo-g/effort-31/issues/02-slug-261.md
++++ b/repo-g/effort-31/issues/02-slug-261.md
+@@ -1,10 +1,9 @@
+ ---
+-repo: repo-g
+-effort: effort-31
+ type: task
+ status: resolved
+ status_since: 2026-10-14
+ blockers: []
++title: slug 261
+ ---
+ 
+ ## Question
+--- a/repo-g/effort-31/issues/03-slug-262.md
++++ b/repo-g/effort-31/issues/03-slug-262.md
+@@ -1,12 +1,11 @@
+ ---
+-repo: repo-g
+-effort: effort-31
+ type: task
+ status: resolved
+ status_since: 2026-10-14
+ blockers:
+   - "[[01-slug-260]]"
+   - "[[02-slug-261]]"
++title: slug 262
+ ---
+ 
+ ## Question
+--- a/repo-g/effort-31/issues/04-slug-263.md
++++ b/repo-g/effort-31/issues/04-slug-263.md
+@@ -1,12 +1,11 @@
+ ---
+-repo: repo-g
+-effort: effort-31
+ type: task
+ status: waiting
+ status_since: 2026-10-14
+ status_note: "value"
+ blockers:
+   - "[[03-slug-262]]"
++title: slug 263
+ ---
+ 
+ ## Question
+--- a/repo-g/effort-31/issues/05-slug-264.md
++++ b/repo-g/effort-31/issues/05-slug-264.md
+@@ -1,12 +1,11 @@
+ ---
+-repo: repo-g
+-effort: effort-31
+ type: task
+ status: open
+ status_since: 2026-10-14
+ target_repo: repo-h
+ blockers:
+   - "[[04-slug-263]]"
++title: slug 264
+ ---
+ 
+ ## Question
+--- a/repo-g/effort-31/map.md
++++ b/repo-g/effort-31/map.md
+@@ -1,6 +1,4 @@
+ ---
+-repo: repo-g
+-effort: effort-31
+ kind: map
+ runs: 4
+ status: active
+@@ -52,6 +50,16 @@
+ - text 2 text · text
+ - text · text · text · text · text · text
+ - text · text · text — text
++
++## Tickets
++
++<!-- wf:tickets -->
++- [[01-slug-260]] · prototype · resolved · slug 260
++- [[02-slug-261]] · task · resolved · slug 261
++- [[03-slug-262]] · task · resolved · slug 262
++- [[04-slug-263]] · task · waiting · slug 263
++- [[05-slug-264]] · task · open · slug 264 ⛔
++<!-- /wf:tickets -->
+ 
+ ## Decisions so far
+ 
+wf: 303 files to change — apply with: wf migrate --yes

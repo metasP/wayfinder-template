@@ -1,7 +1,6 @@
 ---
-repo: example-repo
-effort: getting-started
 type: task
+title: ลบ effort ตัวอย่างนี้ทิ้ง
 status: open
 status_since: __TODAY__
 blockers:

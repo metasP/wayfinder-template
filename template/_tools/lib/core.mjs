@@ -707,6 +707,9 @@ export const NOTE_TEXT = deepFreeze({
     en: "(where this effort ends — written before the map goes active)",
     th: "(ปลายทางของ effort นี้ — เขียนก่อน map เป็น active)",
   },
+  // Callout titles `wf migrate` folds a hand-written `## Tickets` list and an unmapped pick rule under (Q29).
+  originalList: { en: "Original list (before wf)", th: "รายการเดิม (ก่อน wf)" },
+  originalPickRule: { en: "Original pick rule (before wf)", th: "กฎเดิม (ก่อน wf)" },
 })
 
 const languageOf = (language) => String(language ?? "en").toLowerCase().split(/[-_]/)[0]

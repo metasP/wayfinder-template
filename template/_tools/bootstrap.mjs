@@ -788,6 +788,9 @@ if (MODE === 'update')
 const STAMP = new Date().toISOString()
 const manifest = {
   schema: 1,
+  // schema ของ *เนื้อ vault* (คนละตัวกับ `schema` ของ manifest) — `wf migrate --yes` เป็นคนตั้ง
+  // ⇒ update ต้องยกค่าเดิมมา ไม่งั้น vault ที่ migrate แล้วกลับไปอ่านเป็น schema 1 แล้ว `wf` ปฏิเสธการเขียน
+  vault_schema: oldManifest?.vault_schema,
   template_sha: templateSha,
   template_version: templateVersion,
   source_repo: REPO,

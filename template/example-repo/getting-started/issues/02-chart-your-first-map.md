@@ -1,7 +1,6 @@
 ---
-repo: example-repo
-effort: getting-started
 type: task
+title: ชาร์ต map แรกจากงานจริงของคุณ
 status: open
 status_since: __TODAY__
 blockers: []
@@ -35,15 +34,15 @@ blockers: []
 
 ```
 <vault>/<repo>/<effort>/
-├── map.md            ← kind: map · status: active · status_since: วันนี้
+├── map.md            ← wf chart <repo>/<effort> --title "…" (draft) → wf map-status <repo>/<effort> active
 └── issues/
-    └── NN-<slug>.md
+    └── NN-<slug>.md  ← wf new <repo>/<effort> --type task --title "…"
 ```
 
 `<repo>` ตั้งตามชื่อ repo ที่งานอยู่ · `<effort>` ตั้งตามชื่องาน ไม่ใช่ชื่อ branch — branch เปลี่ยนได้
-แต่ effort เดิม · frontmatter `repo`/`effort` ของทุกใบ **ต้องตรงกับชื่อโฟลเดอร์เป๊ะ ๆ** เพราะ query
-บน Dashboard ประกอบ path จากสองค่านี้เพื่อไปอ่าน `status` ของ map (`repo + "/" + effort + "/map"`)
-พิมพ์ผิดตัวเดียว = ใบหายจาก Frontier เงียบ ๆ โดยไม่มีอะไรฟ้อง
+แต่ effort เดิม · **ตัวตนของ map และใบมาจาก path เท่านั้น** — ไม่มี `repo`/`effort` ใน frontmatter ให้พิมพ์ผิด
+ใบที่ไปแก้ repo อื่นบอกด้วย `target_repo` (`wf new … --target-repo <repo>`) · ใช้ verb ของ `wf` สร้างไฟล์
+แทนการเขียนเอง — มันจองเลข `NN` ให้ไม่ชน และเขียน frontmatter ครบทุกช่อง
 
 ### เสร็จแล้วเช็คสองอย่าง
 
@@ -51,7 +50,7 @@ blockers: []
 2. เปิด `Wayfinder Dashboard` — ใบของคุณต้องอยู่ใน 🔥 Frontier แล้ว
 
 ถ้า doctor ผ่านแต่ใบไม่ขึ้น Frontier ให้ไล่ตามลำดับนี้: `status` ของ map เป็น `active` หรือยัง →
-`repo`/`effort` ตรงชื่อโฟลเดอร์ไหม → Dataview index อัปเดตหรือยัง (สั่ง *Reload app without saving*)
+`node _tools/wf.mjs lint` ฟ้องอะไรไหม → Dataview index อัปเดตหรือยัง (สั่ง *Reload app without saving*)
 
 ## Answer
 
