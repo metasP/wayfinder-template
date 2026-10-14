@@ -4,7 +4,7 @@
 // *Wayfinder Picks* `sort:` key.
 import { readdirSync, readFileSync, realpathSync } from "node:fs"
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path"
-import { parseRef, SCHEMA_VERSION, ticketsBlockOf } from "./core.mjs"
+import { isUnindexedTicket, parseRef, SCHEMA_VERSION, ticketsBlockOf } from "./core.mjs"
 import { parseNote } from "./frontmatter.mjs"
 import { usageError } from "./errors.mjs"
 import { runGit } from "./git.mjs"
@@ -174,10 +174,12 @@ export function readVault(vault) {
     for (const e of parsed.errors) errors.push(`${path}:${e.line}: ${e.message}`)
     return parsed
   }
+  // A file in `issues/` without an NN goes in by path alone: lint names it, and its frontmatter
+  // can't stop the read.
   const notes = markdownFiles(vault)
-    .filter(isTrackerNote)
+    .filter((path) => isTrackerNote(path) || isUnindexedTicket(path))
     .sort()
-    .map((path) => noteOf(path, collect(path, readNote(vault, path) ?? NO_NOTE)))
+    .map((path) => (isTrackerNote(path) ? noteOf(path, collect(path, readNote(vault, path) ?? NO_NOTE)) : { path, frontmatter: {} }))
   const config = collect(CONFIG_NOTE, readNote(vault, CONFIG_NOTE) ?? NO_NOTE).frontmatter
   const picks = collect(PICKS_NOTE, readNote(vault, PICKS_NOTE) ?? NO_NOTE).frontmatter
   if (errors.length) throw usageError(`frontmatter outside the YAML subset in ${vault}`, { details: errors })

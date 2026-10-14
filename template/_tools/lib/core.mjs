@@ -107,6 +107,7 @@ const MAP_PATH_RE = /^(.+)\/([^/#]+)\/map(?:\.md)?$/
 const REF_RE = /^(.+)\/([^/#]+)#(\d+)$/
 const EFFORT_RE = /^([^/_.#][^#]*)\/([^/#]+)$/
 const BARE_TICKET_RE = /^(\d+)-([^/]+)$/
+const ISSUE_FILE_RE = /^(.+)\/[^/#]+\/issues\/[^/]+\.md$/
 const WIKILINK_RE = /^\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]$/
 
 const identity = (repo, effort, nn = null, slug = null) => ({ repo, effort, nn, slug })
@@ -136,6 +137,15 @@ export function parseRef(input, { home } = {}) {
   if (r) return isVaultRoot(r[1]) ? identity(r[1], r[2], Number(r[3])) : null
   const e = EFFORT_RE.exec(target)
   return e && !target.endsWith(".md") ? identity(e[1], e[2]) : null
+}
+
+/**
+ * A `.md` file directly in an effort's `issues/` whose name isn't `NN-slug` (`A-wizard.md`, `05a-x.md`):
+ * it sits where a ticket does, but has no NN, so the index can't read it — lint names it instead.
+ */
+export function isUnindexedTicket(path) {
+  const m = typeof path === "string" ? ISSUE_FILE_RE.exec(path) : null
+  return Boolean(m) && isVaultRoot(m[1]) && parseRef(path) == null
 }
 
 /** `repo/effort#NN` for a ticket (NN at least two digits), `repo/effort` for a map. */
@@ -186,6 +196,9 @@ const byNn = (a, b) => a.nn - b.nn || compare(a.effortKey, b.effortKey)
 const byEffortThenNn = (a, b) => compare(a.effortKey, b.effortKey) || a.nn - b.nn
 
 // ── Index ──────────────────────────────────────────────────────────────────
+
+const UNREAD_MAP_REASON = "map.md without kind: map"
+const UNINDEXED_REASON = "issues/ file without an NN- name"
 
 const mapRecord = (id, note) => {
   const fm = note.frontmatter ?? {}
@@ -246,7 +259,8 @@ const resolveTicketLink = (raw, home, byStem) => byStem.get(linkStem(raw, home.e
  * `{ maps: Map<repo/effort, Map>, tickets: Map<repo/effort#NN, Ticket>, efforts: Map<repo/effort,
  * { repo, effort, key, map, tickets }>, duplicates: [{ ref, path }], skipped: [{ path, reason }] }`.
  * Notes are taken in path order, so a duplicate NN keeps the first path and reports the others.
- * A `map.md` without `kind: map` is not a map; it lands in `skipped`.
+ * A `map.md` without `kind: map` is not a map, and a file in `issues/` without an NN is not a ticket;
+ * both land in `skipped`.
  */
 export function buildIndex(notes) {
   const sorted = [...notes].sort((a, b) => compare(a.path, b.path))
@@ -256,12 +270,16 @@ export function buildIndex(notes) {
   const skipped = []
   const seen = new Set()
   for (const note of sorted) {
+    if (isUnindexedTicket(note.path)) {
+      skipped.push({ path: note.path, reason: UNINDEXED_REASON })
+      continue
+    }
     const id = parseRef(note.path)
     if (!id || !note.path.endsWith(".md")) continue
     if (id.nn == null) {
       // The repo part may contain `/`, so any `…/x/map.md` matches the path — `kind` decides.
       if (note.frontmatter?.kind === "map") maps.set(formatRef(id), mapRecord(id, note))
-      else skipped.push({ path: note.path, reason: "map.md without kind: map" })
+      else skipped.push({ path: note.path, reason: UNREAD_MAP_REASON })
       continue
     }
     const t = ticketRecord(id, note)
@@ -740,13 +758,49 @@ export function renderTicketsBlock(index, effort, language) {
 export const BLOCK_OPEN = "<!-- wf:tickets -->"
 export const BLOCK_CLOSE = "<!-- /wf:tickets -->"
 
+const FENCE_RE = /^\s{0,3}(`{3,}|~{3,})/
+const lineContent = (line) => line.replace(/\r?\n$/, "")
+
+/** Per line (with its terminator), whether it is fenced code: a fence line or inside one. */
+export const codeMask = (lines) => {
+  let fence = null
+  return lines.map((l) => {
+    const open = FENCE_RE.exec(lineContent(l))?.[1]
+    if (fence) {
+      if (open && open[0] === fence[0] && open.length >= fence.length) fence = null
+      return true
+    }
+    if (open) fence = open
+    return Boolean(open)
+  })
+}
+
+/**
+ * Where the generated block sits in a map's text: `{ start, end }`, the offsets of its opening and
+ * closing markers (-1 when missing; `end` is -1 too without `start`). A marker counts only alone on
+ * its line (trailing blanks allowed) and outside fenced code, so one quoted in prose or a code block
+ * is text. Here so the Node store, the write verbs and the Obsidian loader find the same block.
+ */
+export function ticketsBlockSpan(text) {
+  const lines = text.split(/(?<=\n)/)
+  const isCode = codeMask(lines)
+  let offset = 0
+  let start = -1
+  for (const [i, line] of lines.entries()) {
+    const content = isCode[i] ? null : lineContent(line).trimEnd()
+    if (start === -1 && content === BLOCK_OPEN) start = offset
+    else if (start !== -1 && content === BLOCK_CLOSE) return { start, end: offset }
+    offset += line.length
+  }
+  return { start, end: -1 }
+}
+
 /**
  * A map note's `ticketsBlock` input: the text between the `wf:tickets` markers in its body, or null
- * when they are missing. Here so the Node store and the Obsidian loader extract it the same way.
+ * when they are missing (see `ticketsBlockSpan`).
  */
 export function ticketsBlockOf(body) {
-  const start = body.indexOf(BLOCK_OPEN)
-  const end = start === -1 ? -1 : body.indexOf(BLOCK_CLOSE, start + BLOCK_OPEN.length)
+  const { start, end } = ticketsBlockSpan(body)
   return end === -1 ? null : body.slice(start + BLOCK_OPEN.length, end)
 }
 
@@ -834,12 +888,22 @@ const keyFindings = (note) =>
 
 // A `map.md` the index skipped (no `kind: map`) in an effort that has tickets is a map missing `kind`.
 const unreadMaps = (index) =>
-  index.skipped.flatMap(({ path }) => {
+  index.skipped.flatMap(({ path, reason }) => {
+    if (reason !== UNREAD_MAP_REASON) return []
     const id = parseRef(path)
     const effort = id && index.efforts.get(formatRef(id))
     if (!effort?.tickets.length || effort.map) return []
     return [finding("error", "missing-field", effort.key, `kind: map is required — ${path} is not read as a map`)]
   })
+
+// A file in `issues/` without an NN is invisible to every view and verb; no verb renames it.
+const unindexedTickets = (index) =>
+  index.skipped
+    .filter(({ reason }) => reason === UNINDEXED_REASON)
+    .map(({ path }) => {
+      const effortKey = path.split("/").slice(0, -2).join("/")
+      return finding("warn", "unindexed-ticket", effortKey, `${path} is not read as a ticket — rename it NN-slug.md to index it`)
+    })
 
 const noteFindings = (note) => [
   ...invalidValues(note),
@@ -1035,6 +1099,7 @@ export function lint(index, { today, config, sort } = {}) {
   const findings = [
     ...indexedNotes(index).flatMap(noteFindings),
     ...unreadMaps(index),
+    ...unindexedTickets(index),
     ...[...index.tickets.values()].flatMap(danglingBlockers),
     ...blockerCycles(index),
     ...duplicateNns(index),

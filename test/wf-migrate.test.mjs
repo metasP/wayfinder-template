@@ -496,6 +496,17 @@ describe("wf migrate — edge cases", () => {
     assert.match(text, /<!-- wf:tickets -->\n_No tickets yet\._\n<!-- \/wf:tickets -->/)
   })
 
+  test("a marker quoted in prose doesn't stop the migration or count as the block", () => {
+    const map = MAP_V1.replace("Some notes.", "wf writes between `<!-- wf:tickets -->` markers.") + "\n## Tickets\n\n- [[01-a]] — A\n"
+    const vault = oldVault({ "r/e/map.md": map, "r/e/issues/01-a.md": ticketText(["repo: r", "effort: e", ...OPEN_FIELDS]) })
+    const plan = wf(vault, ["migrate"])
+    assert.equal(plan.code, 0, plan.stderr)
+    assert.equal(wf(vault, ["migrate", "--yes"]).code, 0)
+    const text = read(vault, "r/e/map.md")
+    assert.match(text, /wf writes between `<!-- wf:tickets -->` markers\./)
+    assert.match(text, /## Tickets\n\n<!-- wf:tickets -->\n- \[\[01-a\]\] · task · open · A\n<!-- \/wf:tickets -->\n/)
+  })
+
   test("a ## Tickets section wins over a ### one, and a closing # needs a space before it", () => {
     const map = MAP_V1.replace("# The effort", "# Learn C#") + "\n## Plan\n\n### Tickets\n\nnested\n\n## Tickets\n\n- [[01-a]] — A\n"
     const text = read(migrated({ "r/e/map.md": map }), "r/e/map.md")
