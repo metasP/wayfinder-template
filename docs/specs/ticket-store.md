@@ -346,7 +346,8 @@ What every write verb does, in order:
 
 ### Generated `## Tickets` block (Q5)
 
-- It sits after `## Notes`, between `<!-- wf:tickets -->` and `<!-- /wf:tickets -->`.
+- It sits after `## Notes`, between `<!-- wf:tickets -->` and `<!-- /wf:tickets -->`. A marker counts only alone on
+  its line and outside fenced code, so a map may quote the markers in prose or a code block.
 - Each ticket is one line, in NN order: `- [[NN-slug]] · <type> · <status> · <title>`, plus ` ⛔` when blocked.
 - `wf` rewrites it on every state change. A hand edit inside the markers is overwritten. A block that differs from
   the rendering (for example, after frontmatter was changed in Obsidian) is a `warn` lint finding, fixed by
@@ -402,6 +403,8 @@ What every write verb does, in order:
 - Active map with no pending tickets ("→ done").
 - `## Tickets` block drift.
 - Unknown frontmatter key.
+- A `.md` file directly in an effort's `issues/` whose name doesn't start with `NN-` (`unindexed-ticket`): the
+  index can't read it, so every view and verb would skip it silently.
 - Legacy `repo`/`effort` fields still present ("run `wf migrate`").
 
 ### Frontmatter guard hook (Q15)

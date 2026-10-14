@@ -538,9 +538,20 @@ describe("rendered ## Tickets block", () => {
   test("ticketsBlockOf reads the text between the markers out of a note body, or null without them", () => {
     const body = "## Tickets\n\n<!-- wf:tickets -->\n- [[01-a]] · x\n<!-- /wf:tickets -->\n\nafter"
     assert.equal(core.ticketsBlockOf(body), "\n- [[01-a]] · x\n")
-    assert.equal(core.ticketsBlockOf("<!-- wf:tickets --><!-- /wf:tickets -->"), "")
+    assert.equal(core.ticketsBlockOf("<!-- wf:tickets -->\n<!-- /wf:tickets -->"), "\n")
     assert.equal(core.ticketsBlockOf("## Tickets\n- hand-written\n"), null)
     assert.equal(core.ticketsBlockOf("<!-- /wf:tickets --> then <!-- wf:tickets --> unclosed"), null)
+  })
+
+  test("ticketsBlockOf takes a marker only alone on its line and outside fenced code", () => {
+    const real = "<!-- wf:tickets -->\n- [[01-a]] · x\n<!-- /wf:tickets -->\n"
+    const prose = "wf writes the list between `<!-- wf:tickets -->` and `<!-- /wf:tickets -->`.\n\n"
+    const fence = "```md\n<!-- wf:tickets -->\nexample\n<!-- /wf:tickets -->\n```\n\n"
+    assert.equal(core.ticketsBlockOf(prose), null)
+    assert.equal(core.ticketsBlockOf("<!-- wf:tickets --><!-- /wf:tickets -->"), null)
+    assert.equal(core.ticketsBlockOf(fence), null)
+    assert.equal(core.ticketsBlockOf(prose + fence + real), "\n- [[01-a]] · x\n")
+    assert.equal(core.ticketsBlockOf("<!-- wf:tickets -->  \r\nx\r\n<!-- /wf:tickets -->\r\n"), "  \r\nx\r\n")
   })
 })
 

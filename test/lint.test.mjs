@@ -110,6 +110,20 @@ describe("schema rules (error)", () => {
 })
 
 describe("key rules (warn)", () => {
+  test("a file in issues/ whose name doesn't start with NN- is reported, not silently dropped", () => {
+    const stray = (path) => ({ path, frontmatter: { type: "task", status: "resolved", title: "x" } })
+    const findings = lint([...clean(), stray("r/e/issues/A-wizard.md"), stray("r/e/issues/05a-split.md")])
+    assert.deepEqual(
+      ofRule(findings, "unindexed-ticket").map((f) => [f.severity, f.ref, f.message, f.fix]),
+      [
+        ["warn", "r/e", "r/e/issues/05a-split.md is not read as a ticket — rename it NN-slug.md to index it", null],
+        ["warn", "r/e", "r/e/issues/A-wizard.md is not read as a ticket — rename it NN-slug.md to index it", null],
+      ],
+    )
+    // Only `.md` files directly in an effort's `issues/` are tickets; anything else is an ordinary note.
+    assert.deepEqual(lint([...clean(), stray("r/e/issues/img/a.md"), stray("_tpl/e/issues/a.md"), stray("r/e/notes.md")]), [])
+  })
+
   test("an unknown frontmatter key is a warn", () => {
     const findings = lint([map("r/e/map.md", { colour: "red" }), ticket("r/e/issues/01-a.md", { priority: 1 })])
     assert.deepEqual(

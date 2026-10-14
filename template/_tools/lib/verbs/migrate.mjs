@@ -7,7 +7,7 @@ import { unifiedDiff } from "../diff.mjs"
 import { usageError } from "../errors.mjs"
 import { planMigration } from "../migrate.mjs"
 import { report } from "../pipeline.mjs"
-import { CONFIG_NOTE, MANIFEST, PICKS_NOTE } from "../store.mjs"
+import { CONFIG_NOTE, isTrackerNote, MANIFEST, PICKS_NOTE } from "../store.mjs"
 
 const REF = `vault schema ${SCHEMA_VERSION}`
 const NOTHING = `nothing to migrate — the vault is at ${REF}`
@@ -16,7 +16,7 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`
 
 const editsOf = (ctx) =>
   planMigration({
-    notes: ctx.notes.map(({ path }) => ({ path, text: ctx.textOf(path) })),
+    notes: ctx.notes.filter(({ path }) => isTrackerNote(path)).map(({ path }) => ({ path, text: ctx.textOf(path) })),
     picks: ctx.textOf(PICKS_NOTE),
     config: ctx.textOf(CONFIG_NOTE),
     manifest: ctx.textOf(MANIFEST),

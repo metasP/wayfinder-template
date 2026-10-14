@@ -3,7 +3,7 @@
 // line endings — is kept. The generated `## Tickets` block is spliced the same way (spec *Generated
 // `## Tickets` block*). Pure: text in, text out.
 import { usageError } from "./errors.mjs"
-import { BLOCK_CLOSE, BLOCK_OPEN } from "./core.mjs"
+import { BLOCK_CLOSE, BLOCK_OPEN, codeMask, ticketsBlockSpan } from "./core.mjs"
 import { CLOSE_RE, KEY_RE, OPEN_RE, parseNote } from "./frontmatter.mjs"
 
 const BOM = "﻿"
@@ -84,22 +84,6 @@ export function editFrontmatter(text, changes) {
 
 const blockLines = (rendered) => [BLOCK_OPEN, ...rendered.split("\n"), BLOCK_CLOSE]
 
-const FENCE_RE = /^\s{0,3}(`{3,}|~{3,})/
-
-/** Per line, whether it is fenced code (a fence line or inside one), where `# comment` is not a heading. */
-export const codeMask = (lines) => {
-  let fence = null
-  return lines.map((l) => {
-    const open = FENCE_RE.exec(contentOf(l))?.[1]
-    if (fence) {
-      if (open && open[0] === fence[0] && open.length >= fence.length) fence = null
-      return true
-    }
-    if (open) fence = open
-    return Boolean(open)
-  })
-}
-
 // Per line, whether it is a `#`/`##` Markdown heading outside fenced code.
 const headingMask = (lines) => {
   const isCode = codeMask(lines)
@@ -132,8 +116,7 @@ const insertLines = (lines, at, inserted, eol) => {
 export function withTicketsBlock(text, rendered, path = "the map") {
   const lines = linesOf(text)
   const eol = eolOf(lines)
-  const start = text.indexOf(BLOCK_OPEN)
-  const end = start === -1 ? -1 : text.indexOf(BLOCK_CLOSE, start + BLOCK_OPEN.length)
+  const { start, end } = ticketsBlockSpan(text)
   if (end !== -1) return text.slice(0, start + BLOCK_OPEN.length) + eol + rendered.split("\n").join(eol) + eol + text.slice(end)
   if (start !== -1) throw usageError(`${path} has ${BLOCK_OPEN} without ${BLOCK_CLOSE} — close the block, then rerun`)
   const isHeading = headingMask(lines)

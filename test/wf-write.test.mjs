@@ -100,6 +100,20 @@ describe("the generated ## Tickets block", () => {
     )
   })
 
+  test("a marker quoted in the map's prose or code is text, not the block", () => {
+    const body = "# M\n\nwf owns `<!-- wf:tickets -->`.\n\n```md\n<!-- wf:tickets -->\n```\n\n## Tickets\n\n- hand-written\n"
+    const vault = seed(makeVault({ notes: [{ ...map("r/e/map.md"), body }, ticket("r/e/issues/01-a.md", { title: "A" })] }))
+    const r = run(vault, ["claim", "r/e#01", "--by", "a"])
+    assert.equal(r.code, 0, r.stderr)
+    assert.ok(
+      read(vault, "r/e/map.md").endsWith(
+        "## Tickets\n\n<!-- wf:tickets -->\n- [[01-a]] · task · claimed · A\n<!-- /wf:tickets -->\n\n- hand-written\n",
+      ),
+      read(vault, "r/e/map.md"),
+    )
+    assert.match(read(vault, "r/e/map.md"), /wf owns `<!-- wf:tickets -->`\.\n\n```md\n<!-- wf:tickets -->\n```\n/)
+  })
+
   test("an unterminated block marker exits 2 and nothing is written", () => {
     const vault = seed(makeVault({ notes: [{ ...map("r/e/map.md"), body: "## Tickets\n\n<!-- wf:tickets -->\n- old\n" }, ticket("r/e/issues/01-a.md")] }))
     const before = read(vault, "r/e/issues/01-a.md")

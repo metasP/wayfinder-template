@@ -93,6 +93,19 @@ describe("wf lint", () => {
     assert.equal(r.json.error, null)
   })
 
+  test("a file in issues/ without an NN- name reaches lint through the store", () => {
+    const vault = makeVault({
+      notes: [
+        { ...map("r/e/map.md"), body: ticketsBlock("- [[01-a]] · task · open · 01-a") },
+        ticket("r/e/issues/01-a.md"),
+        ticket("r/e/issues/A-wizard.md", { status: "resolved" }),
+      ],
+    })
+    const r = wf(vault, ["lint"])
+    assert.equal(r.code, 0, r.stdout)
+    assert.match(r.stdout, /^warn {2}unindexed-ticket {2}r\/e {2}r\/e\/issues\/A-wizard\.md is not read as a ticket/m)
+  })
+
   test("a flood of one rule's warnings folds into one line; errors print last; --rule and --json keep all", () => {
     const keys = Object.fromEntries(Array.from({ length: core.WARN_FOLD_AT }, (_, i) => [`k${i}`, "x"]))
     const vault = makeVault({
