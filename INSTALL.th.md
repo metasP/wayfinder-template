@@ -200,7 +200,11 @@ node ~/Documents/Git/wayfinder-vault/_tools/doctor.mjs
 ## อัปเดต
 
 ```bash
-npx https://github.com/metasP/wayfinder-template
+npx https://github.com/metasP/wayfinder-template --plan
+```
+
+```bash
+npx https://github.com/metasP/wayfinder-template --yes
 ```
 
 คำสั่งเดียวกับตอนติดตั้ง เพราะโหมดไม่ใช่สิ่งที่คุณพิมพ์ · หรือจะรันจาก clone ที่เก็บไว้ก็ได้:
@@ -210,33 +214,56 @@ cd ~/Documents/Git/wayfinder-template && git pull
 ```
 
 ```bash
-node ~/Documents/Git/wayfinder-vault/_tools/bootstrap.mjs --from ~/Documents/Git/wayfinder-template
+node template/_tools/bootstrap.mjs --vault ~/Documents/Git/wayfinder-vault --plan
 ```
 
-> **คำสั่งสุดท้ายนั้นคือคำสั่งที่ vault ซึ่งเกิดก่อน repo นี้รันไม่ได้** — มันยังไม่มี manifest และ
-> `_tools/bootstrap.mjs` ของมันเองไม่รู้จัก `--from` ⇒ จบด้วย unknown flag ตั้งแต่ก่อนเขียนอะไรสักไบต์
-> · คำสั่ง `npx` ข้างบนไม่มีปัญหานี้ — ไม่มี manifest ให้อ่าน มันก็ติดตั้งให้พร้อมถาม 5 ข้อตามปกติ
-> · ดู [ติดตั้งลง vault ที่มีอยู่ก่อนแล้ว](#ติดตั้งลง-vault-ที่มีอยู่ก่อนแล้ว)
+```bash
+node template/_tools/bootstrap.mjs --vault ~/Documents/Git/wayfinder-vault --yes
+```
+
+**update ลงมือเฉพาะเมื่อมี `--yes`** — มันเปลี่ยนมากกว่าตัว vault: migrate โน้ตของคุณ (`wf migrate`)
+และแก้บางส่วนของ `~/.claude/` (ดูข้างล่าง) ⇒ อ่านแผนก่อน · รันโดยไม่มีทั้ง `--plan` และ `--yes`
+= พิมพ์แผน ไม่เขียนอะไร แล้วออกด้วย code 2
+
+> **จาก 0.4.x ให้ใช้คำสั่งข้างบน ไม่ใช่ `_tools/bootstrap.mjs` ของ vault เอง** — สำเนาใน vault คือ
+> installer รุ่นก่อน ไม่รู้จัก `wf migrate` หรือ hook ใหม่ · ตั้งแต่ 0.5 ขึ้นไปใช้
+> `node <vault>/_tools/bootstrap.mjs --from <repo> --yes` ได้ · vault ที่เกิดก่อน repo นี้ยังไม่มี manifest
+> เลย — คำสั่ง `npx` จะติดตั้งให้พร้อมถาม 5 ข้อตามปกติ ดู [ติดตั้งลง vault ที่มีอยู่ก่อนแล้ว](#ติดตั้งลง-vault-ที่มีอยู่ก่อนแล้ว)
 
 **update ไม่ถามอะไรเลย** — คำตอบ 5 ข้อจากตอน install ถูกจดไว้ใน manifest ของ vault
 (`.wayfinder-template.json`: ติดตั้งชิ้นไหน · สกิลไปลงที่ไหน · เรนเดอร์ path ไหนเข้าไป)
 แล้วเอามาใช้ตามนั้น · update ที่ถามใหม่ = update ที่มีโอกาสถูกตอบผิดจากเดิมโดยไม่ตั้งใจ
 
-จะรันจากฝั่ง repo แทนก็ได้ (`node template/_tools/bootstrap.mjs --vault <vault>`) ผลเหมือนกัน —
-**โหมดตัดสินจากว่า vault มี manifest แล้วหรือยัง ไม่ใช่จากว่ารันสำเนาไหนของสคริปต์**
+รันสำเนาไหนก็ได้ผลเหมือนกัน — **โหมดตัดสินจากว่า vault มี manifest แล้วหรือยัง ไม่ใช่จากว่ารันสำเนาไหนของสคริปต์**
+
+### สิ่งที่ update เปลี่ยนนอกไฟล์ template
+
+- **`wf migrate`** พาโน้ตของคุณไปเป็น vault schema ปัจจุบัน · แผนพิมพ์ diff ทั้งหมด · `--yes` รันมัน
+  หลัง commit ของ update เป็น commit แยกของมันเอง (`wf(migrate): vault schema 2`) · รอบสองไม่มีอะไรให้ทำ
+- **`~/.claude/settings.json`** (ชิ้น `hook`): frontmatter guard บน PreToolUse `Write|Edit` · autocommit
+  บน PostToolUse `Write|Edit` เท่านั้น · และ allow rule หนึ่งข้อ `Bash(node <vault>/_tools/wf.mjs:*)` ให้ agent
+  เรียก `wf` ด้วย path เต็มได้โดยไม่ต้องขออนุญาต · autocommit เส้นเก่าของ vault นี้ (matcher `Bash` ·
+  `|| true` · เส้นซ้ำ) ถูกถอด · key อื่นทุกตัว รวม `env.PATH` อยู่ตามเดิม · ไฟล์ก่อนแก้เก็บไว้ที่ `settings.json.bak`
+- **`~/.claude/CLAUDE.md`** (ชิ้น `memory`): ย่อหน้าที่บอก agent ให้เปลี่ยน state ของ tracker ด้วย
+  `node <vault>/_tools/wf.mjs <verb>` และเขียนเนื้อด้วย Write/Edit · อยู่ระหว่าง
+  `<!-- wayfinder-template:begin … -->` กับ `<!-- wayfinder-template:end -->` แล้วถูกแทนที่ตรงนั้นทุกรอบ ·
+  ย่อหน้าที่รุ่นก่อนเขียน (หัวข้อเดิม ไม่มี marker) ถูกหาเจอแล้วแทนที่ตรงที่เดิม ไม่ซ้อนซ้ำ ·
+  ไฟล์ก่อนแก้เก็บไว้ที่ `CLAUDE.md.bak`
+
+แผนโชว์ diff ของไฟล์ `~/.claude` ทั้งสองทีละบรรทัด — อยู่นอก vault ⇒ git กู้คืนให้ไม่ได้
 
 ### ดูแผนก่อนรัน update
 
-เติม `--plan` เข้าไปในคำสั่งไหนก็ได้ข้างบน จะได้รอบเดิมทุกอย่างโดยตัวเขียนถูกปิดหมด:
+`--plan` คือรอบเดิมทุกอย่างโดยตัวเขียนถูกปิดหมด:
 
 ```bash
-node ~/Documents/Git/wayfinder-vault/_tools/bootstrap.mjs --from ~/Documents/Git/wayfinder-template --plan
+npx https://github.com/metasP/wayfinder-template --plan
 ```
 
 มันรายงานว่า update **จะ** ทำอะไร โดยคำนวณด้วย**โค้ดก้อนเดียวกับที่จะลงมือจริง** — ไฟล์ไหนจะถูกเขียน ·
 ในนั้นอันไหนใหม่ อันไหนทับของเดิม · อันไหนเป็นไฟล์ที่คุณเคยแก้เอง · **ไฟล์ไหนจะถูกลบ** · อะไรจะไม่ถูกแตะ ·
-และจะเกิด commit ลง vault ไหม · แล้วปิดท้ายด้วยการย้อนอ่านทุกอย่างที่มันเอื้อมถึงเพื่อยืนยันว่าไม่มีอะไรขยับ
-พร้อมบอกว่าเทียบไปกี่จุด
+และจะเกิด commit ลง vault ไหม · บวก diff ของ `wf migrate` และของไฟล์ `~/.claude` · แล้วปิดท้ายด้วยการย้อนอ่านทุกอย่างที่มันเอื้อมถึงเพื่อยืนยันว่าไม่มีอะไรขยับ
+พร้อมบอกว่าเทียบไปกี่จุด · ถ้าทุกอย่างตรงอยู่แล้ว สรุปจะจบด้วย `ทั้งหมด: ไม่มีอะไรต้องเปลี่ยน`
 
 สองคำตอบนี้คุ้มค่ารันเองอยู่แล้ว:
 
@@ -303,11 +330,12 @@ cd ~/Documents/Git/wayfinder-vault && git log --oneline
 
 installer รันซ้ำได้ปลอดภัย — และนี่เป็นคุณสมบัติที่คุณต้องเชื่อได้ก่อน ถึงจะกล้ารันมันตั้งแต่แรก
 
-- รันรอบที่สองบน vault ที่ติดตั้งแล้ว **คือ update** · flag เดียวที่เปลี่ยนข้อนี้ได้คือ `--plan`
-  ซึ่งทำให้เป็น dry run · ไฟล์ที่เนื้อตรงกันอยู่แล้วถูกข้าม · ไม่เขียนอะไรเลย · และ**ไม่เกิด commit เปล่า**
-- hook ต่อครั้งเดียว · รันซ้ำมันเจอทั้งสองเส้นแล้วข้าม
-- ย่อหน้าใน `~/.claude/CLAUDE.md` เติมครั้งเดียว · รันซ้ำมันเจอแล้วข้าม · ย่อหน้าจากรุ่น v0.3.0 หรือเก่ากว่า
-  (ไม่มีคำว่า § Wayfinding operations) ถูกปล่อยไว้พร้อมคำเตือน — ลบทิ้งแล้วรันซ้ำด้วย `--wire-memory` จะได้ตัวชี้
+- รันรอบที่สองบน vault ที่ติดตั้งแล้ว **คือ update** ซึ่งลงมือเฉพาะเมื่อมี `--yes` · ไม่มี หรือมี `--plan`
+  = dry run · ไฟล์ที่เนื้อตรงกันอยู่แล้วถูกข้าม · ไม่เขียนอะไรเลย · และ**ไม่เกิด commit เปล่า**
+- hook กับ allow rule ของ `wf` ต่อครั้งเดียว · รันซ้ำเจอแล้วไม่เปลี่ยนอะไร · เส้น autocommit เก่าที่ถอดไปไม่กลับมา
+- ย่อหน้าใน `~/.claude/CLAUDE.md` เขียนครั้งเดียว รอบหลังแทนที่ตรงที่เดิม · ย่อหน้าที่รุ่นก่อนเขียน (ไม่มี marker)
+  ถูกหาเจอจากหัวข้อแล้วแทนที่ ไม่ซ้อนซ้ำ
+- `wf migrate` ไม่มีอะไรให้ทำบน vault ที่ migrate แล้ว
 - `Wayfinder Config.md` · `Wayfinder Picks.md` · effort ของคุณ ไม่ถูกแตะทุกรอบ
 
 และ `--plan` ใช้ได้กับ vault ที่ติดตั้งไปแล้วด้วย ไม่ใช่แค่เครื่องเปล่า — รอบนั้นต่างหากที่การดูก่อนมีค่า
