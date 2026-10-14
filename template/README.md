@@ -29,6 +29,8 @@ wayfinder-vault/
 │   ├── doctor.mjs              ← ตรวจสุขภาพ vault + ลินต์ ticket ทุกใบ
 │   ├── lib/core.mjs            ← read model ตัวเดียวที่ `wf` กับทุกหน้าใช้ร่วมกัน (frontier · lint · …)
 │   ├── views/wf-core.js        ← loader กลางของ Dataview: หน้าไหนจะใช้ core ต้องโหลดผ่านตัวนี้
+│   ├── views/<หน้า>.js         ← โค้ดของแต่ละหน้า (dashboard · efforts · effort-tickets · picks) — บล็อกในโน้ต
+│   │                             เป็นแค่บรรทัดเดียวที่เรียก view นี้ (sandbox เขียน `_tools/` ไม่ได้ แต่เขียนโน้ตได้)
 │   ├── frontmatter-guard.mjs   ← PreToolUse hook: ปฏิเสธ Write/Edit ที่แตะ frontmatter ของ map/ticket
 │   │                             แล้วบอก verb ของ `wf` ที่ต้องใช้แทน
 │   └── autocommit.sh           ← PostToolUse hook: commit เนื้อความที่ agent เขียนด้วย Write/Edit
@@ -410,9 +412,9 @@ vault ไม่มีแนวคิดเรื่อง branch และ branc
 
 | โน้ต | ระดับ | ขอบเขต | ตอบคำถามว่า | เครื่องยนต์ |
 | --- | --- | --- | --- | --- |
-| `Wayfinder Dashboard` | **ใบ** | ทั้ง vault | ตอนนี้หยิบใบไหนได้ · ติดที่ใคร · รออะไรอยู่ · vault ผิดตรงไหน (🩺 lint) | `dataviewjs` ผ่าน loader → core |
-| `Wayfinder Efforts` | **แมป** | ทั้ง vault | แต่ละ effort เดินไปถึงไหน · อันไหนสถานะไม่ตรงจริง | `dataviewjs` + HTML |
-| `Wayfinder Effort Tickets` | **ใบ** | **effort เดียว** | effort นี้เหลืออะไร · ปิดใบไหนแล้วอะไรเดินต่อ | `dataviewjs` + SVG |
+| `Wayfinder Dashboard` | **ใบ** | ทั้ง vault | ตอนนี้หยิบใบไหนได้ · ติดที่ใคร · รออะไรอยู่ · vault ผิดตรงไหน (🩺 lint) | บรรทัดเรียก → `_tools/views/dashboard.js` → loader → core |
+| `Wayfinder Efforts` | **แมป** | ทั้ง vault | แต่ละ effort เดินไปถึงไหน · อันไหนสถานะไม่ตรงจริง | บรรทัดเรียก → `_tools/views/efforts.js` (HTML) |
+| `Wayfinder Effort Tickets` | **ใบ** | **effort เดียว** | effort นี้เหลืออะไร · ปิดใบไหนแล้วอะไรเดินต่อ | บรรทัดเรียก → `_tools/views/effort-tickets.js` (SVG) |
 
 **สามหน้าไม่ได้ซ้ำกัน — แกน "ระดับ × ขอบเขต" คือสิ่งที่แยกมันออกจากกัน** Dashboard กับ Effort Tickets
 อยู่ระดับใบเหมือนกันแต่คนละขอบเขต: Dashboard ตอบ *"ทั้ง vault วันนี้หยิบอะไรได้"* (เรียงตามวันที่ ใบจาก

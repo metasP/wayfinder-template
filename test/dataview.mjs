@@ -14,6 +14,9 @@ import { noteText } from "./vault.mjs"
 export const TEMPLATE = fileURLToPath(new URL("../template/", import.meta.url))
 export const LOADER = "_tools/views/wf-core"
 
+/** A view's source, as `dv.view` reads it: `<name>` is `_tools/views/<name>`. */
+export const viewSource = (name) => readFileSync(join(TEMPLATE, "_tools/views", `${name}.js`), "utf8")
+
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
 
 /** Dataview's `dv.view`: a view whose text holds `await` is wrapped in an IIFE whose promise is dropped. */

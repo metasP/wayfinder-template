@@ -5,14 +5,17 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
-import { cpSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { git, makeVault, map, onOneDay, seed, ticket, wf, write } from "./vault.mjs"
 import { sandboxGrant } from "../template/_tools/lib/sandbox.mjs"
+import { LEGACY_PICKS_BLOCK } from "../template/_tools/lib/picks-page.mjs"
+import { PAGE_VIEWS } from "../template/_tools/lib/page-views.mjs"
 
-const DOCTOR = fileURLToPath(new URL("../template/_tools/doctor.mjs", import.meta.url))
+const TEMPLATE = fileURLToPath(new URL("../template/", import.meta.url))
+const DOCTOR = join(TEMPLATE, "_tools/doctor.mjs")
 
 /** A fixture vault with `doctor.mjs` in its `_tools/`. */
 const vaultWithDoctor = (options) => {
@@ -311,5 +314,103 @@ describe("doctor: vault schema version", () => {
     const newer = schemaCheck({ vault_schema: 3 })
     assert.equal(newer.ok, false)
     assert.match(newer.detail, /update the template/)
+  })
+})
+
+describe("doctor: the pages' code lives in _tools/views/, the notes hold stubs", () => {
+  const DATAVIEW = ".obsidian/plugins/dataview/data.json"
+  /** A fixture vault with the template's pages, views and Dataview settings, plus `edits` (`{ rel: text }`). */
+  const vaultWithPages = (edits = {}) => {
+    const vault = vaultWithDoctor()
+    cpSync(join(TEMPLATE, "_tools/views"), join(vault, "_tools/views"), { recursive: true })
+    for (const page of Object.keys(PAGE_VIEWS)) write(vault, `${page}.md`, readFileSync(join(TEMPLATE, `${page}.md`), "utf8"))
+    write(vault, DATAVIEW, readFileSync(join(TEMPLATE, DATAVIEW), "utf8"))
+    for (const [rel, text] of Object.entries(edits)) write(vault, rel, text)
+    return vault
+  }
+  const page = (name) => readFileSync(join(TEMPLATE, `${name}.md`), "utf8")
+  const PLANTED = "```dataviewjs\nrequire('child_process')\n```\n"
+
+  test("the template's pages pass: every block a stub, every view there, inline JS off, no other note with JS", () => {
+    const { json } = doctor(vaultWithPages())
+    for (const label of ["มี view ครบใน _tools/views/", "parse เป็น JS ได้", "backtick ในเนื้อ CSS", "LS_KEY ตรงกัน",
+      "TICKETS_NOTE ชี้ไปยังโน้ต", "ปิด enableInlineDataviewJs", "ไม่มีบล็อก dataviewjs ในโน้ตอื่น"])
+      assert.equal(checkNamed(json, label).ok, true, label)
+    for (const name of ["Wayfinder Dashboard", "Wayfinder Efforts", "Wayfinder Effort Tickets"])
+      assert.equal(checkNamed(json, `ทุกบล็อกบน ${name} เป็น stub`).ok, true, name)
+    assert.equal(checkNamed(json, "บน Wayfinder Picks เป็น stub").ok, true)
+    assert.equal(checkNamed(json, "ไม่มีบล็อก inline รุ่นก่อน").ok, true)
+  })
+
+  test("a page block that is code, not a stub, fails — however its fence is written", () => {
+    const shapes = [PLANTED, PLANTED.replace(/```/g, "~~~"), PLANTED.replace(/^/gm, "> "), `- ${PLANTED}`,
+      `1. ${PLANTED}`, `> - ${PLANTED}`, `- a\n  - ${PLANTED}`, PLANTED.replace("```dataviewjs", "````DataviewJS")]
+    for (const fence of shapes) {
+      const { json } = doctor(vaultWithPages({ "Wayfinder Efforts.md": page("Wayfinder Efforts") + fence }))
+      const c = checkNamed(json, "ทุกบล็อกบน Wayfinder Efforts เป็น stub")
+      assert.equal(c.ok, false, fence)
+      assert.match(c.detail, /1\/2 บล็อกเป็น stub/)
+    }
+  })
+
+  test("a Dashboard missing a section, or naming one twice, fails", () => {
+    const dash = page("Wayfinder Dashboard")
+    for (const text of [dash.replace(/```dataviewjs\n.*"frontier".*\n```\n/, ""), dash.replace('"frontier"', '"lint"')]) {
+      assert.notEqual(text, dash)
+      const c = checkNamed(doctor(vaultWithPages({ "Wayfinder Dashboard.md": text })).json, "ทุกบล็อกบน Wayfinder Dashboard เป็น stub")
+      assert.equal(c.ok, false)
+    }
+  })
+
+  test("a stub calling another page's view fails", () => {
+    const text = page("Wayfinder Efforts").replace('"_tools/views/efforts"', '"_tools/views/picks"')
+    const { json } = doctor(vaultWithPages({ "Wayfinder Efforts.md": text }))
+    assert.equal(checkNamed(json, "ทุกบล็อกบน Wayfinder Efforts เป็น stub").ok, false)
+  })
+
+  test("a missing view, or one holding the word Dataview wraps, fails", () => {
+    const vault = vaultWithPages({ "_tools/views/picks.js": "// await\n" })
+    const c = checkNamed(doctor(vault).json, "มี view ครบใน _tools/views/")
+    assert.equal(c.ok, false)
+    assert.match(c.detail, /picks\.js มีคำที่ทำให้ Dataview ทิ้ง promise/)
+  })
+
+  test("Picks with the old inline block (trailing spaces aside) warns and names wf migrate", () => {
+    const block = LEGACY_PICKS_BLOCK.map((l, i) => (i === 3 ? `${l}  ` : l)).join("\n")
+    const legacy = page("Wayfinder Picks").replace(/```dataviewjs[\s\S]*```\n/, `${block}\n`)
+    const { json } = doctor(vaultWithPages({ "Wayfinder Picks.md": legacy }))
+    const old = checkNamed(json, "ไม่มีบล็อก inline รุ่นก่อน")
+    assert.deepEqual([old.ok, old.soft], [false, true])
+    assert.match(old.detail, /wf migrate --yes/)
+    assert.equal(checkNamed(json, "บน Wayfinder Picks เป็น stub").ok, true)
+  })
+
+  test("any other code on Picks fails: it is a note the sandbox can write", () => {
+    for (const fence of [PLANTED, `- ${PLANTED}`]) {
+      const { json } = doctor(vaultWithPages({ "Wayfinder Picks.md": page("Wayfinder Picks") + fence }))
+      const c = checkNamed(json, "บน Wayfinder Picks เป็น stub")
+      assert.equal(c.ok, false, fence)
+      assert.equal(c.soft, undefined)
+      assert.match(c.detail, /ตรวจว่าใครใส่ไว้/)
+    }
+  })
+
+  test("a dataviewjs block in any other note warns and names the note, _ folders too; dot folders and _tools are out of scope", () => {
+    const vault = vaultWithPages({
+      "r/a/issues/01-x.md": `---\nstatus: open\n---\n${PLANTED}`,
+      "_inbox/z.md": `- ${PLANTED}`,
+      ".trash/y.md": PLANTED,
+      "_tools/notes.md": PLANTED,
+    })
+    const c = checkNamed(doctor(vault).json, "ไม่มีบล็อก dataviewjs ในโน้ตอื่น")
+    assert.deepEqual([c.ok, c.soft], [false, true])
+    assert.equal(c.detail, "เปิดดูก่อนเปิดใน Obsidian: _inbox/z.md (1) · r/a/issues/01-x.md (1)")
+  })
+
+  test("inline JS left on (an older vault's seed-once settings) warns with where to turn it off", () => {
+    const on = readFileSync(join(TEMPLATE, DATAVIEW), "utf8").replace('"enableInlineDataviewJs": false', '"enableInlineDataviewJs": true')
+    const c = checkNamed(doctor(vaultWithPages({ [DATAVIEW]: on })).json, "ปิด enableInlineDataviewJs")
+    assert.deepEqual([c.ok, c.soft], [false, true])
+    assert.match(c.detail, /Enable Inline JavaScript Queries/)
   })
 })

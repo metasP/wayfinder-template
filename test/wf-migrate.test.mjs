@@ -8,7 +8,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { CONFIG_DEFAULTS, DEFAULT_PICK_SORT } from "../template/_tools/lib/core.mjs"
-import { PICKS_BODY } from "../template/_tools/lib/picks-page.mjs"
+import { LEGACY_PICKS_BLOCK, PICKS_BLOCK, PICKS_BODY } from "../template/_tools/lib/picks-page.mjs"
 import { MANIFEST, git, makeVault, read, seed, today, wf, write } from "./vault.mjs"
 
 const TEMPLATE = fileURLToPath(new URL("../template/", import.meta.url))
@@ -337,6 +337,28 @@ describe("wf migrate — Wayfinder Picks", () => {
     const vault = oldVault({ "Wayfinder Picks.md": custom })
     assert.doesNotMatch(wf(vault, ["migrate"]).stdout, /Wayfinder Picks/)
     assert.equal(picksAfter("# Mine\n"), sortBlock(DEFAULT_PICK_SORT) + "# Mine\n")
+  })
+
+  // The page's code moved from the note to `_tools/views/picks.js`, which the sandbox can't write.
+  const withBlock = (block, eol = "\n") =>
+    ["---", "sort: [nn desc]", "---", "# Mine", "", ...block, "", "my own line", ""].join(eol)
+
+  test("the old inline loader block becomes the stub; everything around it stays as written", () => {
+    assert.equal(picksAfter(withBlock(LEGACY_PICKS_BLOCK)), withBlock(PICKS_BLOCK))
+    assert.equal(picksAfter(withBlock(LEGACY_PICKS_BLOCK, "\r\n")), withBlock(PICKS_BLOCK, "\r\n"))
+    const mixed = ["---", "sort: [nn desc]", "---", "# Mine"].join("\r\n") + "\r\n" + [...LEGACY_PICKS_BLOCK, ""].join("\n")
+    assert.equal(picksAfter(mixed), mixed.replace(LEGACY_PICKS_BLOCK.join("\n"), PICKS_BLOCK.join("\n")))
+    const noSort = ["# Mine", "", ...LEGACY_PICKS_BLOCK, ""].join("\n")
+    assert.equal(picksAfter(noSort), sortBlock(DEFAULT_PICK_SORT) + ["# Mine", "", ...PICKS_BLOCK, ""].join("\n"))
+  })
+
+  test("an inline block the user edited is theirs: migrate leaves it, and plans nothing on a stub page", () => {
+    const edited = LEGACY_PICKS_BLOCK.map((l) => l.replace("ไม่มีใบที่หยิบได้ตอนนี้", "nothing to pick"))
+    assert.notDeepEqual(edited, LEGACY_PICKS_BLOCK)
+    const vault = oldVault({ "Wayfinder Picks.md": withBlock(edited) })
+    assert.doesNotMatch(wf(vault, ["migrate"]).stdout, /Wayfinder Picks/)
+    const stubbed = migrated({ "Wayfinder Picks.md": withBlock(LEGACY_PICKS_BLOCK) })
+    assert.doesNotMatch(wf(stubbed, ["migrate"]).stdout, /Wayfinder Picks/)
   })
 })
 

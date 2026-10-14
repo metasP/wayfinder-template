@@ -125,7 +125,7 @@ describe("wf migrate — the scrubbed snapshot", () => {
     const picks = parseNote(read(vault, "Wayfinder Picks.md"))
     assert.deepEqual(picks.frontmatter.sort, ["nn asc"])
     assert.doesNotMatch(picks.body, /^```dataview\s*$/m)
-    assert.match(picks.body, /dv\.view\("_tools\/views\/wf-core"/)
+    assert.match(picks.body, /^await dv\.view\("_tools\/views\/picks"\)$/m)
     const config = parseNote(read(vault, "Wayfinder Config.md")).frontmatter
     for (const key of Object.keys(CONFIG_DEFAULTS)) assert.ok(config[key] != null, key)
   })

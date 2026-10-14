@@ -332,7 +332,11 @@ vault needs `wf migrate` once; the update runs it for you. Four steps, in this o
    One way out stays open: the pages run Dataview JS, so Obsidian runs any `dataviewjs` block in
    a note when you open that note, and notes are what `wf` writes. Treat a block you didn't put
    there as you would an unknown script, and look at what agents changed (`git log -p` in the
-   vault) before opening a page they touched.
+   vault) before opening a page they touched. The pages keep their code in `_tools/views/`, which
+   is denied, and each block in a page note is a one-line stub, so `doctor` fails a page block
+   that is anything else and warns about a `dataviewjs` block in any other note, naming it. It
+   also warns while Dataview's inline JS queries are on: no page uses them, so turn off
+   *Settings → Dataview → Enable Inline JavaScript Queries*.
 
    Merge the JSON into the `sandbox` key you already have, if any; a vault elsewhere uses its own
    path in every entry, and the installer prints the list for yours at the end of its run. With

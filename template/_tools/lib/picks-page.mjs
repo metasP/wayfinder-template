@@ -1,6 +1,35 @@
 // The body of *Wayfinder Picks* on the shared core (spec *`wf migrate`*: "Replaces the body with the loader view").
 // `wf migrate` writes it under an old Picks page's frontmatter. It is the template seed's body, line for line —
 // test/wf-migrate.test.mjs fails when `template/Wayfinder Picks.md` and this drift apart.
+
+// The page's one `dataviewjs` block: a stub, so the code it runs lives in `_tools/views/picks.js`, which the
+// sandbox can't write (spec *Sandbox grant (Q2)*).
+export const PICKS_BLOCK = Object.freeze(["```dataviewjs", "await dv.view(\"_tools/views/picks\")", "```"])
+
+// The block the body carried before the stub, line for line: the page's code inline in the note. `wf migrate`
+// swaps it for PICKS_BLOCK where a vault's Picks still holds it unedited; an edited one is the user's, left as is.
+export const LEGACY_PICKS_BLOCK = Object.freeze([
+  "```dataviewjs",
+  "await dv.view(\"_tools/views/wf-core\", {",
+  "  render: ({ core, index, sort, link, text }) => {",
+  "    const { keys, unknown } = core.parsePickSort(sort)",
+  "    const rule = keys.length ? keys.map((k) => `${k.key} ${k.dir}`).join(\", \") : `${core.DEFAULT_PICK_SORT.join(\", \")} (ค่าเริ่มต้น)`",
+  "    dv.paragraph(`เรียงตาม: \\`${rule}\\`` + (unknown.length ? ` · ⚠️ ข้าม key ที่ไม่รู้จัก: ${unknown.map((u) => `\\`${text(u)}\\``).join(\" \")}` : \"\"))",
+  "    const tickets = core.frontier(index, { sort })",
+  "    if (!tickets.length) return dv.paragraph(\"_ไม่มีใบที่หยิบได้ตอนนี้_\")",
+  "    dv.table(",
+  "      [\"Ticket\", \"Effort\", \"Type\", \"ปลดล็อกกี่ใบ\"],",
+  "      tickets.map((t) => [link(t.ref), link(t.effortKey), text(t.type), core.unblocks(index, t)]),",
+  "    )",
+  "  },",
+  "})",
+  "```",
+])
+
+/** Whether a block's lines (fences included) are LEGACY_PICKS_BLOCK's, trailing whitespace aside. */
+export const isLegacyPicksBlock = (lines) =>
+  lines.length === LEGACY_PICKS_BLOCK.length && LEGACY_PICKS_BLOCK.every((want, k) => lines[k].trimEnd() === want)
+
 export const PICKS_BODY = [
   "# Wayfinder Picks",
   "",
@@ -31,19 +60,5 @@ export const PICKS_BODY = [
   "และขึ้นเป็น error ใน 🩺 lint ของ Dashboard · ตัวอย่าง \"AFK ก่อน แล้วค่อยปลดล็อกเยอะสุด\":",
   "`sort: [afk_first, unblocks desc, nn asc]`",
   "",
-  "```dataviewjs",
-  "await dv.view(\"_tools/views/wf-core\", {",
-  "  render: ({ core, index, sort, link, text }) => {",
-  "    const { keys, unknown } = core.parsePickSort(sort)",
-  "    const rule = keys.length ? keys.map((k) => `${k.key} ${k.dir}`).join(\", \") : `${core.DEFAULT_PICK_SORT.join(\", \")} (ค่าเริ่มต้น)`",
-  "    dv.paragraph(`เรียงตาม: \\`${rule}\\`` + (unknown.length ? ` · ⚠️ ข้าม key ที่ไม่รู้จัก: ${unknown.map((u) => `\\`${text(u)}\\``).join(\" \")}` : \"\"))",
-  "    const tickets = core.frontier(index, { sort })",
-  "    if (!tickets.length) return dv.paragraph(\"_ไม่มีใบที่หยิบได้ตอนนี้_\")",
-  "    dv.table(",
-  "      [\"Ticket\", \"Effort\", \"Type\", \"ปลดล็อกกี่ใบ\"],",
-  "      tickets.map((t) => [link(t.ref), link(t.effortKey), text(t.type), core.unblocks(index, t)]),",
-  "    )",
-  "  },",
-  "})",
-  "```",
+  ...PICKS_BLOCK,
 ].join("\n") + "\n"
