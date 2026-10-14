@@ -46,6 +46,24 @@ export function parseArgs(argv, spec) {
   return { flags, positionals }
 }
 
+/** A flag that must be one non-empty line of text, trimmed; `verb` names the verb in the error. */
+export function oneLineFlag(verb, name, value) {
+  const text = value?.trim()
+  if (!text) throw usageError(`${verb} needs --${name} "…"`)
+  if (/[\r\n]/.test(text)) throw usageError(`--${name} must be one line`)
+  return text
+}
+
+/**
+ * The `repo/effort` an argument names — `repo/effort`, a vault path or a full-path wikilink — whether
+ * or not the effort exists yet. A ticket ref is not an effort.
+ */
+export function effortRefArg(input, { roots }) {
+  const id = parseRef(vaultRelative(input, roots))
+  if (!id || id.nn != null) throw usageError(`cannot read ${JSON.stringify(input)} as an effort — use repo/effort`)
+  return formatRef(id)
+}
+
 /**
  * The `repo/effort` an argument names — `repo/effort`, `repo/effort#NN`, a vault path (relative, or
  * absolute under one of `roots`) or a full-path wikilink. The effort, and the ticket when one is

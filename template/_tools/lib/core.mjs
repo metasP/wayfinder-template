@@ -703,6 +703,10 @@ const blockedOnMap = (status) => (status === "done" ? "cleared" : STOPPED_MAP.ha
 export const NOTE_TEXT = deepFreeze({
   emptyTickets: { en: "_No tickets yet._", th: "_ยังไม่มีใบ_" },
   answerPlaceholder: { en: "(filled in at resolve)", th: "(เติมตอน resolve)" },
+  destinationPlaceholder: {
+    en: "(where this effort ends — written before the map goes active)",
+    th: "(ปลายทางของ effort นี้ — เขียนก่อน map เป็น active)",
+  },
 })
 
 const languageOf = (language) => String(language ?? "en").toLowerCase().split(/[-_]/)[0]
