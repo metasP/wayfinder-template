@@ -44,12 +44,13 @@ node _tools/doctor.mjs
 
 exit 0 = ผ่านหมด · ไม่ต้องเปิด Obsidian
 
-นอกจากตรวจการติดตั้ง `doctor.mjs` ยัง **ลินต์เนื้อ vault** ให้ด้วย — ทุก ticket/map มี `status` +
-`status_since` ที่ถูกต้อง · map ที่ไม่เดินมี `status_note` บอกเงื่อนไขกลับมา · `blocked_by`/
-`superseded_by` ไม่ห้อย · ไม่มีใบค้างใน map ที่ประกาศว่าปิดแล้ว · และไม่มี map ที่สถานะขัดกับ
-ความเคลื่อนไหวของใบ (ประกาศว่า `paused`/`dropped`/`done` ไว้ แต่มีใบขยับหลังวันที่ประกาศ = สถานะเน่า)
+นอกจากตรวจการติดตั้ง `doctor.mjs` ยัง **ลินต์เนื้อ vault** ด้วย `lint()` ของ core ตัวเดียวกับ `wf lint`
+และ 🩺 บน Dashboard (doctor ไม่มีกฎเนื้อหาของตัวเอง) — error = ❌ · warn = ⚠️ พร้อมคำสั่ง `wf` ที่แก้ได้
+· ตรวจ hook (frontmatter guard บน PreToolUse · autocommit บน PostToolUse `Write|Edit` · ฟ้องเส้นรุ่นเก่าที่ค้าง)
+· ฟ้อง `wf-autocommit-failures.log` ใน git dir ของ vault จนกว่าจะล้าง · และ `vault_schema` ที่เก่ากว่า
+`wf` (⇒ รัน `wf migrate`) · `--json` พิมพ์ผลเป็น JSON
 
-**เหลือ 2 ข้อที่เครื่องตรวจแทนไม่ได้ ต้องเปิด Obsidian ดูเอง:**
+**ข้อที่เครื่องตรวจแทนไม่ได้ ต้องเปิด Obsidian ดูเอง** (`doctor.mjs` พิมพ์รายการเต็มไว้ท้ายรายงาน) — สองข้อหลัก:
 
 - Dashboard ทุก view เรนเดอร์เป็น **ตาราง** และ Efforts เรนเดอร์เป็น **แถบสี** ไม่ใช่กล่องแดง
   `Dataview: <error>` หรือโค้ดดิบ (view ว่างขึ้นบรรทัดเอียง `_ไม่มี…_` · 🩺 สะอาดขึ้น `✅ lint clean` = ปกติ)
