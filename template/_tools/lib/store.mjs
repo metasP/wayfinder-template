@@ -2,12 +2,12 @@
 // It finds the vault's main checkout, checks the vault schema version, and reads every map and ticket
 // into the core's input — `{ path, frontmatter, ticketsBlock? }` — plus *Wayfinder Config* and the
 // *Wayfinder Picks* `sort:` key.
-import { spawnSync } from "node:child_process"
 import { readdirSync, readFileSync, realpathSync } from "node:fs"
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { parseRef, SCHEMA_VERSION } from "./core.mjs"
 import { parseNote, ticketsBlockOf } from "./frontmatter.mjs"
 import { usageError } from "./errors.mjs"
+import { runGit } from "./git.mjs"
 
 export const MANIFEST = ".wayfinder-template.json"
 export const CONFIG_NOTE = "Wayfinder Config.md"
@@ -15,17 +15,9 @@ export const PICKS_NOTE = "Wayfinder Picks.md"
 // A manifest written before `wf` existed has no `vault_schema`: that vault is at version 1.
 const LEGACY_VAULT_SCHEMA = 1
 
-// Variables that point git at another repository (set inside hooks or `git rebase -x`). wf finds
-// the vault from its own path, so they are dropped.
-const GIT_LOCATION_VARS = ["GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY"]
-const gitEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !GIT_LOCATION_VARS.includes(k)))
-
 const git = (cwd, args) => {
-  const r = spawnSync("git", args, { cwd, encoding: "utf8", env: gitEnv() })
-  if (r.error || r.status !== 0) {
-    const why = r.error ? `git is not runnable (${r.error.message})` : r.stderr.trim()
-    throw usageError(`cannot read the vault at ${cwd} as a git repository: ${why}`)
-  }
+  const r = runGit(cwd, args)
+  if (!r.ok) throw usageError(`cannot read the vault at ${cwd} as a git repository: ${r.why}`)
   return r.stdout
 }
 
@@ -144,20 +136,30 @@ const markdownFiles = (vault, rel = "") =>
     return entry.isFile() && entry.name.endsWith(".md") ? [path] : []
   })
 
-const isTrackerNote = (path) => {
+/** Whether a vault path is a ticket or a map (other notes aren't the core's input). */
+export const isTrackerNote = (path) => {
   const id = parseRef(path)
   return Boolean(id) && (id.nn != null || basename(path) === "map.md")
 }
 
-// A note's parsed text, or null when it doesn't exist. Any other read failure is an environment error.
-const readNote = (vault, path) => {
+/** A vault file's text, or null when it doesn't exist. Any other read failure is an environment error. */
+export function readText(vault, path) {
   try {
-    return parseNote(readFileSync(join(vault, path), "utf8"))
+    return readFileSync(join(vault, path), "utf8")
   } catch (e) {
     if (e.code === "ENOENT") return null
     throw usageError(`cannot read ${join(vault, path)}: ${e.message}`)
   }
 }
+
+const readNote = (vault, path) => {
+  const text = readText(vault, path)
+  return text === null ? null : parseNote(text)
+}
+
+/** A parsed note as the core's input: maps carry `ticketsBlock` (null without markers). */
+export const noteOf = (path, { frontmatter, body }) =>
+  basename(path) === "map.md" ? { path, frontmatter, ticketsBlock: ticketsBlockOf(body) } : { path, frontmatter }
 
 // A missing Config or Picks note is fine: every key has a default.
 const NO_NOTE = Object.freeze({ frontmatter: {}, body: "", errors: [] })
@@ -175,10 +177,7 @@ export function readVault(vault) {
   const notes = markdownFiles(vault)
     .filter(isTrackerNote)
     .sort()
-    .map((path) => {
-      const { frontmatter, body } = collect(path, readNote(vault, path) ?? NO_NOTE)
-      return basename(path) === "map.md" ? { path, frontmatter, ticketsBlock: ticketsBlockOf(body) } : { path, frontmatter }
-    })
+    .map((path) => noteOf(path, collect(path, readNote(vault, path) ?? NO_NOTE)))
   const config = collect(CONFIG_NOTE, readNote(vault, CONFIG_NOTE) ?? NO_NOTE).frontmatter
   const picks = collect(PICKS_NOTE, readNote(vault, PICKS_NOTE) ?? NO_NOTE).frontmatter
   if (errors.length) throw usageError(`frontmatter outside the YAML subset in ${vault}`, { details: errors })

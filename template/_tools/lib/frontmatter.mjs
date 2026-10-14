@@ -5,9 +5,9 @@
 // (`3`, `1.5`); everything else stays text (`007`, `1.50`, dates — as Dataview's `file.frontmatter`
 // hands them). List items are always text.
 
-const OPEN_RE = /^---\s*$/
-const CLOSE_RE = /^(?:---|\.\.\.)\s*$/
-const KEY_RE = /^([A-Za-z_][\w .-]*?)\s*:(?:\s+(.*))?$/
+export const OPEN_RE = /^---\s*$/
+export const CLOSE_RE = /^(?:---|\.\.\.)\s*$/
+export const KEY_RE = /^([A-Za-z_][\w .-]*?)\s*:(?:\s+(.*))?$/
 const ITEM_RE = /^\s*-(?:\s+(.*))?$/
 const NULLS = new Set(["", "~", "null", "Null", "NULL"])
 const BOOLS = new Map([["true", true], ["True", true], ["TRUE", true], ["false", false], ["False", false], ["FALSE", false]])
@@ -181,8 +181,8 @@ export function parseNote(text) {
   return { frontmatter, body: lines.slice(parts.bodyStart).join("\n"), errors }
 }
 
-const BLOCK_OPEN = "<!-- wf:tickets -->"
-const BLOCK_CLOSE = "<!-- /wf:tickets -->"
+export const BLOCK_OPEN = "<!-- wf:tickets -->"
+export const BLOCK_CLOSE = "<!-- /wf:tickets -->"
 
 /** The text between the `wf:tickets` markers in a map body, or null when they are missing. */
 export function ticketsBlockOf(body) {

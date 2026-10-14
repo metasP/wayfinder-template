@@ -4,10 +4,13 @@
 // The vault is the directory above this script's `_tools/`; wf always reads its main checkout.
 import { fileURLToPath } from "node:url"
 import { main } from "./lib/cli.mjs"
+import claim from "./lib/verbs/claim.mjs"
 import frontier from "./lib/verbs/frontier.mjs"
 import lint from "./lib/verbs/lint.mjs"
+import release from "./lib/verbs/release.mjs"
+import wait from "./lib/verbs/wait.mjs"
 
-const VERBS = [frontier, lint]
+const VERBS = [frontier, lint, claim, release, wait]
 
 const { code, stdout, stderr } = main(process.argv.slice(2), {
   verbs: VERBS,

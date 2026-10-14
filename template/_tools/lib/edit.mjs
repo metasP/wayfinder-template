@@ -1,0 +1,130 @@
+// Line-level edits of a note's text for the write verbs (spec *Frontmatter schema* rules): a verb
+// rewrites only the keys it owns, and every other byte — unknown keys, their order, comments, quoting,
+// line endings — is kept. The generated `## Tickets` block is spliced the same way (spec *Generated
+// `## Tickets` block*). Pure: text in, text out.
+import { usageError } from "./errors.mjs"
+import { BLOCK_CLOSE, BLOCK_OPEN, CLOSE_RE, KEY_RE, OPEN_RE, parseNote } from "./frontmatter.mjs"
+
+const BOM = "﻿"
+const ITEM_RE = /^\s*-(\s|$)/
+const TICKETS_HEADING_RE = /^##\s+Tickets\s*$/
+const NOTES_HEADING_RE = /^##\s+Notes\s*$/
+const SECTION_HEADING_RE = /^#{1,2}\s/
+
+// Lines with their own terminators, so joining them gives the text back unchanged.
+const linesOf = (text) => text.split(/(?<=\n)/)
+const contentOf = (line) => line.replace(/\r?\n$/, "")
+const eolOf = (lines) => (lines.find((l) => l.endsWith("\n"))?.endsWith("\r\n") ? "\r\n" : "\n")
+
+/**
+ * A string as a YAML scalar that `parseNote` reads back as the same string: plain when it survives
+ * unquoted (`claimed`, `2026-10-14`, `claude/x`), double-quoted otherwise (`a #b`, `true`, `007`).
+ */
+export function yamlScalar(value) {
+  const text = String(value)
+  const readsBack = (scalar) => {
+    const parsed = parseNote(`---\nk: ${scalar}\n---\n`)
+    return !parsed.errors.length && parsed.frontmatter.k === text
+  }
+  if (!/[\r\n\u2028\u2029]/.test(text) && readsBack(text)) return text
+  // JSON leaves U+2028/U+2029 raw; escaped, the value stays on one line.
+  const quoted = JSON.stringify(text).replace(/[\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16)}`)
+  if (readsBack(quoted)) return quoted
+  throw usageError(`cannot write ${JSON.stringify(text)} as a frontmatter value`)
+}
+
+const isBlankOrComment = (l) => contentOf(l).trim() === "" || /^\s*#/.test(l)
+const isUnder = (l) => !isBlankOrComment(l) && (ITEM_RE.test(l) || /^\s/.test(l))
+
+// The line range a top-level key's value spans: its own line, plus the block-list items or indented
+// lines under it. Blank and comment lines between items belong to the list (as the reader sees it);
+// trailing ones don't.
+const keyRange = (lines, key) => {
+  const start = lines.findIndex((l) => KEY_RE.exec(contentOf(l))?.[1] === key)
+  if (start === -1) return null
+  let end = start + 1
+  for (let i = end; i < lines.length && (isUnder(lines[i]) || isBlankOrComment(lines[i])); i++) if (isUnder(lines[i])) end = i + 1
+  return { start, end }
+}
+
+/**
+ * Set or remove frontmatter keys in `text`. `changes` is `[key, value]` pairs: a string value
+ * replaces the key's line in place (or is appended before the closing `---` when the key is
+ * missing); `null` removes the key and any lines under it. Nothing else changes.
+ */
+export function editFrontmatter(text, changes) {
+  const bom = text.startsWith(BOM) ? BOM : ""
+  const lines = linesOf(text.slice(bom.length))
+  const close = lines.findIndex((l, i) => i > 0 && CLOSE_RE.test(contentOf(l)))
+  if (!OPEN_RE.test(contentOf(lines[0] ?? "")) || close === -1) throw usageError("the note has no frontmatter to edit")
+  const eol = eolOf(lines)
+  let fm = lines.slice(1, close)
+  for (const [key, value] of changes) {
+    const range = keyRange(fm, key)
+    const replacement = value == null ? [] : [`${key}: ${yamlScalar(value)}${eol}`]
+    fm = range
+      ? [...fm.slice(0, range.start), ...replacement, ...fm.slice(range.end)]
+      : [...fm, ...replacement]
+  }
+  return bom + [lines[0], ...fm, ...lines.slice(close)].join("")
+}
+
+const blockLines = (rendered) => [BLOCK_OPEN, ...rendered.split("\n"), BLOCK_CLOSE]
+
+const FENCE_RE = /^\s{0,3}(`{3,}|~{3,})/
+
+// Per line, whether it is a Markdown heading: outside fenced code, where `# comment` is just code.
+const headingMask = (lines) => {
+  let fence = null
+  return lines.map((l) => {
+    const open = FENCE_RE.exec(contentOf(l))?.[1]
+    if (fence) {
+      if (open && open[0] === fence[0] && open.length >= fence.length) fence = null
+      return false
+    }
+    if (open) {
+      fence = open
+      return false
+    }
+    return SECTION_HEADING_RE.test(contentOf(l))
+  })
+}
+
+const headingIndex = (lines, isHeading, re, from = 0) =>
+  lines.findIndex((l, i) => i >= from && isHeading[i] && re.test(contentOf(l)))
+
+// Where a new `## Tickets` section goes: after the `## Notes` section, else at the end.
+const sectionIndex = (lines, isHeading) => {
+  const notes = headingIndex(lines, isHeading, NOTES_HEADING_RE)
+  if (notes === -1) return lines.length
+  const next = headingIndex(lines, isHeading, SECTION_HEADING_RE, notes + 1)
+  return next === -1 ? lines.length : next
+}
+
+const insertLines = (lines, at, inserted, eol) => {
+  const before = lines.slice(0, at)
+  // The line before the insertion may be the last one, without a terminator.
+  if (before.length && !before[before.length - 1].endsWith("\n")) before[before.length - 1] += eol
+  return [...before, ...inserted.map((l) => l + eol), ...lines.slice(at)].join("")
+}
+
+/**
+ * A map's text with `rendered` as its generated `## Tickets` block. The text between the markers is
+ * replaced; without markers the block goes under an existing `## Tickets` heading (any hand-written
+ * list stays below it), else in a new `## Tickets` section after `## Notes`, else at the end.
+ */
+export function withTicketsBlock(text, rendered, path = "the map") {
+  const lines = linesOf(text)
+  const eol = eolOf(lines)
+  const start = text.indexOf(BLOCK_OPEN)
+  const end = start === -1 ? -1 : text.indexOf(BLOCK_CLOSE, start + BLOCK_OPEN.length)
+  if (end !== -1) return text.slice(0, start + BLOCK_OPEN.length) + eol + rendered.split("\n").join(eol) + eol + text.slice(end)
+  if (start !== -1) throw usageError(`${path} has ${BLOCK_OPEN} without ${BLOCK_CLOSE} — close the block, then rerun`)
+  const isHeading = headingMask(lines)
+  const heading = headingIndex(lines, isHeading, TICKETS_HEADING_RE)
+  if (heading !== -1) return insertLines(lines, heading + 1, ["", ...blockLines(rendered)], eol)
+  const at = sectionIndex(lines, isHeading)
+  const section = ["## Tickets", "", ...blockLines(rendered), ""]
+  const needsGap = at > 0 && contentOf(lines[at - 1]).trim() !== ""
+  return insertLines(lines, at, needsGap ? ["", ...section] : section, eol)
+}
