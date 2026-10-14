@@ -217,7 +217,8 @@ A migration is therefore two commands rather than one: install, then update.
 4. If the hook was just wired: open `/hooks` in Claude Code once, or restart it, so the new
    configuration is loaded.
 5. If Claude Code runs Bash in its sandbox: add the vault path to the sandbox's writable paths,
-   or `wf` cannot write there — see step 3 of [Upgrading from 0.4.x](#upgrading-from-04x).
+   or `wf` cannot write there, and deny the paths inside it that hold code — see step 3 of
+   [Upgrading from 0.4.x](#upgrading-from-04x).
 
 ---
 
@@ -324,9 +325,18 @@ vault needs `wf migrate` once; the update runs it for you. Four steps, in this o
    Obsidian runs the plugin code in `.obsidian/`; a Claude Code session started in the vault
    loads settings, hooks and MCP servers from `.claude/` and `.mcp.json`. Writable, any of
    them lets a sandboxed command run code outside the sandbox. `denyWrite` wins over
-   `allowWrite`, and `wf` writes none of them. Merge it into the `sandbox` key you already have,
-   if any; use your vault's path if it lives elsewhere. With the sandbox off, skip this
-   step. Then restart Claude Code, so the new hooks and this setting load.
+   `allowWrite`, and `wf` writes none of them. Claude Code protects `.git/hooks` and
+   `.git/config` on its own only in the session's working directory, and the vault usually
+   isn't one.
+
+   One way out stays open: the pages run Dataview JS, so Obsidian runs any `dataviewjs` block in
+   a note when you open that note, and notes are what `wf` writes. Treat a block you didn't put
+   there as you would an unknown script, and look at what agents changed (`git log -p` in the
+   vault) before opening a page they touched.
+
+   Merge the JSON into the `sandbox` key you already have, if any; a vault elsewhere uses its own
+   path in every entry. With the sandbox off, skip this step. Then restart Claude Code, so the
+   new hooks and this setting load.
 
 4. **Run `doctor`.**
 
