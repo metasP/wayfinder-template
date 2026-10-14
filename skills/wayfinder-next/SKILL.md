@@ -75,13 +75,27 @@ node __VAULT__/_tools/wf.mjs bump-runs <repo/effort> --count <k> --json
 
 ## Picking tickets
 
-**NN always comes from an `issues/NN-<slug>.md` file** — never mint a number that already has one, and never renumber.
+**NN always comes from `wf`** — a ticket it lists, or the one `wf new` just created. Never pick a number yourself, and never renumber.
 
 - **Explicit numbers given** → those are the tickets. Validate them (next section); don't silently substitute others.
 - **No argument** → take candidates **in `wf frontier` order** and spawn **1–3 chips** (see below).
 - **No argument, and the frontier has no row for this map** → read the map's `## Tickets` block (see [Validate](#validate-before-spawning--and-confirm)). If any line is not `resolved`, report what holds each one (blocked, claimed, waiting, or the map isn't `active`) and stop.
-  **Every line `resolved`** → the next ticket is still in the fog: **reserve** NN = highest existing NN + 1, pick **L = the type you are about to commission** (grilling / task / research / prototype — you're writing the prompt, so you know), and draw the title from the map's `## Not yet specified` or scope. The chip prompt then tells the session to create exactly that file with exactly that type. If you can't decide the type, the work isn't shaped enough for a chip — chart it first.
-  **At most one fog-reserved chip per batch** — two would reserve the same NN.
+  **Every line `resolved`, and the map's `status:` is `active`** → if its `## Not yet specified` or scope still names work, the next ticket is in the fog: commission **one** with `wf new` (see [Fog ticket](#fog-ticket--wf-new)) and spawn its chip like any other — the batch is that one chip. Nothing left to name → the map is complete; say so and stop. A map that is not `active` gets no new ticket — report its status and stop.
+
+### Fog ticket → `wf new`
+
+Pick the **type** you are about to commission (grilling / task / research / prototype — you're writing the prompt, so you know), a one-line **title**, and the one-line **question** — written as the ticket's bold line (`**…**`), since the short title comes from it — both drawn from the map's `## Not yet specified` or scope and written in `language`. If you can't decide the type, the work isn't shaped enough for a chip — chart it first. Then let `wf` make the ticket:
+
+```
+node __VAULT__/_tools/wf.mjs new <repo/effort> --type <type> --title "<title>" --question "**<question>**" --json
+→ { "ok": true, "data": { "ref": "acme-web/checkout-redesign#07", "path": "acme-web/checkout-redesign/issues/07-pick-the-payment-step.md", "type": "grilling", … } }
+```
+
+- `wf new` takes the number under the vault lock and writes the file with its `## Question` / `## Answer` skeleton, so two sessions never get the same NN. **NN** is the number after `#` in `data.ref`; the ticket file is `data.path`.
+- The values go inside shell double quotes: escape any `"`, `$`, `` ` `` or `\` in them, or leave out `--question` and pipe the question on stdin. A title with a line break is refused (exit `2`).
+- From here it is an ordinary ticket: `L` from `--type`, the short title from its bold line, the normal `Mode:` line. You checked its map is `active`, and it has no blockers, so it skips [validation](#validate-before-spawning--and-confirm).
+- `wf new` exits non-zero → report its `error.message` and `error.details`, and spawn nothing for it. If it succeeded but `bump-runs` or the spawn fails, report the ticket it created — it waits on the frontier for the next run.
+- `wf new` commits its own write. Never Write a file under `issues/` yourself — the frontmatter guard refuses it.
 
 ### No argument → frontier order, then skip collisions
 
@@ -113,8 +127,7 @@ Check **every** requested ticket against the frontier from the call above (run i
 | **resolved** | status `resolved` | already done; a chip re-opens settled work |
 | **waiting** | status `waiting` | it is parked on something outside our hands (its `status_note` says what); a session can't finish it today |
 | **map ไม่ active** | status `open`, no ⛔, yet not in the frontier — the map's `status:` is not `active` | the map is paused / not yet charted / dropped **on purpose** — its tickets are off the Dashboard, and a chip drags one back into play behind that decision |
-| **no file** | no line for NN, and NN ≠ highest + 1 | the number is a gap, not a reservation |
-| **double reservation** | ≥ 2 requested numbers have no line | they'd both claim the same NN |
+| **no file** | no line for NN | there is no ticket NN — a new ticket comes from [`wf new`](#fog-ticket--wf-new), never from a number typed ahead. Always dropped, never offered under "Spawn all anyway": the session would have no file to open |
 
 When a line contradicts the frontier, the block has drifted: `wf lint --fix <repo/effort>` regenerates it.
 
@@ -135,7 +148,7 @@ Respect the answer literally. "Spawn all anyway" is a real choice — the user m
 ## Workflow
 
 1. **Find the active map.** Wayfinder maps live in `__VAULT__/<repo>/<effort>/map.md`. Use the map from the current conversation if known; else list `__VAULT__/*/*/map.md` and pick the one meant (ask if ambiguous). Read `language` from `__VAULT__/Wayfinder Config.md` in the same pass (see [Language](#language)).
-2. **Get the frontier** (see [No argument](#no-argument--frontier-order-then-skip-collisions)) — with explicit numbers too, since validation reads it — then **resolve the requested tickets** per [Picking tickets](#picking-tickets).
+2. **Get the frontier** (see [No argument](#no-argument--frontier-order-then-skip-collisions)) — with explicit numbers too, since validation reads it — then **resolve the requested tickets** per [Picking tickets](#picking-tickets). A map in the fog gets its ticket from `wf new` here, before anything is spawned, so the chip carries the NN `wf` printed.
 3. **Validate + confirm** per the section above. Drop or keep flagged tickets according to the answer.
 4. **Read each surviving ticket** for its `## Question` bold line → short title; `type` → `L`.
 5. **Allocate the run numbers** — one `bump-runs` call for the whole batch (see [Run number](#run-number)). Ascending ticket order gets ascending `RR`.
@@ -169,13 +182,6 @@ Map: <absolute map.md path>
 
 โหมด: Work through the map. ทำ ticket <NN> (<title>) — issues/<NN>-<slug>.md
 ทำตามขั้นตอน wayfinder: claim ticket ก่อนเริ่ม, resolve, record (## Answer + status:resolved + เติม 1 บรรทัดใน map "Decisions so far"), ห้าม resolve เกิน 1 ticket ต่อ session
-```
-
-When the ticket is still in the fog (reserved number), say so explicitly instead of the `Mode:` line's file path:
-
-```
-en  Mode: Work through the map. Ticket <NN> has no file yet — create issues/<NN>-<slug>.md with type: <type> first, then claim it
-th  โหมด: Work through the map. ticket <NN> ยังไม่มีไฟล์ — แตกเป็น issues/<NN>-<slug>.md ด้วย type: <type> ก่อน แล้วค่อย claim
 ```
 
 **When you spawn more than one chip for the same map**, append this line to every prompt in the batch — concurrent sessions will both edit `map.md`:
