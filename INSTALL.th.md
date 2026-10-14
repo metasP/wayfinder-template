@@ -282,7 +282,9 @@ frontmatter · หน้า Dataview โหลด core กลางตัวเ�
            "~/Documents/Git/wayfinder-vault/.git/hooks",
            "~/Documents/Git/wayfinder-vault/.git/config",
            "~/Documents/Git/wayfinder-vault/.git/modules",
-           "~/Documents/Git/wayfinder-vault/.obsidian"
+           "~/Documents/Git/wayfinder-vault/.obsidian",
+           "~/Documents/Git/wayfinder-vault/.claude",
+           "~/Documents/Git/wayfinder-vault/.mcp.json"
          ]
        }
      }
@@ -291,6 +293,7 @@ frontmatter · หน้า Dataview โหลด core กลางตัวเ�
 
    **อย่าตัดรายการ `denyWrite` ทิ้ง** — hook รันสคริปต์ใน `_tools/` นอก sandbox และ hook autocommit รัน git
    นอก sandbox ซึ่งอ่าน `.git/hooks` · `.git/config` · `.git/modules` · Obsidian รันโค้ดปลั๊กอินใน `.obsidian/`
+   · Claude Code ที่เปิดใน vault โหลด settings · hook · MCP server จาก `.claude/` กับ `.mcp.json`
    · ถ้าเขียนได้ คำสั่งใน sandbox จะใช้ตัวไหนก็ได้รันโค้ด
    นอก sandbox · `denyWrite` ชนะ `allowWrite` และ `wf` ไม่เขียนสักตัว · ถ้ามีคีย์ `sandbox` อยู่แล้วให้รวมเข้าไป
    ถ้า vault อยู่ที่อื่นให้ใช้ path ของคุณ · ถ้าไม่ได้เปิด sandbox ข้ามขั้นนี้ได้ · จากนั้นรีสตาร์ต

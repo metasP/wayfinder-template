@@ -310,7 +310,9 @@ vault needs `wf migrate` once; the update runs it for you. Four steps, in this o
            "~/Documents/Git/wayfinder-vault/.git/hooks",
            "~/Documents/Git/wayfinder-vault/.git/config",
            "~/Documents/Git/wayfinder-vault/.git/modules",
-           "~/Documents/Git/wayfinder-vault/.obsidian"
+           "~/Documents/Git/wayfinder-vault/.obsidian",
+           "~/Documents/Git/wayfinder-vault/.claude",
+           "~/Documents/Git/wayfinder-vault/.mcp.json"
          ]
        }
      }
@@ -319,7 +321,8 @@ vault needs `wf migrate` once; the update runs it for you. Four steps, in this o
 
    **Keep the `denyWrite` list.** The hooks run `_tools/` scripts outside the sandbox, and the
    autocommit hook runs git there, which reads `.git/hooks`, `.git/config` and `.git/modules`;
-   Obsidian runs the plugin code in `.obsidian/`. Writable, any of
+   Obsidian runs the plugin code in `.obsidian/`; a Claude Code session started in the vault
+   loads settings, hooks and MCP servers from `.claude/` and `.mcp.json`. Writable, any of
    them lets a sandboxed command run code outside the sandbox. `denyWrite` wins over
    `allowWrite`, and `wf` writes none of them. Merge it into the `sandbox` key you already have,
    if any; use your vault's path if it lives elsewhere. With the sandbox off, skip this
