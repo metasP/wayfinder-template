@@ -26,6 +26,8 @@ wayfinder-vault/
 ├── _tools/
 │   ├── bootstrap.mjs           ← ติดตั้ง/อัปเดต vault (ดู `INSTALL.md` ของ repo ต้นฉบับ)
 │   ├── doctor.mjs              ← ตรวจสุขภาพ vault + ลินต์ ticket ทุกใบ
+│   ├── lib/core.mjs            ← read model ตัวเดียวที่ `wf` กับทุกหน้าใช้ร่วมกัน (frontier · lint · …)
+│   ├── views/wf-core.js        ← loader กลางของ Dataview: หน้าไหนจะใช้ core ต้องโหลดผ่านตัวนี้
 │   └── autocommit.sh           ← PostToolUse hook: commit ให้เองทุกครั้งที่ agent แก้ ticket
 │                                 · session ที่รันใน worktree จะถูก **หยดลง `main`** ให้ด้วย
 │                                   (ff-only → merge ปกติ → ถอยถ้าชน) ไม่งั้น Obsidian ไม่เห็น
@@ -38,7 +40,8 @@ wayfinder-vault/
             └── NN-<slug>.<ext>        ตั้งชื่อขึ้นต้นด้วยเลข ticket ที่สร้างมัน
 ```
 
-`_tools/` ขึ้นต้นด้วย `_` เพราะ Dataview query ทุกอันกรองด้วย `FROM -"_tools"`
+`_tools/` ขึ้นต้นด้วย `_` เพราะ Dataview query ทุกอันกรองด้วย `FROM -"_tools"` และทั้ง `wf` กับ loader
+ข้ามโฟลเดอร์ `_…` ที่รากของ vault ตอนอ่านโน้ต
 
 `assets/` เป็น **ที่เก็บของแนบ ไม่ใช่ ticket** — `doctor.mjs` และหน้า `Wayfinder Efforts` /
 `Wayfinder Effort Tickets` มองหาเฉพาะโฟลเดอร์ชื่อ `issues/` ไฟล์ `.md` ใน `assets/` จึงไม่ต้องมี frontmatter
@@ -373,7 +376,7 @@ vault ไม่มีแนวคิดเรื่อง branch และ branc
 
 | โน้ต | ระดับ | ขอบเขต | ตอบคำถามว่า | เครื่องยนต์ |
 | --- | --- | --- | --- | --- |
-| `Wayfinder Dashboard` | **ใบ** | ทั้ง vault | ตอนนี้หยิบใบไหนได้ · ติดที่ใคร · รออะไรอยู่ | Dataview DQL ล้วน |
+| `Wayfinder Dashboard` | **ใบ** | ทั้ง vault | ตอนนี้หยิบใบไหนได้ · ติดที่ใคร · รออะไรอยู่ · vault ผิดตรงไหน (🩺 lint) | `dataviewjs` ผ่าน loader → core |
 | `Wayfinder Efforts` | **แมป** | ทั้ง vault | แต่ละ effort เดินไปถึงไหน · อันไหนสถานะไม่ตรงจริง | `dataviewjs` + HTML |
 | `Wayfinder Effort Tickets` | **ใบ** | **effort เดียว** | effort นี้เหลืออะไร · ปิดใบไหนแล้วอะไรเดินต่อ | `dataviewjs` + SVG |
 
@@ -389,11 +392,9 @@ vault ไม่มีแนวคิดเรื่อง branch และ branc
 (คลิก *ชื่อ* effort ยังไป `map.md` เหมือนเดิม — ชื่อ = "effort นี้จะไปไหน" · ตัวเลข = "effort นี้มีใบอะไร")
 · effort ที่เลือกล่าสุดถูกจำไว้ใน `localStorage` เปิดครั้งหน้าได้ตัวเดิมโดยไม่ต้องพิมพ์
 
-> **เลข "ปลดกี่ใบ" ของหน้า Effort Tickets ไม่ตรงกับ "ปลดล็อกกี่ใบ" ของ Dashboard — และนั่นถูกแล้ว**
-> Dashboard นับด้วย `file.inlinks` ซึ่งนับ**ทุกอย่างที่ลิงก์มาหาใบนี้** รวมตอน `map.md` เอ่ยถึงใบใน
-> เนื้อความด้วย ⇒ เลขเฟ้อ · หน้า Effort Tickets นับจาก `blockers` ของใบอื่นจริง ๆ อย่างเดียว
-> ⇒ **ตัวเลขต่ำกว่าและตรงกว่า** · เห็นสองเลขไม่เท่ากันเมื่อไหร่ นั่นไม่ใช่บั๊ก มันคือคำถามคนละข้อ
-> (*"มีอะไรพูดถึงใบนี้บ้าง"* กับ *"ปิดใบนี้แล้วใบไหนหลุด blocker จริง ๆ"*)
+> **เลข "ปลดล็อกกี่ใบ" ของ Dashboard มาจาก core (`unblocks`)** — นับจาก `blockers` ของใบอื่นจริง ๆ อย่างเดียว
+> เหมือน "ปลดกี่ใบ" ของหน้า Effort Tickets · หน้า `Wayfinder Picks` ยังนับด้วย `file.inlinks` (นับ**ทุกลิงก์**
+> ที่ชี้มาหาใบ รวมตอน `map.md` เอ่ยถึง ⇒ เลขเฟ้อกว่า) — เห็นเลขไม่เท่ากันที่นั่น ไม่ใช่บั๊ก
 
 หน้า `Wayfinder Efforts` **เห็นเต็มตัวแค่ 2 กลุ่ม** ที่เหลือพับเก็บ — เพราะกลุ่มถูกจัดตาม
 *action ที่คนดูต้องทำ* ไม่ใช่ตามค่าสถานะ สถานะที่ไม่ต้องการอะไรเลยจึงถูกพับ ไม่ว่ามีกี่ค่าก็ตาม

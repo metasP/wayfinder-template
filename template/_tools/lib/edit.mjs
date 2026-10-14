@@ -3,7 +3,8 @@
 // line endings — is kept. The generated `## Tickets` block is spliced the same way (spec *Generated
 // `## Tickets` block*). Pure: text in, text out.
 import { usageError } from "./errors.mjs"
-import { BLOCK_CLOSE, BLOCK_OPEN, CLOSE_RE, KEY_RE, OPEN_RE, parseNote } from "./frontmatter.mjs"
+import { BLOCK_CLOSE, BLOCK_OPEN } from "./core.mjs"
+import { CLOSE_RE, KEY_RE, OPEN_RE, parseNote } from "./frontmatter.mjs"
 
 const BOM = "﻿"
 const ITEM_RE = /^\s*-(\s|$)/

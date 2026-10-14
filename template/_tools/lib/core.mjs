@@ -311,7 +311,22 @@ export function isBlocked(index, ticketOrRef) {
 }
 
 /**
- * Open, unblocked tickets on active maps, in pick order. `repo` matches the home repo or
+ * Where a ticket stands, as the pages group it: `ready` (open, nothing blocking), `blocked` (open,
+ * a blocker unresolved or dangling), `claimed`, `waiting` or `resolved`. A status outside the enum → null.
+ */
+export function ticketState(index, ticketOrRef) {
+  const t = ticketOf(index, ticketOrRef)
+  if (t.status === "open") return isBlocked(index, t) ? "blocked" : "ready"
+  return TICKET_STATUSES.includes(t.status) ? t.status : null
+}
+
+/** Still to do: open, claimed or waiting. Resolved tickets and status typos are not pending. */
+export function isPending(index, ticketOrRef) {
+  return PENDING.has(ticketOf(index, ticketOrRef).status)
+}
+
+/**
+ * Ready tickets on active maps, in pick order. `repo` matches the home repo or
  * `target_repo`; `from` (`repo/effort`) is the context for `same_effort`; `sort` defaults to the
  * Picks default.
  */
@@ -319,9 +334,8 @@ export function frontier(index, { repo, from, sort } = {}) {
   const ready = [...index.tickets.values()].filter(
     (t) =>
       (!repo || t.repo === repo || t.targetRepo === repo) &&
-      t.status === "open" &&
       index.maps.get(t.effortKey)?.status === "active" &&
-      !isBlocked(index, t),
+      ticketState(index, t) === "ready",
   )
   return pickOrder(index, ready, sort, { from })
 }
@@ -524,6 +538,19 @@ export function renderTicketsBlock(index, effort, language) {
   const tickets = index.efforts.get(effort)?.tickets ?? []
   if (!tickets.length) return EMPTY_TICKETS[languageOf(language)] ?? EMPTY_TICKETS.en
   return tickets.map((t) => ticketLine(index, t)).join("\n")
+}
+
+export const BLOCK_OPEN = "<!-- wf:tickets -->"
+export const BLOCK_CLOSE = "<!-- /wf:tickets -->"
+
+/**
+ * A map note's `ticketsBlock` input: the text between the `wf:tickets` markers in its body, or null
+ * when they are missing. Here so the Node store and the Obsidian loader extract it the same way.
+ */
+export function ticketsBlockOf(body) {
+  const start = body.indexOf(BLOCK_OPEN)
+  const end = start === -1 ? -1 : body.indexOf(BLOCK_CLOSE, start + BLOCK_OPEN.length)
+  return end === -1 ? null : body.slice(start + BLOCK_OPEN.length, end)
 }
 
 // ── Lint ───────────────────────────────────────────────────────────────────

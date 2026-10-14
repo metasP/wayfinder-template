@@ -196,6 +196,46 @@ describe("frontier", () => {
   })
 })
 
+describe("ticket state", () => {
+  const idx = core.buildIndex([
+    ...PROTOTYPE_NOTES,
+    ticket("repoA/eff1/issues/07-waiting.md", { status: "waiting", status_note: "deploy", blockers: ["[[04-claimed]]"] }),
+    ticket("repoA/eff1/issues/08-typo.md", { status: "opne" }),
+  ])
+  const stateOf = (ref) => core.ticketState(idx, ref)
+
+  test("an open ticket is ready unless a blocker is unresolved or dangling", () => {
+    assert.equal(stateOf("repoA/eff1#02"), "ready")
+    assert.equal(stateOf("repoA/eff1#05"), "ready")
+    assert.equal(stateOf("repoA/eff1#03"), "blocked")
+    assert.equal(stateOf("repoA/eff1#06"), "blocked")
+  })
+
+  test("claimed, waiting and resolved are their status, whatever the blockers", () => {
+    assert.equal(stateOf("repoA/eff1#04"), "claimed")
+    assert.equal(stateOf("repoA/eff1#07"), "waiting")
+    assert.equal(stateOf("repoA/eff1#01"), "resolved")
+  })
+
+  test("a status outside the enum has no state (lint reports it)", () => {
+    assert.equal(stateOf("repoA/eff1#08"), null)
+  })
+
+  test("pending = open, claimed or waiting — not resolved, not a status typo", () => {
+    const pending = [...idx.tickets.values()].filter((t) => core.isPending(idx, t)).map((t) => t.ref)
+    assert.deepEqual(pending.sort(), [
+      "repoA/eff1#02", "repoA/eff1#03", "repoA/eff1#04", "repoA/eff1#05", "repoA/eff1#06", "repoA/eff1#07", "repoB/eff2#02",
+    ])
+  })
+
+  test("the frontier is exactly the ready tickets on active maps", () => {
+    const ready = [...idx.tickets.values()].filter(
+      (t) => stateOf(t.ref) === "ready" && idx.maps.get(t.effortKey)?.status === "active",
+    )
+    assert.deepEqual(refs(core.frontier(idx)).sort(), refs(ready).sort())
+  })
+})
+
 describe("pick order", () => {
   // r/pk#02 unblocks two open tickets; r/pk#03 unblocks one open ticket in another effort
   // (the claimed r/pk#06 doesn't count); r/pk#01 is the only research ticket.
@@ -493,6 +533,14 @@ describe("rendered ## Tickets block", () => {
 
   test("the language only changes the placeholder, never the ticket lines", () => {
     assert.equal(core.renderTicketsBlock(idx, "r/e", "th"), core.renderTicketsBlock(idx, "r/e", "en"))
+  })
+
+  test("ticketsBlockOf reads the text between the markers out of a note body, or null without them", () => {
+    const body = "## Tickets\n\n<!-- wf:tickets -->\n- [[01-a]] · x\n<!-- /wf:tickets -->\n\nafter"
+    assert.equal(core.ticketsBlockOf(body), "\n- [[01-a]] · x\n")
+    assert.equal(core.ticketsBlockOf("<!-- wf:tickets --><!-- /wf:tickets -->"), "")
+    assert.equal(core.ticketsBlockOf("## Tickets\n- hand-written\n"), null)
+    assert.equal(core.ticketsBlockOf("<!-- /wf:tickets --> then <!-- wf:tickets --> unclosed"), null)
   })
 })
 

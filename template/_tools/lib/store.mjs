@@ -4,8 +4,8 @@
 // *Wayfinder Picks* `sort:` key.
 import { readdirSync, readFileSync, realpathSync } from "node:fs"
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path"
-import { parseRef, SCHEMA_VERSION } from "./core.mjs"
-import { parseNote, ticketsBlockOf } from "./frontmatter.mjs"
+import { parseRef, SCHEMA_VERSION, ticketsBlockOf } from "./core.mjs"
+import { parseNote } from "./frontmatter.mjs"
 import { usageError } from "./errors.mjs"
 import { runGit } from "./git.mjs"
 
