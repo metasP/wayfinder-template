@@ -48,6 +48,9 @@ function git(m, ...args) {
   return r.stdout.trim()
 }
 
+/** `s` as a literal inside a RegExp. */
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
 const update = (m, ...flags) => bootstrap(m, ["--vault", m.vault, ...flags])
 
 const claudeMd = (m) => join(m.home, ".claude/CLAUDE.md")
@@ -283,6 +286,19 @@ describe("bootstrap: the result passes doctor", () => {
     assert.notDeepEqual(failedChecks(m), [], "the 0.4.x install fails doctor")
     assert.equal(update(m, "--yes").code, 0)
     assert.deepEqual(failedChecks(m), [])
+  })
+})
+
+describe("bootstrap: the manual steps it prints at the end (INSTALL § Manual steps)", () => {
+  test("lists five, the fifth naming the vault path and the sandbox's writable paths", () => {
+    const m = machine()
+    const { stdout } = install(m)
+    const start = stdout.indexOf("ที่เหลือต้องทำมือ")
+    assert.notEqual(start, -1, stdout)
+    const steps = stdout.slice(start)
+    assert.match(steps, /^ {2}4\. /m)
+    assert.match(steps, new RegExp(`^ {2}5\\. ถ้า Claude Code รัน Bash ใน sandbox: เพิ่ม ${escapeRegExp(m.vault)}\\n.*sandbox\\.filesystem\\.allowWrite ใน ~/\\.claude/settings\\.json`, "m"))
+    assert.doesNotMatch(steps, /^ {2}6\. /m)
   })
 })
 
