@@ -4,11 +4,11 @@
 // `## Question` / `## Answer` skeleton; the placeholder follows `language:` (Q36).
 import { readFileSync } from "node:fs"
 import { isatty } from "node:tty"
-import { formatRef, noteText, parseRef, TICKET_TYPES } from "../core.mjs"
+import { effortRefArg, oneLineFlag } from "../args.mjs"
+import { formatRef, noteText, TICKET_TYPES } from "../core.mjs"
 import { usageError } from "../errors.mjs"
 import { editFrontmatter } from "../edit.mjs"
 import { report } from "../pipeline.mjs"
-import { vaultRelative } from "../store.mjs"
 import { blockerArg, blockerLink, noMap } from "./ticket.mjs"
 
 const SLUG_MAX = 60
@@ -25,12 +25,7 @@ const slugOf = (title) => {
   return atBoundary.replace(/-+$/, "") || cut
 }
 
-const oneLine = (name, value) => {
-  const text = value?.trim()
-  if (!text) throw usageError(`new needs --${name} "…"`)
-  if (/[\r\n]/.test(text)) throw usageError(`--${name} must be one line`)
-  return text
-}
+const oneLine = (name, value) => oneLineFlag("new", name, value)
 
 const NO_QUESTION = 'new needs the question: --question "…" or on stdin'
 
@@ -59,11 +54,10 @@ const typeOf = (type) => {
 
 // The effort a new ticket goes in: it must have a map.
 const effortOf = (input, ctx) => {
-  const id = parseRef(vaultRelative(input, ctx.roots))
-  if (!id || id.nn != null) throw usageError(`cannot read ${JSON.stringify(input)} as an effort — use repo/effort`)
-  const key = formatRef(id)
-  if (!ctx.index.maps.has(key)) throw noMap(key, "a ticket goes in an effort that has one")
-  return { repo: id.repo, effort: id.effort, key }
+  const key = effortRefArg(input, ctx)
+  const m = ctx.index.maps.get(key)
+  if (!m) throw noMap(key, "a ticket goes in an effort that has one")
+  return { repo: m.repo, effort: m.effort, key }
 }
 
 // The next NN in the effort, counting every ticket file, duplicates included.

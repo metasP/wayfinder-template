@@ -18,14 +18,16 @@ const contentOf = (line) => line.replace(/\r?\n$/, "")
 const eolOf = (lines) => (lines.find((l) => l.endsWith("\n"))?.endsWith("\r\n") ? "\r\n" : "\n")
 
 /**
- * A string as a YAML scalar that `parseNote` reads back as the same string: plain when it survives
- * unquoted (`claimed`, `2026-10-14`, `claude/x`), double-quoted otherwise (`a #b`, `true`, `007`).
+ * A string or number as a YAML scalar that `parseNote` reads back as the same value: plain when it
+ * survives unquoted (`claimed`, `2026-10-14`, `claude/x`, the number `3`), double-quoted otherwise
+ * (`a #b`, `true`, the string `007`).
  */
 export function yamlScalar(value) {
   const text = String(value)
+  const same = typeof value === "number" ? value : text
   const readsBack = (scalar) => {
     const parsed = parseNote(`---\nk: ${scalar}\n---\n`)
-    return !parsed.errors.length && parsed.frontmatter.k === text
+    return !parsed.errors.length && parsed.frontmatter.k === same
   }
   if (!/[\r\n\u2028\u2029]/.test(text) && readsBack(text)) return text
   // JSON leaves U+2028/U+2029 raw; escaped, the value stays on one line.
