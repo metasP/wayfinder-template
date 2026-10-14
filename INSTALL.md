@@ -218,7 +218,7 @@ A migration is therefore two commands rather than one: install, then update.
    configuration is loaded.
 5. If Claude Code runs Bash in its sandbox: add the vault path to the sandbox's writable paths,
    or `wf` cannot write there, and deny the paths inside it that hold code — see step 3 of
-   [Upgrading from 0.4.x](#upgrading-from-04x).
+   [Upgrading from 0.4.x](#upgrading-from-04x). The installer prints both for your vault.
 
 ---
 
@@ -335,8 +335,9 @@ vault needs `wf migrate` once; the update runs it for you. Four steps, in this o
    vault) before opening a page they touched.
 
    Merge the JSON into the `sandbox` key you already have, if any; a vault elsewhere uses its own
-   path in every entry. With the sandbox off, skip this step. Then restart Claude Code, so the
-   new hooks and this setting load.
+   path in every entry, and the installer prints the list for yours at the end of its run. With
+   the sandbox off, skip this step. Then restart Claude Code, so the new hooks and this setting
+   load. `doctor` fails while the vault is granted without every deny.
 
 4. **Run `doctor`.**
 

@@ -649,6 +649,41 @@ await section('§7b autocommit failure log', async () => {
   }
 })
 
+// ── 7c. sandbox ที่ให้เขียน vault ต้องไม่ให้เขียนโค้ดที่รันนอก sandbox ───────────────────
+// `sandbox` ใน ~/.claude/settings.json เป็นของเจ้าของ (spec Q2) — doctor แค่อ่าน · ให้เขียน vault ทั้งก้อน
+// (หรือแค่บางส่วนของมัน) แต่ไม่ deny `_tools/` · `.git/hooks` ฯลฯ = Bash ใน sandbox วางโค้ดให้ hook รันนอก sandbox ได้ ⇒ ไม่ผ่าน
+// ตรวจแค่ `sandbox.filesystem` ของ user settings: ค่าจาก scope อื่น, wildcard และ `Edit` allow rule ไม่ถูกนับ
+await section('§7c sandbox', async () => {
+  const { SANDBOX_DENY, sandboxGaps, sandboxGrant, sandboxPath } = await import('./lib/sandbox.mjs')
+  const settingsPath = join(homedir(), '.claude/settings.json')
+  const settings = await readJson(settingsPath).catch((e) => {
+    if (e.code === 'ENOENT') return {}
+    throw new Error(`อ่าน ${settingsPath} ไม่ได้: ${e.message}`)
+  })
+  const fs = settings?.sandbox?.filesystem ?? {}
+  // deny ของ path ที่ยังไม่มี (`.git/modules` · `.mcp.json`) ก็ต้องเทียบผ่าน realpath ได้ ⇒ ใช้ของ ancestor ที่มีอยู่
+  const realUpTo = async (p) => {
+    const r = await realpath(p).catch(() => null)
+    if (r !== null || dirname(p) === p) return r ?? p
+    return join(await realUpTo(dirname(p)), basename(p))
+  }
+  const paths = async (entries) => {
+    const abs = (Array.isArray(entries) ? entries : []).map((e) => sandboxPath(e, homedir())).filter(Boolean)
+    return [...abs, ...(await Promise.all(abs.map(realUpTo)))]
+  }
+  const vaults = [...new Set([MAIN_VAULT, await real(MAIN_VAULT)])]
+  const { granted, missing } = sandboxGaps({ allow: await paths(fs.allowWrite), deny: await paths(fs.denyWrite) }, vaults)
+  // `denyWrite` ของ `sandboxGrant` เรียงตาม `SANDBOX_DENY` ⇒ หยิบตัวที่ขาดตามตำแหน่ง สะกดแบบที่ INSTALL เขียน
+  const spelled = sandboxGrant(MAIN_VAULT, homedir()).denyWrite
+  const toAdd = SANDBOX_DENY.flatMap((p, i) => (missing.includes(p) ? [spelled[i]] : []))
+  check(missing.length === 0, 'sandbox ที่ให้เขียน vault ไม่ให้เขียนโค้ดที่ hook · git · Obsidian รันนอก sandbox',
+    missing.length ? `allowWrite ถึง path พวกนี้แต่ denyWrite ยังไม่กัน ${missing.length} path — เพิ่มเองใน ${settingsPath}: ${toAdd.join(' · ')}`
+      : granted ? `denyWrite ครบ ${SANDBOX_DENY.length} path` : 'ไม่ได้ให้ sandbox เขียน vault')
+  if (settings?.sandbox?.enabled === true)
+    warn(granted, 'Bash ใน sandbox เขียน vault ได้ (wf ต้องใช้)',
+      granted ? '' : `sandbox เปิดอยู่แต่ไม่มี allowWrite ที่ครอบ ${MAIN_VAULT} — wf จะเขียน vault ไม่ได้ (INSTALL: Upgrading from 0.4.x ขั้น 3)`)
+})
+
 // ── 8. Obsidian รู้จัก vault นี้ ─────────────────────────────────────────────
 await section('§8 Obsidian', async () => {
   const p = join(homedir(), 'Library/Application Support/obsidian/obsidian.json')

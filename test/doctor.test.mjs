@@ -10,6 +10,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { git, makeVault, map, onOneDay, seed, ticket, wf, write } from "./vault.mjs"
+import { sandboxGrant } from "../template/_tools/lib/sandbox.mjs"
 
 const DOCTOR = fileURLToPath(new URL("../template/_tools/doctor.mjs", import.meta.url))
 
@@ -208,6 +209,42 @@ describe("doctor: hooks in ~/.claude/settings.json", () => {
   test("no settings file reports both hooks missing", () => {
     const { guard, autocommit, old } = hookChecks(vaultWithDoctor(), null)
     assert.deepEqual([guard.ok, autocommit.ok, old.ok], [false, false, true])
+  })
+})
+
+describe("doctor: the sandbox grant in ~/.claude/settings.json", () => {
+  const LABEL = "sandbox ที่ให้เขียน vault"
+  const withSandbox = (vault, sandbox) => doctor(vault, { settings: { sandbox } }).json
+  const denies = (vault) => sandboxGrant(vault).denyWrite
+
+  test("no grant passes, and the sandbox off says nothing more", () => {
+    const vault = vaultWithDoctor()
+    assert.equal(checkNamed(doctor(vault).json, LABEL).ok, true)
+    assert.equal(doctor(vault).json.checks.some((c) => c.label.includes("Bash ใน sandbox เขียน vault ได้")), false)
+  })
+
+  test("the vault granted with every deny passes", () => {
+    const vault = vaultWithDoctor()
+    const json = withSandbox(vault, { enabled: true, filesystem: { allowWrite: [vault], denyWrite: denies(vault) } })
+    assert.equal(checkNamed(json, LABEL).ok, true)
+    assert.equal(checkNamed(json, "Bash ใน sandbox เขียน vault ได้").ok, true)
+  })
+
+  test("the vault granted without the denies fails, naming what to add", () => {
+    const vault = vaultWithDoctor()
+    const { code, json } = doctor(vault, { settings: { sandbox: { filesystem: { allowWrite: [vault], denyWrite: [`${vault}/.obsidian`] } } } })
+    const found = checkNamed(json, LABEL)
+    assert.equal(found.ok, false)
+    assert.equal(found.soft, undefined, "a failure, not a warning")
+    assert.equal(code, 1)
+    for (const path of denies(vault).filter((p) => !p.endsWith(".obsidian"))) assert.ok(found.detail.includes(path), `${path} in: ${found.detail}`)
+    assert.ok(!found.detail.includes(`${vault}/.obsidian`), "a deny already there is not asked for again")
+  })
+
+  test("the sandbox on without a grant warns that wf can't write", () => {
+    const vault = vaultWithDoctor()
+    const found = checkNamed(withSandbox(vault, { enabled: true }), "Bash ใน sandbox เขียน vault ได้")
+    assert.deepEqual([found.ok, found.soft], [false, true])
   })
 })
 

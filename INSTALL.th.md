@@ -196,7 +196,7 @@ node ~/Documents/Git/wayfinder-vault/_tools/doctor.mjs
 4. ถ้าเพิ่งต่อ hook: เปิด `/hooks` ใน Claude Code หนึ่งครั้ง หรือรีสตาร์ตมัน ให้ config โหลดใหม่
 5. ถ้า Claude Code รัน Bash ใน sandbox: เพิ่ม path ของ vault เข้าไปใน path ที่ sandbox เขียนได้
    ไม่งั้น `wf` เขียนลง vault ไม่ได้ และห้ามเขียน path ใน vault ที่เก็บโค้ด — ดูขั้นที่ 3 ของ
-   [อัปเกรดจาก 0.4.x](#อัปเกรดจาก-04x)
+   [อัปเกรดจาก 0.4.x](#อัปเกรดจาก-04x) · installer พิมพ์ทั้งสองอย่างของ vault คุณไว้ให้แล้ว
 
 ---
 
@@ -304,7 +304,8 @@ frontmatter · หน้า Dataview โหลด core กลางตัวเ�
    (`git log -p` ใน vault) ก่อนเปิดหน้าที่มันแตะ
 
    ถ้ามีคีย์ `sandbox` อยู่แล้วให้รวม JSON เข้าไป · vault ที่อยู่ที่อื่นใช้ path ของมันเองในทุกรายการ
-   · ถ้าไม่ได้เปิด sandbox ข้ามขั้นนี้ได้ · จากนั้นรีสตาร์ต Claude Code ให้ hook ใหม่กับค่านี้โหลด
+   (installer พิมพ์รายการของ vault คุณไว้ท้ายการรัน) · ถ้าไม่ได้เปิด sandbox ข้ามขั้นนี้ได้ · จากนั้น
+   รีสตาร์ต Claude Code ให้ hook ใหม่กับค่านี้โหลด · `doctor` ไม่ผ่านตราบที่ให้เขียน vault แต่ deny ไม่ครบ
 
 4. **รัน `doctor`**
 

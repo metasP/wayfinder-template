@@ -424,6 +424,54 @@ A new PreToolUse hook on Write|Edit, scoped to ticket and map files inside the v
 - Hook checks now look for the guard hook and the new autocommit, and flag the old one if it is still wired.
 - The content section is replaced by one call to the core's `lint()`, the same schema `wf` uses.
 - New checks: the autocommit failure log, and the vault schema version.
+- It checks the sandbox grant: when `sandbox.filesystem.allowWrite` in `~/.claude/settings.json` covers the vault,
+  every *Sandbox grant* deny must be in `denyWrite`, or the check fails and names the missing entries.
+
+### Sandbox grant (Q2)
+
+`wf` runs in sandboxed Bash. It writes notes under `<repo>/<effort>/`, the three seed notes at the vault root, and
+`.git` (objects, refs, the index, and its `wf.lock`). So the owner grants the vault root in
+`sandbox.filesystem.allowWrite`.
+
+Some things run outside the sandbox with the owner's full rights and load code or config from inside the vault:
+the hooks, the git that the autocommit hook runs, Obsidian, and a Claude Code session started in the vault. If a
+sandboxed command can write one of those paths, it escapes the sandbox at the next Write/Edit. So the grant
+always comes with a `denyWrite` entry for each path below (`lib/sandbox.mjs` holds the list):
+
+| Path | What runs it outside the sandbox |
+| --- | --- |
+| `_tools` | Claude Code, which runs the guard and autocommit hooks on every Write/Edit; also the libraries they import |
+| `.git/hooks` | The autocommit hook's `git commit`, and the owner's git |
+| `.git/config` | The same, through `core.hooksPath`, `core.fsmonitor`, and filter drivers |
+| `.git/modules` | A plain `git status`, which reads a submodule's config |
+| `.obsidian` | Obsidian, which runs plugin code when it starts |
+| `.claude`, `.mcp.json` | A Claude Code session started in the vault (its settings, hooks, and MCP servers) |
+
+The vault-root `CLAUDE.md` stays writable. It is instructions, not code, so it is prompt injection for a session
+started in the vault, not a sandbox escape.
+
+- Claude Code's own protected paths don't cover these. It protects `.git/hooks`, `.git/config`, and `.claude` only
+  in the session's working directory and the directories above it, and the vault is usually neither. This was
+  checked on macOS: sandboxed Bash could write `.git/hooks` and `.git/config` in a repository outside the working
+  directory.
+- `denyWrite` takes precedence over `allowWrite` (settings schema). In the same macOS check, the directory above a
+  denied path could not be renamed, so a deny can't be dodged by moving `.git` or `_tools` aside.
+- `bootstrap` prints the grant for the vault it installed, spelled through `~/` the way INSTALL writes it. `doctor`
+  checks it.
+- `doctor` doesn't count the following, so the owner keeps them in line with the printed grant:
+  - wildcard entries;
+  - entries from other settings scopes;
+  - `Edit` allow rules, which also grant sandbox writes.
+- `doctor` also flags an allow narrower than the vault (for example `<vault>/.git`) that reaches one of these
+  paths without its deny.
+- Dataview JS in a note runs when the owner opens that note in Obsidian, with the owner's full rights. The pages
+  depend on it (`enableDataviewJs`), and notes are what `wf` writes, so no grant can close this. INSTALL tells the
+  owner. Narrowing it, by keeping page code in `_tools/views` and leaving only a stub in the note, is separate work.
+- Out of scope: a vault whose `.git` is a file (a linked worktree or a separate git dir). There, git reads hooks
+  and config from somewhere else, and `.git/worktrees/*/config.worktree` applies once `extensions.worktreeConfig`
+  is set. Q14 ended tracker work in vault worktrees.
+- Only macOS was checked. There, a deny on a path that doesn't exist yet (`.git/modules`, `.mcp.json`) still
+  blocks creating it. Linux and WSL2 are unchecked.
 
 ### `bootstrap` and release (Q20, Q21)
 
@@ -544,6 +592,13 @@ comments.
 **Writing and enforcement**
 
 - **Q2** — The owner adds the vault path to the sandbox's writable paths themselves; agents can't.
+  - The grant is the vault root, plus a `denyWrite` for every path in the vault that holds code run outside the
+    sandbox: `_tools`, `.git/hooks`, `.git/config`, `.git/modules`, `.obsidian`, `.claude`, and `.mcp.json`. See
+    *Sandbox grant (Q2)*.
+  - This was chosen over moving the hook scripts out of the vault, for example into `~/.claude/`. That move
+    would protect `_tools`, but git's hooks and config would stay writable, because `wf` must write `.git`. So
+    the denies are needed either way. Once they are in place, moving the scripts adds nothing and would cost a
+    second install location for `bootstrap` and `doctor` to keep in sync.
 - **Q14** — `wf` writes and commits in the main checkout (`git --git-common-dir`). It uses an `mkdir` lock with a
   stale-lock timeout and retries on `index.lock`. It commits only the files the verb touched, as
   `wf(<verb>): repo/effort#NN`. The worktree-to-main sync is deleted, and vault worktrees are no longer used for

@@ -9,9 +9,10 @@ import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { basename, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { MANIFEST, read, wf, write } from "./vault.mjs"
+import { sandboxGrant } from "../template/_tools/lib/sandbox.mjs"
 
 const BOOTSTRAP = fileURLToPath(new URL("../template/_tools/bootstrap.mjs", import.meta.url))
 const OBSIDIAN_JSON = "Library/Application Support/obsidian/obsidian.json"
@@ -47,9 +48,6 @@ function git(m, ...args) {
   if (r.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${r.stderr}`)
   return r.stdout.trim()
 }
-
-/** `s` as a literal inside a RegExp. */
-const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
 const update = (m, ...flags) => bootstrap(m, ["--vault", m.vault, ...flags])
 
@@ -290,15 +288,38 @@ describe("bootstrap: the result passes doctor", () => {
 })
 
 describe("bootstrap: the manual steps it prints at the end (INSTALL § Manual steps)", () => {
-  test("lists five, the fifth naming the vault path and the sandbox's writable paths", () => {
+  // The `"filesystem": { … }` the fifth step prints, parsed: the lines after its heading, up to the rule.
+  const printedGrant = (stdout) => {
+    const steps = stdout.slice(stdout.indexOf("ที่เหลือต้องทำมือ"))
+    const json = steps.slice(steps.indexOf("\n     {"), steps.indexOf("\n────"))
+    return JSON.parse(json).filesystem
+  }
+
+  test("lists five, the fifth the sandbox grant for this vault", () => {
     const m = machine()
     const { stdout } = install(m)
     const start = stdout.indexOf("ที่เหลือต้องทำมือ")
     assert.notEqual(start, -1, stdout)
     const steps = stdout.slice(start)
     assert.match(steps, /^ {2}4\. /m)
-    assert.match(steps, new RegExp(`^ {2}5\\. ถ้า Claude Code รัน Bash ใน sandbox: เพิ่ม ${escapeRegExp(m.vault)}\\n.*sandbox\\.filesystem\\.allowWrite ใน ~/\\.claude/settings\\.json`, "m"))
+    assert.match(steps, /^ {2}5\. ถ้า Claude Code รัน Bash ใน sandbox: รวมค่านี้เข้า "sandbox" ใน ~\/\.claude\/settings\.json/m)
     assert.doesNotMatch(steps, /^ {2}6\. /m)
+    assert.deepEqual(printedGrant(stdout), sandboxGrant(m.vault, m.home))
+    assert.ok(printedGrant(stdout).denyWrite.includes(`~/${basename(m.vault)}/_tools`), "the hook scripts are denied")
+  })
+
+  test("the printed grant, pasted into settings.json, passes doctor's sandbox check", () => {
+    const m = machine()
+    const grant = printedGrant(install(m).stdout)
+    writeFileSync(settingsFile(m), JSON.stringify({ ...settingsOf(m), sandbox: { enabled: true, filesystem: grant } }, null, 2))
+    assert.deepEqual(failedChecks(m), [])
+
+    // The vault granted without the denies: sandboxed Bash could rewrite the hooks, which run unsandboxed.
+    writeFileSync(settingsFile(m), JSON.stringify({ ...settingsOf(m), sandbox: { enabled: true, filesystem: { allowWrite: grant.allowWrite } } }, null, 2))
+    const failed = failedChecks(m)
+    assert.equal(failed.length, 1, failed.join("\n"))
+    assert.match(failed[0], /^sandbox ที่ให้เขียน vault/)
+    assert.ok(failed[0].includes(`~/${basename(m.vault)}/_tools`), failed[0])
   })
 })
 

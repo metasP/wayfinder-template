@@ -46,6 +46,7 @@ import { join, dirname, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { homedir } from 'node:os'
 import { settingsShapeError, wireSettings, withWfBlock } from './lib/wiring.mjs'
+import { sandboxGrant } from './lib/sandbox.mjs'
 import { parseArgs, usage } from './lib/bootstrap/args.mjs'
 import { ask, questions } from './lib/bootstrap/questions.mjs'
 import { readClaudeFiles, wireClaudeFiles } from './lib/bootstrap/claude.mjs'
@@ -779,9 +780,10 @@ log(`
      (ตัวปลั๊กอิน Dataview + ค่าตั้ง + สี Graph View มากับ repo แล้ว ไม่ต้องโหลดใหม่)
   3. เปิดโน้ต "Wayfinder Dashboard" กับ "Wayfinder Efforts"
   4. ถ้าเพิ่งต่อ hook: เปิด /hooks ใน Claude Code หนึ่งครั้งให้ config โหลดใหม่
-  5. ถ้า Claude Code รัน Bash ใน sandbox: เพิ่ม ${TARGET}
-     เข้า sandbox.filesystem.allowWrite ใน ~/.claude/settings.json ไม่งั้น wf เขียนลง vault ไม่ได้
-     แล้วรีสตาร์ต Claude Code ให้ค่านี้โหลด
+  5. ถ้า Claude Code รัน Bash ใน sandbox: รวมค่านี้เข้า "sandbox" ใน ~/.claude/settings.json เอง
+     แล้วรีสตาร์ต Claude Code — ไม่งั้น wf เขียนลง vault ไม่ได้ · ห้ามตัด denyWrite ทิ้ง: hook, git
+     และ Obsidian รันโค้ดจาก path พวกนี้นอก sandbox
+${JSON.stringify({ filesystem: sandboxGrant(TARGET, HOME) }, null, 2).replace(/^/gm, '     ')}
 ────────────────────────────────────────────────────────────
 `)
 
