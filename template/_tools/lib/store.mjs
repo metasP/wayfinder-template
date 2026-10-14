@@ -18,7 +18,7 @@ const LEGACY_VAULT_SCHEMA = 1
 // Variables that point git at another repository (set inside hooks or `git rebase -x`). wf finds
 // the vault from its own path, so they are dropped.
 const GIT_LOCATION_VARS = ["GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY"]
-const gitEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !GIT_LOCATION_VARS.includes(k)))
+export const gitEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !GIT_LOCATION_VARS.includes(k)))
 
 const git = (cwd, args) => {
   const r = spawnSync("git", args, { cwd, encoding: "utf8", env: gitEnv() })
