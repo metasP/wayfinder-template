@@ -66,7 +66,7 @@ superseded_by: "[[example-repo/schema-cleanup/map]]"      # เฉพาะ drop
 ...
 ```
 
-`runs` เป็นของ skill **`/wayfinder-next`** อย่างเดียว — มันอ่าน → +1 → เขียนกลับ **ตอนสร้าง chip**
+`runs` เป็นของ **`wf bump-runs`** อย่างเดียว — skill `/wayfinder-next` เรียกมัน **ตอนสร้าง chip** เพื่อจองเลขใต้ lock
 แล้วเอาเลขนั้นขึ้นหัวชื่อ chip: `#RR-LNN-‹ชื่อย่อ›` (เช่น `#12-G09-ถ้อยคำล็อกของ gate รายจุด`
 = รอบที่ 12 ของ effort นี้ · ticket 09 · type `grilling`) เพื่อให้ sidebar ของ Claude Code
 อ่านออกว่าใบไหนมาก่อนหลังใน effort เดียวกัน
@@ -226,7 +226,7 @@ blocker ข้าม effort ใช้ path เต็ม `"[[<repo>/<effort>/issu
 
 ### Map และ ticket
 
-- **map** — frontmatter ตาม § รูปแบบ map (`runs` เป็นของ `/wayfinder-next` อย่าแตะ) · body ใต้
+- **map** — frontmatter ตาม § รูปแบบ map (`runs` เป็นของ `wf bump-runs` อย่าแตะ) · body ใต้
   `# ‹ชื่อ effort›` ใช้หัวข้อของ upstream ตามลำดับ: `## Destination` · `## Notes` · `## Decisions so far` ·
   (`## Build board` เฉพาะ effort ที่แตกการ์ดด้วย `/to-tickets` — ดู § Spec & ticket operations) ·
   `## Not yet specified` · `## Out of scope` · (`## Retro` เฉพาะ map ที่ `done` — ดู § ปิด map เป็น `done` ⇒ รัน `/retro`)
