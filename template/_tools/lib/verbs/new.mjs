@@ -6,13 +6,14 @@ import { readFileSync } from "node:fs"
 import { isatty } from "node:tty"
 import { effortRefArg, oneLineFlag } from "../args.mjs"
 import { formatRef, noteText, TICKET_TYPES } from "../core.mjs"
-import { usageError } from "../errors.mjs"
+import { invariantError, usageError } from "../errors.mjs"
 import { editFrontmatter } from "../edit.mjs"
 import { report } from "../pipeline.mjs"
 import { blockerArg, blockerLink, noMap } from "./ticket.mjs"
 
 const SLUG_MAX = 60
 const STDIN = 0
+const CLOSED_MAP = ["done", "dropped"]
 
 // A file-name slug from the title: letters, marks and digits of any script, joined by `-`.
 // A long slug is cut to SLUG_MAX characters (code points), at a word boundary when it has one.
@@ -52,11 +53,14 @@ const typeOf = (type) => {
   return type
 }
 
-// The effort a new ticket goes in: it must have a map.
+// The effort a new ticket goes in: it must have a map that isn't closed. `draft` (charting), `active`
+// and `paused` (planning onto a parked map) take new tickets; a missing or unknown status is lint's to report.
 const effortOf = (input, ctx) => {
   const key = effortRefArg(input, ctx)
   const m = ctx.index.maps.get(key)
   if (!m) throw noMap(key, "a ticket goes in an effort that has one")
+  if (CLOSED_MAP.includes(m.status))
+    throw invariantError(`map ${key} is ${m.status} — a ticket can't be added to a done or dropped map`, { fix: `wf map-status ${key} active` })
   return { repo: m.repo, effort: m.effort, key }
 }
 

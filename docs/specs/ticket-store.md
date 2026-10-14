@@ -280,7 +280,7 @@ Ticket transitions (Q24):
 
 | Verb | From → to | Invariants and side effects |
 | --- | --- | --- |
-| `new <repo/effort> --type T --title "…" [--question "…" \| stdin] [--blocker ref]… [--target-repo R]` | — → `open` | Map exists. NN = highest + 1, reserved under the lock with an exclusive create. Writes the `## Question` / `## Answer` skeleton. Blockers must resolve and must not form a cycle. |
+| `new <repo/effort> --type T --title "…" [--question "…" \| stdin] [--blocker ref]… [--target-repo R]` | — → `open` | Map exists and is not `done` / `dropped`. NN = highest + 1, reserved under the lock with an exclusive create. Writes the `## Question` / `## Answer` skeleton. Blockers must resolve and must not form a cycle. |
 | `claim <ref> [--by name]` | `open` → `claimed` | Re-read under the lock. Not blocked; map `active`. Stamps `claimed_by`. |
 | `release <ref>` | `claimed`/`waiting` → `open` | Clears `claimed_by`, `status_note`, `wait_until`. |
 | `wait <ref> --note "…" [--until YYYY-MM-DD]` | `open`/`claimed` → `waiting` | Note required. |

@@ -212,7 +212,7 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
 | `wf map-status <repo/effort> paused --note "…"` | map: อื่น ๆ → `paused` | `--note` บังคับ · `--superseded-by <repo/effort>` ได้ |
 | `wf map-status <repo/effort> dropped --note "…"` | map: อื่น ๆ → `dropped` | `--note` บังคับ · `--superseded-by <repo/effort>` ได้ |
 | `wf map-status <repo/effort> done` | map: อื่น ๆ → `done` | ไม่มีใบ `open`/`claimed`/`waiting` ค้าง · เตือนให้รัน `/retro` |
-| `wf new <repo/effort> --type T --title "…"` | ticket: — → `open` | `NN` = เลขสูงสุด + 1 จองใต้ lock ด้วย exclusive create ⇒ สอง session ไม่มีทางได้เลขเดียวกัน · เขียนโครง Question/Answer (`--question "…"` หรือ stdin) · `--blocker ref` ต้องชี้ใบที่มีจริง · `--target-repo R` ได้ |
+| `wf new <repo/effort> --type T --title "…"` | ticket: — → `open` | map ต้องไม่ `done`/`dropped` (`draft`/`active`/`paused` รับใบใหม่ได้) · `NN` = เลขสูงสุด + 1 จองใต้ lock ด้วย exclusive create ⇒ สอง session ไม่มีทางได้เลขเดียวกัน · เขียนโครง Question/Answer (`--question "…"` หรือ stdin) · `--blocker ref` ต้องชี้ใบที่มีจริง · `--target-repo R` ได้ |
 | `wf claim <ref>` | `open` → `claimed` | อ่านใบใหม่ใต้ lock ⇒ สอง session claim ใบเดียวกันไม่ได้ · ใบต้องไม่ติด blocker และ map ต้อง `active` · ประทับ `claimed_by` (`--by name` · ไม่งั้นชื่อ branch ของ worktree ที่เรียก · ไม่งั้น session id) |
 | `wf release <ref>` | `claimed`/`waiting` → `open` | ล้าง `claimed_by` · `status_note` · `wait_until` |
 | `wf wait <ref> --note "…"` | `open`/`claimed` → `waiting` | ต้องบอกว่ารออะไร · `--until YYYY-MM-DD` ⇒ lint เตือนเมื่อเลยวัน · `claimed_by` คงอยู่ — คนเดิมยังถือใบ |

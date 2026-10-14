@@ -56,6 +56,17 @@ describe("wf new", () => {
     assert.deepEqual(lastCommit(vault), { subject: "wf(new): r/e#05", files: ["r/e/issues/05-where-does-it-live.md", "r/e/map.md"] })
     assert.match(read(vault, "r/e/map.md"), /^- \[\[05-where-does-it-live\]\] · research · open · Where does it live\?$/m)
   })
+
+  test("a draft, active or paused map takes a new ticket (charting, working, planning onto a parked map)", () => {
+    for (const mapFields of [{ status: "draft" }, { status: "active" }, { status: "paused", status_note: "later" }]) {
+      const vault = vaultWith(effort([], mapFields))
+      const r = run(vault, ["new", "r/e", "--type", "task", "--title", "T", "--question", "q", "--json"])
+      assert.equal(r.code, 0, `${mapFields.status}: ${r.stderr}`)
+      assert.equal(r.json.data.ref, "r/e#01")
+      assert.ok(existsSync(join(vault, "r/e/issues/01-t.md")), `${mapFields.status}: ticket file written`)
+      assert.equal(lastCommit(vault).subject, "wf(new): r/e#01")
+    }
+  })
 })
 
 describe("wf new — options", () => {
@@ -104,6 +115,19 @@ describe("wf new refuses", () => {
 
   test("an effort without a map (exit 1)", () => {
     unchanged(vaultWith(effort()), ["new", "r/none", "--type", "task", "--title", "T", ...Q], 1, /r\/none has no map/, "wf chart r/none --title <title>")
+  })
+
+  test("a done map (exit 1)", () => {
+    const vault = vaultWith(effort([ticket("r/e/issues/01-a.md", { status: "resolved" })], { status: "done" }))
+    unchanged(vault, ["new", "r/e", "--type", "task", "--title", "T", ...Q], 1, /map r\/e is done — a ticket can't be added to a done or dropped map/, "wf map-status r/e active")
+  })
+
+  test("a dropped map (exit 1), the fix in error.details", () => {
+    const vault = vaultWith(effort([], { status: "dropped", status_note: "not worth it" }))
+    unchanged(vault, ["new", "r/e", "--type", "task", "--title", "T", ...Q], 1, /map r\/e is dropped — a ticket can't be added to a done or dropped map/, "wf map-status r/e active")
+    const r = run(vault, ["new", "r/e", "--type", "task", "--title", "T", ...Q, "--json"])
+    assert.equal(r.json.error.code, 1)
+    assert.deepEqual(r.json.error.details, ["fix: wf map-status r/e active"])
   })
 
   test("a blocker that resolves to no ticket (exit 1)", () => {
