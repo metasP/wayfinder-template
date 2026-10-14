@@ -143,7 +143,7 @@ Dataview ship มาในตัว vault อยู่แล้ว (ดูหั
 | [`template/`](template) | ตัว vault เป๊ะ ๆ อย่างที่ควรอยู่บนดิสก์ · ถูกทับทั้งชุดทุกครั้งที่อัปเดต |
 | [`template/README.md`](template/README.md) | คู่มือรูปแบบ map/ticket (ไทย) · จะกลายเป็น README ของ vault คุณ |
 | [`template/SETUP.md`](template/SETUP.md) | อัปเดตและตรวจสุขภาพ vault ที่ติดตั้งไปแล้ว |
-| [`template/_tools/`](template/_tools) | `bootstrap.mjs` (ติดตั้ง/อัปเดต) · `doctor.mjs` (ตรวจสุขภาพ + ลินต์ ticket ทุกใบ) · `autocommit.sh` (commit vault ให้เองทุกครั้งที่ agent แก้ ticket) |
+| [`template/_tools/`](template/_tools) | `wf.mjs` (ทางเดียวที่เปลี่ยนสถานะของ map/ticket — verb ทั้งหมดอยู่ใน § Wayfinding operations ของ README ใน vault) · `bootstrap.mjs` (ติดตั้ง/อัปเดต) · `doctor.mjs` (ตรวจสุขภาพ + ลินต์ ticket ทุกใบ) · `autocommit.sh` (commit vault ให้เองทุกครั้งที่ agent แก้ ticket) |
 | [`template/example-repo/`](template/example-repo) | effort ตัวอย่างที่ใช้งานได้จริง วางให้ **ตอนติดตั้งเท่านั้น** เพื่อให้ dashboard มีของให้ดูตั้งแต่วันแรก · อ่านจบแล้วลบทิ้งได้ อัปเดตไม่ปลุกมันคืนมา |
 | [`skills/`](skills) | สกิล `/wayfinder-next` (อังกฤษ) · วางไว้ตรงที่คุณบอก installer · `/wayfinder` ไม่ได้อยู่ที่นี่ — เป็นของ [Matt Pocock](https://github.com/mattpocock/skills) ติดตั้งจาก plugin ของเขา ซึ่งเป็นของที่ต้องมีก่อน ดู [`INSTALL.th.md`](INSTALL.th.md) |
 | [`INSTALL.th.md`](INSTALL.th.md) | วิธีติดตั้งและอัปเดตแบบเต็ม (อังกฤษ: [`INSTALL.md`](INSTALL.md)) |
