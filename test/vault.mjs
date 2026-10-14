@@ -40,6 +40,7 @@ export function makeVault({ notes = [], manifest = {}, config, picks } = {}) {
   const vault = mkdtempSync(join(tmpdir(), "wf-vault-"))
   git(vault, "init", "-q")
   cpSync(join(TOOLS, "wf.mjs"), join(vault, "_tools/wf.mjs"))
+  cpSync(join(TOOLS, "frontmatter-guard.mjs"), join(vault, "_tools/frontmatter-guard.mjs"))
   cpSync(join(TOOLS, "lib"), join(vault, "_tools/lib"), { recursive: true })
   if (manifest !== null) write(vault, MANIFEST, JSON.stringify({ schema: 1, vault_schema: 2, ...manifest }, null, 2))
   if (config) write(vault, "Wayfinder Config.md", noteText({ kind: "wayfinder-config", ...config }))
