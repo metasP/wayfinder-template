@@ -1,6 +1,6 @@
 ---
 name: wayfinder-next
-description: Create task chips that kick off the NEXT wayfinder session(s). Reads the active wayfinder map's tickets and spawns one chip per ticket, titled `#RR-LNN-{short title}` where RR is this effort's run counter (from the map's `runs:` frontmatter), L is the ticket type letter (T/G/R/P), NN is the ticket number, and the short title is generated from the ticket. Accepts one or more ticket numbers as arguments (e.g. `02` or `01, 02, 04`); with no argument it ranks the frontier by urgency and spawns 1-3 chips — the most urgent ticket plus any that can safely run beside it. Confirms with the user before spawning a chip for a ticket that is blocked, claimed, resolved, or missing. Use when a wayfinder session or ticket is done and you want to queue the next ticket(s) as clickable chips, or when the user says "create wayfinder chip", "next wayfinder session", "chip for next ticket", "wayfinder chip".
+description: Create task chips that kick off the NEXT wayfinder session(s). Reads the active wayfinder map's tickets and spawns one chip per ticket, titled `#RR-LNN-{short title}` where RR is a run number allocated by `wf bump-runs`, L is the ticket type letter (T/G/R/P), NN is the ticket number, and the short title is generated from the ticket. Accepts one or more ticket numbers as arguments (e.g. `02` or `01, 02, 04`); with no argument it takes the map's frontier in `wf frontier` order and spawns 1-3 chips — the top ticket plus any that don't collide with it. Confirms with the user before spawning a chip for a ticket that is blocked, claimed, resolved, or missing. Use when a wayfinder session or ticket is done and you want to queue the next ticket(s) as clickable chips, or when the user says "create wayfinder chip", "next wayfinder session", "chip for next ticket", "wayfinder chip".
 ---
 
 # Wayfinder Next-Session Chip
@@ -17,11 +17,21 @@ It sets the language of everything this skill writes for the user to click or re
 
 The templates below are given in `en` and `th`. For any other language, translate the `en` version, keeping the fixed tokens as they are.
 
+## `wf` — the ticket store
+
+Ticket state and run numbers come from `wf`, the vault's ticket-store CLI — the same read model the Dashboard renders. Run it by absolute path, always with `--json`:
+
+```
+node __VAULT__/_tools/wf.mjs <verb> … --json
+```
+
+It prints `{ ok, data, error }`. Exit `1` is a refused invariant (`error.details` carries `fix: <command>`); exit `2` is a usage or environment error — `EPERM`/`EACCES` means the vault is outside the sandbox's writable paths. On either, report `error.message` and `error.details` to the user and stop: the chips wait until `wf` answers.
+
 ## Arguments
 
 | what the user typed | what to do |
 |---|---|
-| nothing | rank the frontier **by urgency** and spawn **1–3 chips** — the top pick, plus up to two that can run beside it (see [Picking tickets](#picking-tickets)) |
+| nothing | take the map's frontier **in `wf frontier` order** and spawn **1–3 chips** — the top ticket, plus up to two that don't collide with it (see [Picking tickets](#picking-tickets)) |
 | `02` | that ticket — one chip |
 | `01, 02, 04` · `01 02 04` · `1,2,4` | those tickets — **one chip each**, in ascending order |
 
@@ -38,7 +48,7 @@ Accept comma- and/or space-separated numbers, with or without zero-padding. Anyt
 
 | part | meaning |
 |---|---|
-| `RR` | **run number** — how many chips this effort has spawned. Zero-pad to 2 (`01`…`99`, then just grows) |
+| `RR` | **run number** from `wf bump-runs` (see [Run number](#run-number)). Zero-pad to 2 (`01`…`99`, then just grows) |
 | `L` | **ticket type letter** — `T`ask · `G`rilling · `R`esearch · `P`rototype (from the ticket's `type:` frontmatter) |
 | `NN` | **ticket number** from `issues/NN-<slug>.md`, zero-padded to 2 |
 | short title | generated in `language` (see below) |
@@ -49,79 +59,64 @@ The prefix is exactly 8 chars, so **the short title gets ≤ 52** (`spawn_task` 
 
 Tickets have **no H1** — generate the short title from the bold line under `## Question`. Strip the scaffolding ("Turn rule … into code", "Decide whether…", "Fix…" · "ทำกฎ … ให้เป็นโค้ดจริง", "ตัดสินใจว่า…", "แก้…") and keep the kernel. Write it in `language` — translate the bold line if the ticket is written in another language. Never use the file's slug.
 
-## Run number (`runs:` in the map)
+## Run number
 
-Source of truth is the **map's own frontmatter**:
+`RR` comes from `wf bump-runs`, which allocates numbers from the map's `runs` counter under the vault lock, so two sessions never hand out the same one. `runs` belongs to `bump-runs`. Call it **once per batch, after validation, right before spawning**, with `k` = the number of chips:
 
-```yaml
----
-repo: acme-web
-effort: checkout-redesign
-kind: map
-runs: 12
----
+```
+node __VAULT__/_tools/wf.mjs bump-runs <repo/effort> --count <k> --json
+→ { "ok": true, "data": { "ref": "acme-web/checkout-redesign", "from": 12, "to": 13, "runs": 13 } }
 ```
 
-- **Read → allocate → write back to `map.md`, once, before spawning.**
-- **One chip**: `RR` = `runs + 1`; write back `runs: runs + 1`.
-- **k chips**: allocate a block — the chips get `runs+1 … runs+k` **in ascending ticket order**; write back `runs: runs + k` in a **single edit**. Every chip keeps a distinct `RR`, so the sidebar still orders them.
-- **No `runs:` field yet** (every map predating this convention) → the block starts at **1**. Do NOT back-fill a guess from ticket count or decisions — the counter means "runs since we started counting", not a historical total.
-- **Gaps are fine.** A chip that never gets clicked, or a spawn that fails after the block was reserved, burns its number (`11 → 13`). The number exists to order runs within one effort, not to tally them.
-- The `runs:` write lands in the vault, so the `autocommit.sh` PostToolUse hook commits it — nothing extra to do.
+- The chips take `from … to` **in ascending ticket order**, zero-padded — every chip keeps a distinct `RR`, so the sidebar orders them.
+- A map that has never counted starts at `from: 1`; the counter means "runs since we started counting", not a historical total.
+- **Gaps are fine.** A chip that never gets clicked, or a spawn that fails after allocation, burns its number (`11 → 13`). The number orders runs within one effort; it doesn't tally them.
+- `bump-runs` commits its own write.
 
 ## Picking tickets
 
 **NN always comes from an `issues/NN-<slug>.md` file** — never mint a number that already has one, and never renumber.
 
 - **Explicit numbers given** → those are the tickets. Validate them (next section); don't silently substitute others.
-- **No argument** → rank the frontier **by urgency, not by number**, and spawn **1–3 chips** (see below).
-- **Every existing ticket is `resolved`** → the next ticket is still in the fog: **reserve** NN = highest existing NN + 1, pick **L = the type you are about to commission** (grilling / task / research / prototype — you're writing the prompt, so you know), and draw the title from the map's `## Not yet specified` or scope. The chip prompt then tells the session to create exactly that file with exactly that type. If you can't decide the type, the work isn't shaped enough for a chip — chart it first.
+- **No argument** → take candidates **in `wf frontier` order** and spawn **1–3 chips** (see below).
+- **No argument, and the frontier has no row for this map** → read the map's `## Tickets` block (see [Validate](#validate-before-spawning--and-confirm)). If any line is not `resolved`, report what holds each one (blocked, claimed, waiting, or the map isn't `active`) and stop.
+  **Every line `resolved`** → the next ticket is still in the fog: **reserve** NN = highest existing NN + 1, pick **L = the type you are about to commission** (grilling / task / research / prototype — you're writing the prompt, so you know), and draw the title from the map's `## Not yet specified` or scope. The chip prompt then tells the session to create exactly that file with exactly that type. If you can't decide the type, the work isn't shaped enough for a chip — chart it first.
   **At most one fog-reserved chip per batch** — two would reserve the same NN.
 
-### No argument → rank by urgency, then fill with parallel-safe work
+### No argument → frontier order, then skip collisions
 
-The **frontier** is every ticket that is `status: open`, **not claimed**, and has **every blocker `resolved`**.
-Lowest-number-first is a tie-break, not the rule — a map's cheapest ticket and its most urgent one are
-routinely different, and a chip spent on the wrong one costs a whole session.
+Get the candidates from the same read model as the Dashboard — one call serves this section and [validation](#validate-before-spawning--and-confirm):
 
-**Rank the frontier by these signals, in order.** All of them are readable from the vault — never rank on a
-hunch, and never on your own opinion of what is interesting:
+```
+node __VAULT__/_tools/wf.mjs frontier --from <repo/effort> --json
+```
 
-| # | signal | how you read it |
-|---|---|---|
-| 1 | **a resolved ticket named it urgent** | its `## Answer` (or the map's Decisions-so-far line) says so in words — *"ดัน [[13-…]] ขึ้นเป็นของด่วน"*, *"blocker ของรอบ 2"*. The map already made this call; honour it |
-| 2 | **it repairs an invalidated premise** | a recent resolution says another ticket's axis is wrong. Re-basing beats walking further down a road that just moved |
-| 3 | **it unblocks the most tickets** | count open tickets listing it in `blockers:`. Two unblocked beats zero |
-| 4 | **its evidence expires** | the ticket says a window closes (log retention, a running incident, a vendor ticket). Ordering is forced by the clock, not by us |
-| 5 | tie-break | lowest number |
+`data.tickets` lists every open, unblocked ticket on an active map, already in the owner's **pick order** (the `sort:` in *Wayfinder Picks*; `--from` gives its `same_effort` key a context). Each row carries `ref` (`repo/effort#NN`), `repo`, `effort`, `nn`, `type`, `title` and `target_repo`. Keep the rows of this map's `repo`/`effort`, in the order given — **that order is the ranking**, and its top row is the top pick.
 
-**Then fill the batch.** After the top pick, add up to **two more** frontier tickets that can genuinely run
-beside it. A second ticket qualifies only when **both** hold:
+Then walk the rows from the top and add each one that **collides** with nothing already in the batch, until the batch holds 3. Two tickets collide on:
 
-- **neither blocks the other**, directly or transitively (walk the `blockers:` graph, don't eyeball it), and
-- **they don't write the same answer** — not the same `## Answer`, not the same file or code region.
+- **same files** — both would write the same file or code region, or the same `## Answer`;
+- **same repo** — both change code in one repo (a ticket's repo is its `target_repo` when set, else its home `repo`).
 
-Two tickets where one may *reshape the other's scope* still qualify — that is normal on a live map — but then
-**say it in both prompts**: which one decides, which one implements, and that neither should guess the other's
-answer. Prefer 2 over 3 unless the third is plainly independent; **1 is a fine batch** when nothing else is
-parallel-safe.
+A colliding row is skipped and the walk goes on to the next row. **1 is a fine batch.**
 
-⇒ Report the ranking, not just the result: **one line saying why the top pick won**, so the user can override
-in one word. Do NOT ask first — spawn, then show your reasoning.
+⇒ Spawn without asking; [step 7](#workflow) reports the walk so the user can override in one word.
 
 ## Validate before spawning — and confirm
 
-Before spawning anything, read the frontmatter of **every** requested ticket plus the frontmatter of each of its `blockers:` targets. Flag these:
+Check **every** requested ticket against the frontier from the call above (run it now if you skipped that section): a requested ticket is **clean** when its `ref` is a row of `data.tickets`. Every other one is flagged, and the map's generated `## Tickets` block — the lines between its `<!-- wf:tickets -->` markers, which `wf` rewrites on every state change — says which flag. Each line reads `- [[NN-slug]] · <type> · <status> · <title>`, with a trailing ⛔ when the ticket is blocked:
 
-| flag | how you detect it | why it matters |
+| flag | its `## Tickets` line | why it matters |
 |---|---|---|
-| **blocked** | any `blockers:` wikilink whose target is not `status: resolved` | the session will hit a question it can't answer yet, and may resolve it wrongly on guesses |
-| **claimed** | `status: claimed` | another session already holds it — two sessions will collide on the same `## Answer` |
-| **resolved** | `status: resolved` | already done; a chip re-opens settled work |
-| **waiting** | `status: waiting` | it is parked on something outside our hands (see its `status_note`); a session can't finish it today |
-| **map ไม่ active** | the effort's `map.md` has a `status:` other than `active` | the map is paused / not yet charted / dropped **on purpose** — its tickets are off the Dashboard, and a chip drags one back into play behind that decision |
-| **no file** | no `issues/NN-*.md` and NN ≠ highest + 1 | the number is a gap, not a reservation |
-| **double reservation** | ≥ 2 requested numbers have no file | they'd both claim the same NN |
+| **blocked** | ends in ⛔ (the ticket's `blockers:` names which) | the session will hit a question it can't answer yet, and may resolve it wrongly on guesses |
+| **claimed** | status `claimed` | another session already holds it — two sessions will collide on the same `## Answer` |
+| **resolved** | status `resolved` | already done; a chip re-opens settled work |
+| **waiting** | status `waiting` | it is parked on something outside our hands (its `status_note` says what); a session can't finish it today |
+| **map ไม่ active** | status `open`, no ⛔, yet not in the frontier — the map's `status:` is not `active` | the map is paused / not yet charted / dropped **on purpose** — its tickets are off the Dashboard, and a chip drags one back into play behind that decision |
+| **no file** | no line for NN, and NN ≠ highest + 1 | the number is a gap, not a reservation |
+| **double reservation** | ≥ 2 requested numbers have no line | they'd both claim the same NN |
+
+When a line contradicts the frontier, the block has drifted: `wf lint --fix <repo/effort>` regenerates it.
 
 **If every requested ticket is clean → spawn immediately, no question asked.**
 
@@ -140,18 +135,17 @@ Respect the answer literally. "Spawn all anyway" is a real choice — the user m
 ## Workflow
 
 1. **Find the active map.** Wayfinder maps live in `__VAULT__/<repo>/<effort>/map.md`. Use the map from the current conversation if known; else list `__VAULT__/*/*/map.md` and pick the one meant (ask if ambiguous). Read `language` from `__VAULT__/Wayfinder Config.md` in the same pass (see [Language](#language)).
-2. **Resolve the requested tickets** per [Picking tickets](#picking-tickets). Read the map's own `status:` first (a map that is not `active` flags every ticket under it), then `ls` the map's `issues/` and read the `status:`/`type:`/`blockers:` frontmatter of the candidates **and of their blockers**.
-   With **no argument**, read the frontmatter of **every** ticket (that is the whole blocker graph in one pass), plus the `## Answer` of the most recently resolved ones and the map's Decisions-so-far — signals 1 and 2 live there and nowhere else.
+2. **Get the frontier** (see [No argument](#no-argument--frontier-order-then-skip-collisions)) — with explicit numbers too, since validation reads it — then **resolve the requested tickets** per [Picking tickets](#picking-tickets).
 3. **Validate + confirm** per the section above. Drop or keep flagged tickets according to the answer.
-4. **Read each surviving ticket** for its `## Question` bold line → short title; `type:` → `L`.
-5. **Allocate the `runs:` block** in `map.md` frontmatter (add it as `runs: k` if absent) in one edit. Ascending ticket order gets ascending `RR`.
+4. **Read each surviving ticket** for its `## Question` bold line → short title; `type` → `L`.
+5. **Allocate the run numbers** — one `bump-runs` call for the whole batch (see [Run number](#run-number)). Ascending ticket order gets ascending `RR`.
 6. **Spawn one chip per ticket** with `mcp__ccd_session__spawn_task`:
    - `title`: `#RR-LNN-<short title>` (e.g. `#12-G09-Per-gate lock wording`)
    - `prompt`: the kickoff template below in `language` (self-contained)
    - `tldr`: one plain line in `language` — what that session does
-   - `cwd`: the target repo path (from the map's `repo:` field)
+   - `cwd`: the path of the repo the ticket changes — its `target_repo` when set, else the `<repo>` of its ref
 7. **Report** every chip created, one line each (`#RR-LNN-title`), plus one line for anything skipped and why.
-   When you picked with no argument, add **one line for why the top pick won** (which signal fired) and, if the frontier had strong runners-up, name them so the user can swap in one word.
+   When you picked with no argument, add the walk: the top pick, and each row skipped for a collision with what it collided with, so the user can swap one in with one word.
 
 ## Chip prompt template (write in `language`)
 
