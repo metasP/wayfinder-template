@@ -8,7 +8,7 @@ import { buildIndex, isoDate } from "./core.mjs"
 import { parseArgs } from "./args.mjs"
 import { EXIT, WfError, usageError } from "./errors.mjs"
 import { runWrite } from "./pipeline.mjs"
-import { checkSchema, locateVault, readVault } from "./store.mjs"
+import { checkSchema, locateVault, readText, readVault } from "./store.mjs"
 
 const usageText = (verbs) =>
   [
@@ -51,7 +51,16 @@ const runVerb = (verb, rest, { toolsDir }) => {
   checkSchema(vault, { allowOlder: verb.readsOlderSchema === true })
   const { notes, config, sort } = readVault(vault)
   // `roots`: where an absolute path in a ref may point — the main checkout, or the one wf runs from.
-  const ctx = { vault, roots: [vault, checkout], index: buildIndex(notes), config, sort, today: isoDate(new Date()) }
+  const ctx = {
+    vault,
+    roots: [vault, checkout],
+    notes,
+    index: buildIndex(notes),
+    config,
+    sort,
+    today: isoDate(new Date()),
+    textOf: (path) => readText(vault, path),
+  }
   return verb.run(ctx, args)
 }
 
