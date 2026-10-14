@@ -1,11 +1,13 @@
 // The `wf` CLI (spec *Modules* §3): parse arguments, dispatch the verb, format text or `--json`, map
 // errors to exit codes. A verb is `{ name, summary, usage, flags, maxPositionals, readsOlderSchema?,
-// run(ctx, args) → { data, text, exitCode?, message? } }`; write verbs slot into the same table.
+// run(ctx, args) → { data, text, exitCode?, message? } }`. A write verb adds `writes(args)` and
+// `plan` / `report` (see pipeline.mjs) and runs through the write pipeline instead of the eager read.
 // `--json` prints `{ ok, data, error }`: `ok` is true exactly when wf exits 0. A verb that ran but
 // exits 1 (lint with error findings) keeps its `data` and says why in `error`.
 import { buildIndex, isoDate } from "./core.mjs"
 import { parseArgs } from "./args.mjs"
 import { EXIT, WfError, usageError } from "./errors.mjs"
+import { runWrite } from "./pipeline.mjs"
 import { checkSchema, locateVault, readVault } from "./store.mjs"
 
 const usageText = (verbs) =>
@@ -18,18 +20,23 @@ const usageText = (verbs) =>
     "exit codes: 0 ok · 1 invariant violated · 2 usage or environment error",
   ].join("\n")
 
-// The JSON envelope (`ok`, nullable `data` / `error`) and the text form of one result.
-const success = (json, { data, text, exitCode = EXIT.OK, message = "" }) => {
+const warningLines = (warnings = []) => warnings.map((w) => `wf: warning: ${w}`)
+
+// The JSON envelope (`ok`, nullable `data` / `error`) and the text form of one result. Warnings
+// (lint findings after a write, a broken stale lock) go to stderr in both forms.
+const success = (json, { data, text, exitCode = EXIT.OK, message = "", warnings = [] }) => {
   const ok = exitCode === EXIT.OK
   const error = ok ? null : { code: exitCode, message, details: [] }
-  return { code: exitCode, stdout: json ? JSON.stringify({ ok, data, error }, null, 2) : text, stderr: "" }
+  const stderr = warningLines(warnings).join("\n")
+  return { code: exitCode, stdout: json ? JSON.stringify({ ok, data, error }, null, 2) : text, stderr }
 }
 
 const failure = (json, error) => {
   const { code, message, details } = error
-  const text = [`wf: ${message}`, ...details.map((d) => `  ${d}`)].join("\n")
+  const warned = warningLines(error.warnings)
+  const text = [...warned, `wf: ${message}`, ...details.map((d) => `  ${d}`)].join("\n")
   return json
-    ? { code, stdout: JSON.stringify({ ok: false, data: null, error: { code, message, details } }, null, 2), stderr: "" }
+    ? { code, stdout: JSON.stringify({ ok: false, data: null, error: { code, message, details } }, null, 2), stderr: warned.join("\n") }
     : { code, stdout: "", stderr: text }
 }
 
@@ -38,6 +45,8 @@ const runVerb = (verb, rest, { toolsDir }) => {
   if (args.flags.help) return { data: { usage: verb.usage }, text: `usage: ${verb.usage}\n  ${verb.summary}` }
   if (args.positionals.length > verb.maxPositionals)
     throw usageError(`unexpected argument ${JSON.stringify(args.positionals[verb.maxPositionals])} — usage: ${verb.usage}`)
+  if (args.positionals.length < (verb.minPositionals ?? 0)) throw usageError(`missing argument — usage: ${verb.usage}`)
+  if (verb.writes?.(args)) return runWrite(verb, args, { toolsDir })
   const { vault, checkout } = locateVault(toolsDir)
   checkSchema(vault, { allowOlder: verb.readsOlderSchema === true })
   const { notes, config, sort } = readVault(vault)

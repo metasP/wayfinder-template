@@ -6,7 +6,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { formatRef, parseRef } from "./core.mjs"
 import { parseNote } from "./frontmatter.mjs"
 import { creationReason, denialReason } from "./guard-hints.mjs"
-import { gitEnv } from "./store.mjs"
+import { gitEnv } from "./git.mjs"
 
 const deny = (reason) => ({
   hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason },

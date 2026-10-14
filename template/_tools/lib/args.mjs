@@ -58,3 +58,17 @@ export function effortArg(input, { roots, index }) {
   if (id.nn != null && !index.tickets.has(formatRef(id))) throw usageError(`no ticket ${formatRef(id)} in the vault`)
   return key
 }
+
+/**
+ * The ticket an argument names — `repo/effort#NN`, a vault path, or a full-path wikilink (a bare
+ * `[[NN-slug]]` has no effort to resolve in). It must be in `index`.
+ */
+export function ticketArg(input, { roots, index }) {
+  const id = parseRef(vaultRelative(input, roots))
+  if (!id || id.nn == null)
+    throw usageError(`cannot read ${JSON.stringify(input)} as a ticket ref — use repo/effort#NN, a vault path or a full-path wikilink`)
+  const ref = formatRef(id)
+  const t = index.tickets.get(ref)
+  if (!t) throw usageError(`no ticket ${ref} in the vault`)
+  return t
+}

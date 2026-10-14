@@ -540,8 +540,8 @@ export function renderTicketsBlock(index, effort, language) {
   return tickets.map((t) => ticketLine(index, t)).join("\n")
 }
 
-const BLOCK_OPEN = "<!-- wf:tickets -->"
-const BLOCK_CLOSE = "<!-- /wf:tickets -->"
+export const BLOCK_OPEN = "<!-- wf:tickets -->"
+export const BLOCK_CLOSE = "<!-- /wf:tickets -->"
 
 /**
  * A map note's `ticketsBlock` input: the text between the `wf:tickets` markers in its body, or null

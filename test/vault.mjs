@@ -1,8 +1,8 @@
 // Fixture vaults for the `wf` CLI tests (spec docs/specs/ticket-store.md, Testing Decisions §1): a fresh
 // temp dir with `git init`, `_tools/` copied from the template (wf locates the vault from its own path),
 // a manifest at vault schema 2, and notes written from a compact description. `wf` runs as a child process.
-import { spawnSync } from "node:child_process"
-import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
+import { spawn, spawnSync } from "node:child_process"
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -39,6 +39,10 @@ export const ticketsBlock = (lines) => `## Tickets\n\n<!-- wf:tickets -->\n${lin
 export function makeVault({ notes = [], manifest = {}, config, picks } = {}) {
   const vault = mkdtempSync(join(tmpdir(), "wf-vault-"))
   git(vault, "init", "-q")
+  // wf commits its own writes: give the fixture repo an identity, and no signing prompt.
+  git(vault, "config", "user.name", "wf-test")
+  git(vault, "config", "user.email", "wf-test@example.invalid")
+  git(vault, "config", "commit.gpgsign", "false")
   cpSync(join(TOOLS, "wf.mjs"), join(vault, "_tools/wf.mjs"))
   cpSync(join(TOOLS, "frontmatter-guard.mjs"), join(vault, "_tools/frontmatter-guard.mjs"))
   cpSync(join(TOOLS, "lib"), join(vault, "_tools/lib"), { recursive: true })
@@ -54,6 +58,15 @@ export function write(vault, rel, text) {
   writeFileSync(join(vault, rel), text)
 }
 
+export const read = (vault, rel) => readFileSync(join(vault, rel), "utf8")
+
+/** Commit everything in the fixture vault, so a test can see exactly what wf commits next. */
+export function seed(vault) {
+  git(vault, "add", "-A")
+  git(vault, "commit", "-qm", "seed")
+  return vault
+}
+
 export function git(cwd, ...args) {
   const r = spawnSync("git", args, { cwd, encoding: "utf8" })
   if (r.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${r.stderr}`)
@@ -63,13 +76,27 @@ export function git(cwd, ...args) {
 /** Run `node <vault>/_tools/wf.mjs …args`. `json` is stdout parsed, when it parses. */
 export function wf(vault, args = [], { cwd = vault, script = join(vault, "_tools/wf.mjs"), env = {} } = {}) {
   const r = spawnSync(process.execPath, [script, ...args], { cwd, encoding: "utf8", env: { ...process.env, ...env } })
-  let json
+  return { code: r.status, stdout: r.stdout, stderr: r.stderr, json: parsed(r) }
+}
+
+const parsed = (r) => {
   try {
-    json = JSON.parse(r.stdout)
+    return JSON.parse(r.stdout)
   } catch {
-    json = undefined
+    return undefined
   }
-  return { code: r.status, stdout: r.stdout, stderr: r.stderr, json }
+}
+
+/** `wf()` without blocking, for processes that must run at the same time. */
+export function wfAsync(vault, args = [], { cwd = vault, script = join(vault, "_tools/wf.mjs"), env = {} } = {}) {
+  return new Promise((done, failed) => {
+    const child = spawn(process.execPath, [script, ...args], { cwd, env: { ...process.env, ...env } })
+    const out = { stdout: "", stderr: "" }
+    child.stdout.on("data", (d) => (out.stdout += d))
+    child.stderr.on("data", (d) => (out.stderr += d))
+    child.on("error", failed)
+    child.on("close", (code) => done({ code, ...out, json: parsed(out) }))
+  })
 }
 
 /** `run()` with the day it ran on, retried once if the clock crossed midnight while it ran. */
