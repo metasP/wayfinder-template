@@ -123,6 +123,15 @@ const slugTitle = (slug) => slug.replace(/-/g, " ")
 
 // ── Tickets ───────────────────────────────────────────────────────────────
 
+/**
+ * `claimed_by` for a ticket claimed before `wf` existed (by hand, with no claimant): lint accepts it,
+ * and once the claim is older than `claim_stale_days` the stale-claim warning says to `wf release` it.
+ */
+export const UNKNOWN_CLAIMANT = "unknown (before wf)"
+
+/** Whether a ticket's frontmatter is claimed with nobody named — migrate gives it `UNKNOWN_CLAIMANT`. */
+export const isUnknownClaim = (fm) => fm.status === "claimed" && isBlank(fm.claimed_by)
+
 const migrateTicket = (note, section) => {
   const fm = note.frontmatter
   if (!hasFrontmatter(note.text))
@@ -131,6 +140,7 @@ const migrateTicket = (note, section) => {
   if (!isBlank(fm.repo) && String(fm.repo) !== note.id.repo && isBlank(fm.target_repo))
     changes.push(["target_repo", String(fm.repo)])
   if (isBlank(fm.title)) changes.push(["title", listedTitle(section, note.name) ?? slugTitle(note.id.slug)])
+  if (isUnknownClaim(fm)) changes.push(["claimed_by", UNKNOWN_CLAIMANT])
   return withChanges(note.text, changes)
 }
 

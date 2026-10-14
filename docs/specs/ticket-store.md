@@ -527,6 +527,9 @@ For each item, `wf migrate` does the following:
   - When the old `repo` differs from the path's repo, writes it as `target_repo`. This fixes the 34-ticket class.
   - Adds `title` when missing: the text after the last ` — ` in the map's hand-written `## Tickets` line for that
     ticket, otherwise derived from the slug.
+  - A ticket `claimed` by hand before `wf` (no `claimed_by`) gets `claimed_by: unknown (before wf)`, so it lints
+    clean; the plan lists those tickets, and once the claim passes `claim_stale_days` the stale-claim warning says
+    to `wf release` it.
 - **Maps:**
   - Removes `repo` and `effort`; adds `title` from the `# H1` when missing.
   - Replaces a hand-written `## Tickets` section with the generated block. The original list is kept whole

@@ -147,6 +147,26 @@ describe("wf migrate — tickets", () => {
     assert.equal(targetOf("r/e/issues/04-both.md"), "web")
   })
 
+  test("a ticket claimed before wf gets a placeholder claimed_by, listed by the plan, then goes stale", () => {
+    const claimed = (...extra) => ticketText(["repo: r", "effort: e", "type: task", "status: claimed", "status_since: 2020-01-01", "blockers: []", "title: t", ...extra])
+    const vault = oldVault({ "r/e/map.md": MAP_V1, "r/e/issues/01-held.md": claimed(), "r/e/issues/02-named.md": claimed("claimed_by: session:x") })
+    const plan = wf(vault, ["migrate"])
+    assert.equal(plan.code, 0, plan.stderr)
+    assert.match(plan.stdout, /^\+claimed_by: unknown \(before wf\)$/m)
+    assert.match(plan.stdout, /^wf: 1 ticket claimed before wf gets claimed_by "unknown \(before wf\)": r\/e#01 — wf release it if nobody holds it$/m)
+    assert.deepEqual(wf(vault, ["migrate", "--json"]).json.data.unknownClaims, ["r/e#01"])
+
+    assert.equal(wf(vault, ["migrate", "--yes"]).code, 0)
+    assert.match(read(vault, "r/e/issues/01-held.md"), /^claimed_by: unknown \(before wf\)$/m)
+    assert.match(read(vault, "r/e/issues/02-named.md"), /^claimed_by: session:x$/m)
+    const findings = wf(vault, ["lint", "--json"]).json.data.findings
+    assert.deepEqual(findings.filter((f) => f.severity === "error"), [])
+    assert.deepEqual(
+      findings.filter((f) => f.rule === "stale-claim").map((f) => [f.ref, f.fix]),
+      [["r/e#01", "wf release r/e#01"], ["r/e#02", "wf release r/e#02"]],
+    )
+  })
+
   test("a missing title comes from the map's hand-written Tickets line, else from the slug", () => {
     const map = MAP_V1 + lines(
       "",
