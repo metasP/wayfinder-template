@@ -46,6 +46,9 @@ export function makeVault({ notes = [], manifest = {}, config, picks } = {}) {
   cpSync(join(TOOLS, "wf.mjs"), join(vault, "_tools/wf.mjs"))
   cpSync(join(TOOLS, "frontmatter-guard.mjs"), join(vault, "_tools/frontmatter-guard.mjs"))
   cpSync(join(TOOLS, "lib"), join(vault, "_tools/lib"), { recursive: true })
+  cpSync(join(TOOLS, "autocommit.mjs"), join(vault, "_tools/autocommit.mjs"))
+  // bootstrap renders the whole `VAULT=` line of the wired hook to the vault's path.
+  write(vault, "_tools/autocommit.sh", readFileSync(join(TOOLS, "autocommit.sh"), "utf8").replace(/^VAULT=.*$/m, `VAULT="${vault}"`))
   if (manifest !== null) write(vault, MANIFEST, JSON.stringify({ schema: 1, vault_schema: 2, ...manifest }, null, 2))
   if (config) write(vault, "Wayfinder Config.md", noteText({ kind: "wayfinder-config", ...config }))
   if (picks) write(vault, "Wayfinder Picks.md", noteText(picks, "# Wayfinder Picks\n"))

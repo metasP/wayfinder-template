@@ -699,15 +699,15 @@ const byEffort = new Map()
     wired ? '' : 'รัน bootstrap.mjs --wire-hook')
 
   // hook ที่ยิงจริงคือไฟล์ของ **vault หลัก** เสมอ (settings.json ชี้ path นั้นตรง ๆ) ⇒ การแก้ที่ยัง
-  // ค้างใน worktree ยังไม่มีผลกับใคร · รุ่นที่ไม่รู้จัก worktree จะ `git add .claude/worktrees/…`
-  // ซึ่งถูก ignore ⇒ commit ไม่ลงและล้มเงียบไปกับ `2>/dev/null || true`
+  // ค้างใน worktree ยังไม่มีผลกับใคร · รุ่นเก่า (ก่อน `autocommit.mjs`) ล้มเงียบไปกับ `|| true`
+  // และยัง sync branch ของ worktree ลง `main` ซึ่ง spec ตัดทิ้งแล้ว (Q14)
   const src = await readFile(script, 'utf8').catch(() => '')
-  const wtAware = src.includes('WT_PREFIX')
-  check(wtAware, 'autocommit.sh ตัวจริงรองรับ worktree',
-    wtAware ? '' : 'ยังเป็นรุ่นที่ commit ได้แค่ vault หลัก — merge _tools/autocommit.sh เข้า main')
+  const isNew = src.includes('_tools/autocommit.mjs')
+  check(isNew, 'autocommit.sh ตัวจริงเป็นรุ่นใหม่ (ส่งต่อให้ autocommit.mjs)',
+    isNew ? '' : 'ยังเป็นรุ่นเก่าที่ sync worktree ลง main และพังเงียบ — อัปเดต _tools/ ด้วย bootstrap')
 
   // ── `VAULT` ที่สคริปต์คำนวณได้ ต้องเป็น vault นี้จริง (ใบ 02 ฝากไว้) ────────
-  // ข้อข้างบนตรวจแค่ว่า *มี* `WT_PREFIX` ⇒ **จับ `__VAULT__` ที่ยังไม่ถูกเรนเดอร์ไม่ได้เลย**
+  // ข้อข้างบนตรวจแค่ว่าเป็นรุ่นไหน ⇒ **จับ `__VAULT__` ที่ยังไม่ถูกเรนเดอร์ไม่ได้เลย**
   // ซึ่งเป็นบั๊กที่ทำให้ hook ตายเงียบที่สุดเท่าที่วัดมา: `[ -e "$REPO/.git" ]` ไม่ผ่าน ⇒ `exit 0`
   // **ไม่มี stdout ไม่มี stderr** ⇒ `2>/dev/null || true` ใน settings.json ไม่ได้กลืนอะไรเลย
   // เพราะไม่มีอะไรให้กลืนตั้งแต่แรก ⇒ รู้ตัวได้ทางเดียวคือบังเอิญไปเห็นว่า `git log` หยุดเดิน
