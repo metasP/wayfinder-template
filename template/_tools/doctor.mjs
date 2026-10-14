@@ -134,13 +134,22 @@ try {
 
 // ── 5. dashboard ────────────────────────────────────────────────────────────
 {
+  // Dashboard คำนวณจาก core ผ่าน loader กลางทุกบล็อก (ไม่มี DQL / กฎ frontier ของตัวเองแล้ว)
+  // ⇒ ตรวจว่า loader กับ core อยู่ครบ และทุกบล็อกเรียกผ่าน loader — บล็อกที่ไม่ผ่าน loader = กฎแยกสาย
   const dash = await readFile(join(VAULT, 'Wayfinder Dashboard.md'), 'utf8').catch(() => '')
-  const blocks = dash.match(/```dataview\n/g)?.length ?? 0
-  check(blocks >= 5, 'Dashboard มี dataview block ครบ', `${blocks} blocks`)
-  const froms = dash.match(/^FROM .*$/gm) ?? []
-  check(froms.length === blocks && froms.every((f) => f.includes('""')),
-    'ทุก query มี source เชิงบวก (ไม่ใช่ FROM -"..." ลอย ๆ)',
-    `${froms.length} FROM`)
+  const LOADER = '_tools/views/wf-core'
+  // loader ห้ามมีคำ a-w-a-i-t แม้ในคอมเมนต์: Dataview ห่อ view ที่มีคำนี้ด้วย async IIFE แล้วทิ้ง promise
+  // ⇒ บล็อกวาดก่อน view เสร็จ และ error หลุดเป็น unhandled rejection เงียบ ๆ (ดูหัวไฟล์ loader)
+  const loaderSrc = await readFile(join(VAULT, `${LOADER}.js`), 'utf8').catch(() => null)
+  check(loaderSrc !== null && !loaderSrc.includes('aw' + 'ait'), `มี loader กลาง ${LOADER}.js (คืน promise ให้ Dataview)`,
+    loaderSrc === null ? 'ไม่มีไฟล์' : loaderSrc.includes('aw' + 'ait') ? 'มีคำที่ทำให้ Dataview ทิ้ง promise' : '')
+  check(await exists(join(VAULT, '_tools/lib/core.mjs')), 'มี core _tools/lib/core.mjs')
+  const dashJs = [...dash.matchAll(/^```dataviewjs[ \t]*\r?\n([\s\S]*?)^```/gm)].map((m) => m[1])
+  const viaLoader = dashJs.filter((src) => src.includes(`dv.view("${LOADER}"`)).length
+  const dql = dash.match(/^```dataview[ \t]*$/gm)?.length ?? 0
+  check(dashJs.length >= 5 && viaLoader === dashJs.length && dql === 0,
+    'ทุกบล็อกบน Dashboard โหลด core ผ่าน loader กลาง',
+    `${viaLoader}/${dashJs.length} บล็อกผ่าน loader · ${dql} บล็อก DQL`)
 
   const eff = await readFile(join(VAULT, 'Wayfinder Efforts.md'), 'utf8').catch(() => '')
   // ⚠️ ยึด **หัวบรรทัด** ทั้งสองเส้น — ใบ 01 ตรวจแล้วว่ารูปเดิม (`/const STALE_DAYS = \d+/` ไม่มี
@@ -154,11 +163,6 @@ try {
     && /^const PAUSED_STALE_DAYS = \d+/m.test(eff),
     'Wayfinder Efforts มีบล็อก dataviewjs + เส้นแบ่งเวลาทั้งสองเส้น')
 
-  // สถานะ map เป็นของ load-bearing ⇒ ทุก view ระดับใบต้องกรองด้วยมัน
-  // ไม่งั้นใบจาก map ที่พัก/ทิ้งแล้ว จะแอบกลับขึ้น Frontier
-  const gated = (dash.match(/link\(repo \+ "\/" \+ effort \+ "\/map"\)\.status/g) ?? []).length
-  check(gated >= blocks - 1, 'ทุก view บน Dashboard กรองด้วยสถานะของ map',
-    `${gated} จุด / ${blocks} query`)
   check(dash.includes('[[Wayfinder Efforts]]'), 'Dashboard ลิงก์ไปหน้า Efforts')
 
   // ── หน้าที่สาม: Wayfinder Effort Tickets (ใบทั้ง effort เดียว จบในหน้าเดียว) ──
@@ -333,9 +337,8 @@ try {
   // async function ⇒ `await` ระดับบนสุดถูกกฎ · ด้วยเหตุผลเดียวกัน `node --check` ใช้แทนไม่ได้
   // (โหมดสคริปต์ = top-level await แดงปลอม · โหมดโมดูล = `return` ระดับบนสุดแดงปลอม)
   //
-  // สแกน **ทั้งสามหน้า** โดยจับจาก *ชนิด fence* ไม่ใช่ *ชื่อไฟล์* — วันนี้ `Wayfinder Dashboard`
-  // เป็น DQL (```dataview) ล้วนจึงได้ 0 บล็อก ซึ่งถูกต้อง ไม่ใช่ข้อยกเว้นที่ต้อง hardcode
-  // ⇒ วันที่มีคนเพิ่ม dataviewjs ลง Dashboard มันถูกเฝ้าทันทีโดยไม่ต้องแก้ doctor
+  // สแกน **ทั้งสามหน้า** โดยจับจาก *ชนิด fence* ไม่ใช่ *ชื่อไฟล์* — `Wayfinder Dashboard` เคยเป็น DQL
+  // ล้วน (0 บล็อก) แล้วกลายเป็น dataviewjs ผ่าน loader ทั้งหน้า โดยข้อนี้ไม่ต้องแก้อะไรเลย
   // **ไม่เจอเลยสักบล็อกทั้ง vault = ไม่ผ่าน** — regex ที่คว้าไม่โดนเลย (เช่นมีคนเปลี่ยนรูป fence
   // ทั้ง vault) ต้องแดง ไม่ใช่เขียวเพราะ "ไม่มีอะไรให้ตรวจ" ซึ่งคือกับดัก `null === null` ของใบ 05/06
   // ส่วน **การมีบล็อกอยู่ *รายหน้า* เป็นของสองข้อข้างบน** (`… มีบล็อก dataviewjs`) ⇒ ข้อนี้ไม่ตรวจซ้ำ
@@ -851,7 +854,10 @@ console.log(`\n${hard.length - failed.length}/${hard.length} ผ่าน` +
 console.log(`
 ตรวจด้วยเครื่องไม่ได้ — ต้องเปิด Obsidian ดูเอง:
   • Dashboard แต่ละ view เรนเดอร์เป็นตาราง ไม่ใช่กล่องแดง "Dataview: <error>"
-    (ว่างเปล่าแล้วขึ้น "No results to show" = ปกติ ไม่ใช่พัง)
+    (view ว่างขึ้นบรรทัดเอียง "ไม่มี…" · 🩺 สะอาดขึ้น "✅ lint clean" = ปกติ ไม่ใช่พัง)
+  • 🔥 Frontier บน Dashboard ตรงกับ \`node _tools/wf.mjs frontier\` · 🩺 ตรงกับ \`wf lint\`
+  • แก้ _tools/lib/core.mjs แล้ว Dashboard รอบถัดไปเห็นของใหม่โดยไม่ต้องรีสตาร์ต Obsidian
+  • core พัง (ลองใส่ syntax error) ⇒ ทุกบล็อกขึ้น "โหลด core ไม่ได้" ที่บอกชื่อไฟล์ + doctor
   • Graph View ระบายสี node ตาม status จริง`)
 
 process.exit(failed.length ? 1 : 0)

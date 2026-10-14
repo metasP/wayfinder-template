@@ -52,7 +52,8 @@ exit 0 = ผ่านหมด · ไม่ต้องเปิด Obsidian
 **เหลือ 2 ข้อที่เครื่องตรวจแทนไม่ได้ ต้องเปิด Obsidian ดูเอง:**
 
 - Dashboard ทุก view เรนเดอร์เป็น **ตาราง** และ Efforts เรนเดอร์เป็น **แถบสี** ไม่ใช่กล่องแดง
-  `Dataview: <error>` หรือโค้ดดิบ (ว่างแล้วขึ้น `No results to show` = ปกติ ไม่ใช่พัง)
+  `Dataview: <error>` หรือโค้ดดิบ (view ว่างขึ้นบรรทัดเอียง `_ไม่มี…_` · 🩺 สะอาดขึ้น `✅ lint clean` = ปกติ)
+  · ขึ้น **"โหลด core ไม่ได้"** = `_tools/lib/core.mjs` หาย/พัง ⇒ รัน `node _tools/doctor.mjs`
 - Graph View ระบายสี node ตาม status จริง — แมปที่ `paused`/`draft`/`dropped` ต้องได้สีของตัวเอง
   ไม่ใช่สีฟ้าของแมปทั่วไป
 
