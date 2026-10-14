@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Claude Code PostToolUse hook — the path `~/.claude/settings.json` wires (Write|Edit and Bash).
+# Claude Code PostToolUse hook — the path `~/.claude/settings.json` wires on Write|Edit (bootstrap).
 # It only hands the hook JSON to `_tools/autocommit.mjs`, which commits the edited prose file and,
 # when it can't, tells the agent through `additionalContext` and appends to a failure log
 # (spec docs/specs/ticket-store.md, *New autocommit (Q7)*). Bash events are ignored there.

@@ -222,7 +222,11 @@ A migration is therefore two commands rather than one: install, then update.
 ## Update
 
 ```bash
-npx https://github.com/metasP/wayfinder-template
+npx https://github.com/metasP/wayfinder-template --plan
+```
+
+```bash
+npx https://github.com/metasP/wayfinder-template --yes
 ```
 
 The same command as install, because the mode is not something you type. Or run it from a
@@ -233,37 +237,66 @@ cd ~/Documents/Git/wayfinder-template && git pull
 ```
 
 ```bash
-node ~/Documents/Git/wayfinder-vault/_tools/bootstrap.mjs --from ~/Documents/Git/wayfinder-template
+node template/_tools/bootstrap.mjs --vault ~/Documents/Git/wayfinder-vault --plan
 ```
 
-> **That last command is the one a vault predating this repo cannot run.** It has no manifest,
-> and its own `_tools/bootstrap.mjs` does not know `--from`, so it exits on an unknown flag
-> before writing anything. The `npx` command above has no such problem — with no manifest to
-> read it installs instead, questions and all. See
-> [Installing onto a vault you already have](#installing-onto-a-vault-you-already-have).
+```bash
+node template/_tools/bootstrap.mjs --vault ~/Documents/Git/wayfinder-vault --yes
+```
+
+**An update applies only with `--yes`.** It changes more than the vault: it migrates your notes
+(`wf migrate`) and rewrites parts of `~/.claude/` (below), so you read the plan first. Run
+without `--plan` or `--yes`, an update prints the plan, writes nothing, and exits 2.
+
+> **From 0.4.x, use one of the commands above, not the vault's own `_tools/bootstrap.mjs`.**
+> The vault's copy is the previous installer: it knows nothing of `wf migrate` or the new hooks.
+> `node <vault>/_tools/bootstrap.mjs --from <repo> --yes` is fine from 0.5 on. A vault that
+> predates this repo has no manifest at all — the `npx` command installs instead, questions and
+> all; see [Installing onto a vault you already have](#installing-onto-a-vault-you-already-have).
 
 **Update asks nothing.** The five answers from install are recorded in the vault's manifest
 (`.wayfinder-template.json` — which pieces, where the skills went, which vault path was
 rendered in) and are reused as they are. An update that asked again would be an update that
 could be answered differently by mistake.
 
-Running it from the repo side instead (`node template/_tools/bootstrap.mjs --vault <vault>`)
-does the same thing — the mode is decided by whether the vault already has a manifest, not by
-which copy of the script you ran.
+Which command you use does not matter — the mode is decided by whether the vault already has a
+manifest, not by which copy of the script you ran.
+
+### What an update changes outside the template files
+
+- **`wf migrate`** takes your notes to the current vault schema. The plan prints its whole
+  diff; `--yes` runs it after the update's own commit, as a commit of its own
+  (`wf(migrate): vault schema 2`). A second run plans nothing.
+- **`~/.claude/settings.json`** (the `hook` piece): the frontmatter guard on PreToolUse
+  `Write|Edit`, the autocommit on PostToolUse `Write|Edit` only, and one permission allow rule,
+  `Bash(node <vault>/_tools/wf.mjs:*)`, so agents can run `wf` by absolute path without a prompt.
+  Older autocommit entries for this vault — the `Bash` matcher, `|| true`, duplicates — are
+  removed. Every other key, `env.PATH` included, is left as it is. The previous file is kept as
+  `settings.json.bak`.
+- **`~/.claude/CLAUDE.md`** (the `memory` piece): the block that tells agents to change tracker
+  state with `node <vault>/_tools/wf.mjs <verb>` and to write prose with Write/Edit. It sits
+  between `<!-- wayfinder-template:begin … -->` and `<!-- wayfinder-template:end -->` and is
+  replaced there on every run; the block older versions wrote (same heading, no markers) is
+  found and replaced in place, never duplicated. The previous file is kept as `CLAUDE.md.bak`.
+
+The plan shows the diff of both `~/.claude` files line by line: they are outside the vault, so
+git cannot give them back.
 
 ### Plan an update before you run it
 
-Add `--plan` to either command above and you get the same run with every writer switched off:
+`--plan` is the same run with every writer switched off:
 
 ```bash
-node ~/Documents/Git/wayfinder-vault/_tools/bootstrap.mjs --from ~/Documents/Git/wayfinder-template --plan
+npx https://github.com/metasP/wayfinder-template --plan
 ```
 
 It reports what the update **would** do, computed by the same code that would do it — which
 files it would write, which of those are new and which overwrite something, which ones you
 have edited locally, **which files it would delete**, what it would leave alone, and whether a
-commit would land in your vault. Then it re-reads everything it can reach and confirms nothing
-moved, and prints the count it checked.
+commit would land in your vault — plus the `wf migrate` diff and the `~/.claude` diffs
+above. Then it re-reads everything it can reach, confirms nothing moved, and prints the count
+it checked. When everything is already up to date, its summary ends with
+`ทั้งหมด: ไม่มีอะไรต้องเปลี่ยน` (nothing to change).
 
 Two answers here are worth the run on their own:
 
@@ -337,13 +370,15 @@ and Obsidian's `obsidian.json.bak`. (Nothing existed, nothing to back up — no 
 The installer is safe to run repeatedly — that is a property you should be able to rely on
 before you are willing to run it at all.
 
-- A second run on an installed vault **is an update** — the only flag that changes that is
-  `--plan`, which makes it a dry run. Files that already match are skipped, nothing is
-  written, and no empty commit is made.
-- The hook is added once. A repeat run finds both of its entries and skips them.
-- The `~/.claude/CLAUDE.md` paragraph is added once. A repeat run finds it and skips it.
-  A paragraph from v0.3.0 or earlier (it does not mention § Wayfinding operations) is left
-  alone with a warning — delete it and run again with `--wire-memory` to get the pointer.
+- A second run on an installed vault **is an update**, which applies only with `--yes` —
+  without it, or with `--plan`, it is a dry run. Files that already match are skipped,
+  nothing is written, and no empty commit is made.
+- The hooks and the `wf` allow rule are wired once. A repeat run finds them and changes
+  nothing; old autocommit entries it removed do not come back.
+- The `~/.claude/CLAUDE.md` block is written once and replaced in place on later runs. A
+  block an older version wrote (no markers) is found by its heading and replaced, not
+  duplicated.
+- `wf migrate` plans nothing on a vault it already migrated.
 - Your `Wayfinder Config.md`, `Wayfinder Picks.md`, and efforts are untouched every time.
 
 And `--plan` holds on an installed vault, not just a fresh one — that is the run where

@@ -543,6 +543,8 @@ await section('§7 hook', async () => {
   const on = (hooks, tool) => hooks.filter((h) => covers(h.matcher, tool))
   // Write และ Edit ต้องถูกจับทั้งคู่ — จะอยู่บล็อกเดียวกันหรือแยกบล็อกก็ได้
   const wiredOnWriteEdit = (hooks) => on(hooks, 'Write').length > 0 && on(hooks, 'Edit').length > 0
+  // path ของสคริปต์ในคำสั่ง hook: ใน single/double quote (path ที่มีช่องว่าง — bootstrap quote ให้) หรือเปล่า ๆ
+  const HOOK_PATH_RE = /'([^']*_tools\/[\w.-]+\.(?:sh|mjs))'|"([^"]*_tools\/[\w.-]+\.(?:sh|mjs))"|([^"'\s]*_tools\/[\w.-]+\.(?:sh|mjs))/g
   // hook ของ `event` ที่เรียก `_tools/<ชื่อ>` ตัวใดตัวหนึ่งใน `names` ของ vault นี้: `[{ matcher, command }]`
   const hooksTo = async (event, names) => {
     const targets = names.map((n) => join(MAIN_VAULT, '_tools', n))
@@ -552,7 +554,7 @@ await section('§7 hook', async () => {
     const found = []
     for (const block of blocks)
       for (const h of Array.isArray(block?.hooks) ? block.hooks : []) {
-        const paths = typeof h?.command === 'string' ? h.command.match(/[^"'\s]*_tools\/[\w.-]+\.(?:sh|mjs)/g) ?? [] : []
+        const paths = typeof h?.command === 'string' ? [...h.command.matchAll(HOOK_PATH_RE)].map((m) => m[1] ?? m[2] ?? m[3]) : []
         for (const p of paths)
           if (await isOurs(p)) { found.push({ matcher: block.matcher ?? '', command: h.command }); break }
       }

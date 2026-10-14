@@ -21,9 +21,12 @@
 //   node template/_tools/bootstrap.mjs --plan          ← ขั้น 1-3: ตรวจ → รายงาน → พิมพ์คำถาม 5 ข้อ
 //   node template/_tools/bootstrap.mjs --vault ~/Documents/Git/wayfinder-vault \
 //        --parts all --on-conflict skip --skills-dir ~/.claude/skills --allow-brew no
-//   node <vault>/_tools/bootstrap.mjs --from ~/Documents/Git/wayfinder-template   ← update
+//   node template/_tools/bootstrap.mjs --vault ~/Documents/Git/wayfinder-vault --plan   ← update: ดูแผน
+//   node template/_tools/bootstrap.mjs --vault ~/Documents/Git/wayfinder-vault --yes    ← update: ลงมือ
 //   …คำสั่งไหนก็ได้ + `--plan` = รอบเดิมทุกอย่างโดยตัวเขียนถูกปิด แล้วรายงานว่า *จะ* ทำอะไร
 //     (บน vault ที่ติดตั้งแล้ว = dry run ของ update · บนเครื่องเปล่าที่ยังไม่ตอบ 5 ข้อ = คำถาม 5 ข้อ)
+//   update ลงมือเฉพาะเมื่อมี `--yes` (ไม่มีทั้งสองธง = แผน แล้วออก code 2) — มัน migrate โน้ตด้วย
+//     `wf migrate` และแก้ ~/.claude/settings.json + CLAUDE.md · แผนพิมพ์ diff ของทั้งหมด
 //
 // `--wire-hook` / `--wire-memory` ยัง opt-in เหมือนเดิม (ใช้กับ vault ที่ติดตั้งอยู่แล้ว)
 // — ในโหมด install ทั้งสองชิ้นมาจากคำตอบข้อ 2 (`hook` / `memory`) แทน
@@ -40,9 +43,11 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createHash } from 'node:crypto'
 import { join, dirname, relative, resolve, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { homedir } from 'node:os'
 import { createInterface } from 'node:readline/promises'
+import { settingsShapeError, wfCommand, wireSettings, withWfBlock } from './lib/wiring.mjs'
+import { unifiedDiff } from './lib/diff.mjs'
 
 const run = promisify(execFile)
 const HOME = homedir()
@@ -53,9 +58,6 @@ const MANIFEST = '.wayfinder-template.json'
 const DEFAULT_VAULT = join(HOME, 'Documents/Git/wayfinder-vault')
 const DEFAULT_SKILLS = join(CLAUDE, 'skills')
 const ALL_PARTS = ['skills', 'vault', 'hook', 'obsidian', 'memory']
-// หัวย่อหน้า CLAUDE.md รุ่นก่อน (spec + build ticket อยู่ใน vault) — เจอแล้วต้องเตือน ไม่ใช่ข้ามเงียบ ๆ
-// อยู่บนสุดเพราะ report() ข้างล่างใช้ก่อนถึงขั้น 4g — ประกาศทีหลังแล้วโดน TDZ (ReferenceError)
-const STALE_MEMORY_HEADING = 'Wayfinder maps, specs, and build tickets live in the vault'
 
 // ── ชั้น seed-once — เหตุผลติดไว้ทีละข้อ เพราะย้ายไฟล์ผิดชั้น = ลบของผู้ใช้เงียบ ๆ ─────────
 //  · `Wayfinder Config.md` / `Wayfinder Picks.md` — ใบ 01 ย้ายค่าที่ผู้ใช้จูนเอง (STALE_DAYS,
@@ -146,22 +148,11 @@ const has = (k) => bare.has(k) || flags.has(k)
 // = dry run ที่เขียนจริง ซึ่งคือบั๊กเดิมเป๊ะ ๆ** ⇒ ปิดที่ทางออกร่วมแทน: ตัวเขียนของ fs ถูกห่อตรงนี้
 // ที่เดียว และคำสั่งที่เปลี่ยนเครื่อง (git/brew) ต้องผ่าน `runWrite` เท่านั้น
 // · ข้อ 5p ท้ายไฟล์เฝ้าสมมติฐานนี้อีกชั้น — ถ้าวันหลังมีใครเรียก `fsWriteFile`/`run` ตรง ๆ มันดัง
-const PLAN = has('plan')
-const nop = async () => {}
-const writeFile = PLAN ? nop : fsWriteFile
-const chmod = PLAN ? nop : fsChmod
-const mkdir = PLAN ? nop : fsMkdir
-const rm = PLAN ? nop : fsRm
-const copyFile = PLAN ? nop : fsCopyFile
-// `rmdir` ต้อง **ล้มเหลว** ไม่ใช่เงียบ — คนเรียกอ่านผลลัพธ์เป็น "ลบโฟลเดอร์ว่างได้ไหม" แล้วเดินขึ้นต่อ
-// ตอบว่าสำเร็จในโหมด plan = รายงานว่าลบโฟลเดอร์ที่ไม่ได้ลบ
-const rmdir = PLAN ? async () => { throw new Error('plan') } : fsRmdir
-// คำสั่งที่เปลี่ยนเครื่อง (git init · git add/commit · brew install) — `run` เปล่า ๆ ยังใช้อ่านได้ตามปกติ
-const runWrite = PLAN ? async () => ({ stdout: '', stderr: '' }) : run
-
-// คำพูดของ log: โหมด plan พูดว่า "จะ…" ไม่ใช่ "…แล้ว" — บรรทัดเดียวกัน ต่างกันแค่กาล
-const MARK = PLAN ? '📋' : '✅'
-const WILL = PLAN ? 'จะ' : ''
+//
+// ตัวห่อถูกประกาศ **หลัง** ตัดสินโหมด (ขั้น 1b) เพราะ update ต้องการ `--yes` ถึงจะลงมือ (Q20): update
+// เขียน CLAUDE.md · settings.json · hook ของเครื่องเขา แล้วสั่ง `wf migrate` ซึ่งเขียนโน้ตทั้ง vault —
+// ประตูทางเดียว ⇒ update ที่ไม่มีทั้ง `--plan` และ `--yes` = แผนเต็มรอบ แล้วออก code 2 บอกให้เติม `--yes`
+// ก่อนหน้านี้ไม่มีอะไรเขียนเลย (ขั้น 1a/1b อ่านอย่างเดียว)
 
 // ── ขั้นที่ 1 — ตรวจ (ยังไม่เขียนอะไร) ──────────────────────────────────────
 // 1a. หา template repo: `<repo>/{template,skills,LICENSE}` คือลายเซ็นของราก repo
@@ -194,6 +185,25 @@ const VAULT = vaultArg ?? (runningInsideVault ? selfVault : DEFAULT_VAULT)
 
 const oldManifest = await readJson(join(VAULT, MANIFEST))
 const MODE = oldManifest ? 'update' : 'install'
+
+// update ที่ไม่ได้ตอบ `--yes` = แผน (เหตุผลที่หัวข้อ `--plan` ข้างบน) · `--plan` ชนะ `--yes` เสมอ
+const ASKED_PLAN = has('plan')
+const PLAN = ASKED_PLAN || (MODE === 'update' && !has('yes'))
+const nop = async () => {}
+const writeFile = PLAN ? nop : fsWriteFile
+const chmod = PLAN ? nop : fsChmod
+const mkdir = PLAN ? nop : fsMkdir
+const rm = PLAN ? nop : fsRm
+const copyFile = PLAN ? nop : fsCopyFile
+// `rmdir` ต้อง **ล้มเหลว** ไม่ใช่เงียบ — คนเรียกอ่านผลลัพธ์เป็น "ลบโฟลเดอร์ว่างได้ไหม" แล้วเดินขึ้นต่อ
+// ตอบว่าสำเร็จในโหมด plan = รายงานว่าลบโฟลเดอร์ที่ไม่ได้ลบ
+const rmdir = PLAN ? async () => { throw new Error('plan') } : fsRmdir
+// คำสั่งที่เปลี่ยนเครื่อง (git init · git add/commit · brew install) — `run` เปล่า ๆ ยังใช้อ่านได้ตามปกติ
+const runWrite = PLAN ? async () => ({ stdout: '', stderr: '' }) : run
+
+// คำพูดของ log: โหมด plan พูดว่า "จะ…" ไม่ใช่ "…แล้ว" — บรรทัดเดียวกัน ต่างกันแค่กาล
+const MARK = PLAN ? '📋' : '✅'
+const WILL = PLAN ? 'จะ' : ''
 
 let REPO = await findRepo()
 if (!REPO && oldManifest?.source_repo && await isRepoRoot(oldManifest.source_repo)) REPO = oldManifest.source_repo
@@ -233,13 +243,18 @@ const env = {
   vaultExists: await exists(VAULT),
   vaultIsRepo: await run('git', ['-C', VAULT, 'rev-parse', '--git-dir']).then(() => true, () => false),
   claudeMd: await readFile(join(CLAUDE, 'CLAUDE.md'), 'utf8').catch(() => ''),
-  settings: await readJson(join(CLAUDE, 'settings.json')),
+  settings: await readJson(join(CLAUDE, 'settings.json')).catch(() => null),   // หลวม ๆ เพื่อรายงาน · ขั้น 3b อ่านจริง
   // `/wayfinder` เป็นของปลั๊กอิน `mattpocock-skills` — template ไม่ ship สกิลนี้เองแล้ว (เคย fork ไว้
   // แต่ fork ไม่มีอะไรเกี่ยวกับ vault เลย เป็นแค่ upstream รุ่นเก่าที่ตามไม่ทัน) ⇒ เป็น prerequisite
   wayfinderPlugin: Object.keys((await readJson(join(CLAUDE, 'plugins/installed_plugins.json')))?.plugins ?? {})
     .some((k) => k.startsWith('mattpocock-skills@')),
 }
-const hookWired = JSON.stringify(env.settings?.hooks?.PostToolUse ?? []).includes('autocommit.sh')
+// สถานะสำหรับรายงาน — คำนวณด้วยฟังก์ชันเดียวกับที่ขั้น 4f/4g ใช้เขียน ⇒ รายงานกับการกระทำไม่มีทางเห็นต่างกัน
+const VAULT_REAL = await realpath(VAULT).catch(() => VAULT)
+const pastVaults = [VAULT, oldManifest?.vault, oldManifest?.vault_as_given]
+// settings.json ที่รูปไม่ตรงกับที่ Claude Code อ่าน = รายงานว่าแก้ไม่ได้ (ขั้น 3b หยุดให้) ไม่ใช่ crash ตั้งแต่รายงาน
+const hookChanges = settingsShapeError(env.settings) ? null : wireSettings(env.settings, { vault: VAULT_REAL, vaults: pastVaults }).changes
+const memoryStatus = withWfBlock(env.claudeMd, VAULT_REAL).status
 
 // ── ขั้นที่ 2 — รายงานก่อนแตะอะไร ───────────────────────────────────────────
 const report = () => {
@@ -250,12 +265,11 @@ const report = () => {
   log(`  vault ปลายทาง   ${VAULT}  →  โหมด ${MODE.toUpperCase()}`)
   log(`  vault มีอยู่แล้ว  ${env.vaultExists ? 'มี' : 'ยังไม่มี'}${env.vaultIsRepo ? ' · เป็น git repo' : ''}`)
   log(`  Obsidian        ${env.obsidianApp ? 'ลงแล้ว' : 'ยังไม่ลง'}${env.obsidianRunning ? ' · ⚠️ เปิดค้างอยู่' : ''}`)
-  log(`  hook            ${hookWired ? 'ต่อไว้แล้ว' : 'ยังไม่ต่อ'}`)
+  log(`  hook + สิทธิ์ wf  ${hookChanges === null ? '⚠️ settings.json รูปไม่ตรง — ส่วน hook จะหยุดก่อนเขียน' : hookChanges.length ? `ต้องแก้ ${hookChanges.length} จุด (guard · autocommit · allow rule)` : 'ต่อไว้ครบแล้ว'}`)
   log(`  /wayfinder      ${env.wayfinderPlugin ? 'ปลั๊กอิน mattpocock-skills ลงแล้ว'
     : '⚠️ ไม่เจอปลั๊กอิน mattpocock-skills — ลงก่อนใช้ (INSTALL § What you need) · ลงทางอื่นแล้วข้ามได้'}`)
-  log(`  ~/.claude/CLAUDE.md  ${env.claudeMd.includes(STALE_MEMORY_HEADING) ? '⚠️ มีย่อหน้ารุ่นที่ส่ง spec + build ticket เข้า vault'
-    : env.claudeMd.includes('Wayfinding operations') ? 'มีย่อหน้าแล้ว'
-    : env.claudeMd.includes('Wayfinder maps live in') ? '⚠️ มีย่อหน้ารุ่นเก่า (ยังไม่ชี้ไป § Wayfinding operations)'
+  log(`  ~/.claude/CLAUDE.md  ${memoryStatus === 'current' ? 'มีย่อหน้า wf รุ่นปัจจุบันแล้ว'
+    : memoryStatus === 'replaced' ? '⚠️ มีย่อหน้ารุ่นเก่า — ส่วน memory จะแทนที่ให้ตรงที่เดิม'
     : 'ยังไม่มีย่อหน้า'}`)
   if (!env.darwin) log(`  ⚠️  ไม่ใช่ macOS — ข้อ Obsidian/brew ใช้ไม่ได้`)
 }
@@ -273,9 +287,9 @@ const QUESTIONS = `
   2. จะติดตั้งชิ้นไหนบ้าง? (เลือกได้หลายข้อ · ค่าเริ่มต้น = ทุกข้อ)   --parts a,b,c
      skills   สกิล /wayfinder-next                     (นอก vault · /wayfinder มาจากปลั๊กอิน)
      vault    เนื้อ vault + _tools + git               (ใน vault)
-     hook     hook commit อัตโนมัติ                    (~/.claude/settings.json)
+     hook     guard + autocommit + allow rule ของ wf  (~/.claude/settings.json)
      obsidian ค่าตั้ง .obsidian + Dataview + ลงทะเบียน vault
-     memory   ย่อหน้ากติกาใน ~/.claude/CLAUDE.md
+     memory   ย่อหน้ากติกา + วิธีเรียก wf ใน ~/.claude/CLAUDE.md
 
      ⚠️ ต้องบอกตรง ๆ ตอนถามข้อ memory แล้วเคารพคำตอบ ไม่ตื๊อ:
         ย่อหน้าใน CLAUDE.md เป็นที่ **เดียว** ที่บอก /wayfinder ว่า vault อยู่ไหน
@@ -355,6 +369,31 @@ const parts = new Set(
   : answers.parts.split(',').map((s) => s.trim()).filter(Boolean)
 )
 for (const p of parts) if (!ALL_PARTS.includes(p)) die(`ไม่รู้จักชิ้น "${p}" — เลือกจาก ${ALL_PARTS.join(', ')}`)
+// ── ขั้นที่ 3b — อ่านไฟล์ของเครื่องที่จะเขียน **ก่อนเขียนอะไรทั้งนั้น** ─────────────────────────────
+// settings.json ที่ parse ไม่ได้ หรือ CLAUDE.md ที่อ่านไม่ได้ (ไม่ใช่ "ไม่มีไฟล์") = หยุดตรงนี้
+// ไม่งั้นขั้น 4f/4g จะเขียนทับด้วยของที่สร้างจากไฟล์ว่าง ⇒ ค่าตั้งทั้งหมดของเขาหายเงียบ ๆ
+// (ขั้น 1c อ่านแบบหลวม ๆ เพื่อรายงานเท่านั้น)
+const SETTINGS = join(CLAUDE, 'settings.json')
+const CLAUDE_MD = join(CLAUDE, 'CLAUDE.md')
+const WIRE_HOOK = parts.has('hook') || has('wire-hook')
+const WIRE_MEMORY = parts.has('memory') || has('wire-memory')
+const readOwn = (p) => readFile(p, 'utf8').catch((e) => (e.code === 'ENOENT' ? null : die(`อ่าน ${p} ไม่ได้ (${e.message}) — ยังไม่มีอะไรถูกเขียน`)))
+const globalNow = { settings: { text: null, value: null }, claudeMd: '' }
+if (WIRE_HOOK) {
+  const text = await readOwn(SETTINGS)
+  let value = null
+  try { value = text === null ? null : JSON.parse(text) } catch (e) {
+    die(`${SETTINGS} ไม่ใช่ JSON (${e.message}) — แก้ให้ถูกก่อน installer ไม่เขียนทับไฟล์ที่อ่านไม่ออก · ยังไม่มีอะไรถูกเขียน`)
+  }
+  // ส่วนที่ installer เขียนต้องมีรูปที่ Claude Code อ่านอยู่แล้ว — รูปอื่น (เช่น `hooks.PostToolUse` เป็น object)
+  // ถ้าปล่อยให้ wireSettings เขียน = ค่าเดิมของเขาถูกแทนทั้งก้อนเงียบ ๆ
+  const shape = settingsShapeError(value)
+  if (shape) die(`${SETTINGS}: ${shape} — แก้ให้ถูกก่อน installer ไม่เขียนทับส่วนที่อ่านไม่ออก · ยังไม่มีอะไรถูกเขียน`)
+  globalNow.settings = { text, value }
+}
+if (WIRE_MEMORY) globalNow.claudeMd = (await readOwn(CLAUDE_MD)) ?? ''
+
+
 // path ของ vault ต้องเป็น path ที่ **resolve symlink แล้ว** ก่อนเอาไปเรนเดอร์ที่ไหนก็ตาม
 // `import.meta.url` ของ ESM ผ่าน realpath เสมอ ⇒ `doctor.mjs`/`autocommit.sh` มองเห็นตัวเองเป็น
 // path จริงเสมอ · ถ้า installer จด path ที่ยังมี symlink คั่นลง settings.json แทน มันจะเทียบกับ
@@ -370,6 +409,35 @@ const needBrew = parts.has('obsidian') && !env.obsidianApp
 if (MODE === 'install' && needBrew && answers.allowBrew == null) {
   die('ข้อ 4 (brew install --cask obsidian) ไม่มีค่าเริ่มต้น — ต้องได้คำตอบก่อน (--allow-brew yes|no)', 2)
 }
+// ── ขั้นที่ 3c — แผนของ `wf migrate` (update เท่านั้น · Q20) ────────────────────────────
+// คำนวณ **ในโปรเซสนี้** ด้วย lib ของ template ต้นทาง (SRC) ไม่ใช่สั่ง `wf` ของ vault: ตอนวางแผน
+// `_tools/` ของ vault ยังเป็นรุ่นเก่า (0.4.x ไม่มี `wf` เลย) และ `wf` หา vault จาก path ของตัวเองเท่านั้น
+// ⇒ diff ที่โชว์มาจากโค้ดเดียวกับ `wf migrate --yes` ที่ขั้น 4j รันหลังวาง `_tools/` ใหม่ลง vault แล้ว
+// แผนล้ม (เช่นโน้ตที่ไม่มี frontmatter) = หยุด **ก่อนเขียนอะไรทั้งนั้น** ไม่ว่า `--plan` หรือ `--yes`
+const importSrc = (rel) => import(pathToFileURL(join(SRC, '_tools', rel)).href)
+const { SCHEMA_VERSION } = await importSrc('lib/core.mjs')
+// ก่อน install ยังไม่มี manifest ⇒ ให้แผนเห็นเป็น `{}` (แผนของ manifest ถูกตัดทิ้งที่ install อยู่แล้ว)
+const planMigrate = async () => {
+  const [{ readVault, readText }, { default: migrate }] =
+    await Promise.all([importSrc('lib/store.mjs'), importSrc('lib/verbs/migrate.mjs')])
+  const { notes } = readVault(TARGET)
+  const textOf = (path) => readText(TARGET, path) ?? (path === MANIFEST ? '{}' : null)
+  return migrate.run({ notes, textOf }).data
+}
+const planError = (e) => [e.message, ...(e.details ?? [])].join('\n   ')
+// schema ที่ใหม่กว่าที่ template นี้รู้จัก = template ตัวนี้เก่ากว่า vault ⇒ อย่าวาง `_tools/` รุ่นเก่าทับ
+const vaultSchemaNow = oldManifest?.vault_schema ?? 1
+if (MODE === 'update' && vaultSchemaNow > SCHEMA_VERSION)
+  die(`vault นี้อยู่ที่ schema ${vaultSchemaNow} ใหม่กว่าที่ template นี้รู้จัก (${SCHEMA_VERSION}) — อัปเดต template repo ก่อน · ยังไม่มีอะไรถูกเขียน`, 2)
+const migration = MODE === 'update'
+  ? await planMigrate().catch((e) => die(`วางแผน wf migrate ไม่ได้ — ยังไม่มีอะไรถูกเขียน\n   ${planError(e)}`, 2))
+  : { files: [], diff: '' }
+// install ลงโฟลเดอร์ที่มีของอยู่ก่อน (effort · Config/Picks เก่าที่คำตอบข้อ 3 ข้ามไว้): จด schema ปัจจุบันลง
+// manifest **เฉพาะเมื่อของเดิมไม่มีอะไรต้อง migrate** · ไม่งั้นปล่อยว่าง (= 1) ให้ update รอบถัดไป migrate ให้
+// วางแผนไม่ได้ (เช่นโน้ตไม่มี frontmatter) ก็นับว่าต้อง migrate — update จะหยุดแล้วบอกชื่อไฟล์เอง
+const installNeedsMigrate = MODE === 'install' && await exists(TARGET)
+  ? await planMigrate().then((m) => m.files.some((path) => path !== MANIFEST), () => true)
+  : false
 
 // ── ขั้นที่ 4 — ลงมือ ────────────────────────────────────────────────────────
 report()
@@ -385,7 +453,7 @@ const skillDest = (rel) => {
 const fingerprint = async () => {
   const out = new Map()
   const at = async (key, abs) => out.set(key, await readFile(abs).then(sha, () => 'ø'))
-  const vaultRels = new Set([MANIFEST, ...templateFiles,
+  const vaultRels = new Set([MANIFEST, ...templateFiles, ...migration.files,
     ...Object.keys(oldManifest?.files ?? {}), ...Object.keys(oldManifest?.seeded_once ?? {})])
   for (const rel of [...vaultRels].sort()) await at(`vault/${rel}`, join(TARGET, rel))
   for (const rel of [...new Set([...skillFiles, ...Object.keys(oldManifest?.skills ?? {})])].sort())
@@ -528,6 +596,8 @@ const vaultHasRealEfforts = async () => {
 }
 const skipExample = MODE === 'install' && await vaultHasRealEfforts()
 if (skipExample) log('  ↪️  vault มี effort จริงอยู่แล้ว — ข้าม example-repo/ (ข้อ 9: seed ครั้งเดียว ไม่ปลุกคืน)')
+if (installNeedsMigrate)
+  log('  ↪️  ของเดิมใน vault ยังเป็น schema เก่า — ต่อด้วย update: --plan ดู diff ของ wf migrate แล้ว --yes')
 
 for (const rel of wanted) {
   if (skipExample && (rel === 'example-repo' || rel.startsWith('example-repo/'))) continue
@@ -635,111 +705,85 @@ if (MODE === 'update') {
     log(`  ⚠️  ${WILL}ทับไฟล์ที่คุณเคยแก้ไว้ ${stats.localEdits.length} ตัว (กู้ได้: git log -p -- <ไฟล์>)\n     ${stats.localEdits.join(' · ')}`)
 }
 
+// ── 4d2. แผนของ wf migrate (ลงมือจริงที่ขั้น 4j — หลัง commit ของ update) ─────────────────
+if (MODE === 'update') {
+  if (migration.files.length) {
+    log(`  ${MARK} ${WILL}wf migrate → vault schema ${SCHEMA_VERSION}: ${migration.files.length} ไฟล์ (diff ทั้งหมดข้างล่าง · commit แยกของมันเอง)`)
+    log(`\n${migration.diff.trimEnd()}\n`)
+  } else log(`  ✅ wf migrate: vault อยู่ที่ schema ${SCHEMA_VERSION} แล้ว (ข้าม)`)
+}
+
+// ของที่ขั้น 4e–4h จะเปลี่ยน (นอกไฟล์ template) — สรุปแผนใช้ตอบ "รันซ้ำแล้วไม่มีอะไรเปลี่ยน" ได้ตรง
+const otherChanges = []
+
 // ── 4e. git ─────────────────────────────────────────────────────────────────
 if (parts.has('vault')) {
   await chmod(join(TARGET, AUTOCOMMIT), 0o755).catch(() => {})
   if (!(await run('git', ['-C', TARGET, 'rev-parse', '--git-dir']).then(() => true, () => false))) {
+    otherChanges.push('git init')
     await runWrite('git', ['-C', TARGET, 'init', '-q', '-b', 'main'])
     log(`  ${MARK} ${WILL}git init (vault เป็น local อย่างเดียว ไม่มี remote โดยตั้งใจ)`)
   }
 }
 
-// ── 4f. hook — สองเส้น Write|Edit และ Bash ──────────────────────────────────
-// เส้น `Bash` ขาดไม่ได้: agent แก้ไฟล์ใน vault ด้วย sed/python3 บ่อย ซึ่ง payload ไม่มี `file_path`
-// ⇒ มีแต่เส้นแรก การแก้แบบนั้นจะไม่ถูก commit เลย
-if (parts.has('hook') || has('wire-hook')) {
-  const p = join(CLAUDE, 'settings.json')
-  const settings = (await readJson(p)) ?? {}
-  settings.hooks ??= {}
-  settings.hooks.PostToolUse ??= []
-  // เทียบ **path ของสคริปต์** ไม่ใช่ทั้งบรรทัด · hook ที่เจ้าของต่อไว้เองก่อนมี installer มักเขียน
-  // ต่างกันแค่ redirect (`\u2026/autocommit.sh || true` ไม่มี `2>/dev/null`) ⇒ การเทียบทั้งบรรทัดมองไม่เห็นมัน
-  // แล้วเติมเส้นที่สองซ้อนลงไป ⇒ autocommit รัน **สองรอบทุก tool call ตลอดไป** โดยไม่มีอะไรบอกสักคำ
-  // path เป็นตัวระบุที่ถูกต้อง: hook สองเส้นที่เรียกสคริปต์เดียวกัน คือเส้นเดียวกันเสมอ ไม่ว่าเขียนยังไง
-  const script = `${TARGET}/_tools/autocommit.sh`
-  const cmd = `${script} 2>/dev/null || true`
-  let added = 0
-  for (const matcher of ['Write|Edit', 'Bash']) {
-    // `.find` เอา **บล็อกแรก**ที่ matcher ตรง — แต่ matcher เดียวกันมีได้หลายบล็อก และมักมี:
-    // เครื่องที่ลงปลั๊กอินอื่นไว้จะมี `Bash` หลายอันเรียงกัน ของ wayfinder ไปอยู่ท้าย ⇒ มองบล็อกแรก
-    // แล้วไม่เจอ ⇒ เติมซ้ำ (ลงในบล็อกของคนอื่นด้วย) · ต้องกวาดทุกบล็อกที่ matcher ตรง
-    const blocks = settings.hooks.PostToolUse.filter((b) => b.matcher === matcher)
-    const mine = blocks.flatMap((b) => (b.hooks ?? []).filter((h) => typeof h?.command === 'string' && h.command.includes(script)))
-    if (mine.length) {
-      // ต่อไว้แล้ว — ไม่แตะของเขา แต่ห้ามเงียบถ้าสภาพผิดปกติ (กติกาข้อ 5 ของ INSTALL)
-      if (mine.length > 1)
-        log(`  \u26a0\ufe0f  matcher ${matcher}: มี hook ชี้มาที่สคริปต์นี้ ${mine.length} เส้น — autocommit รันซ้ำทุกครั้ง
-     ลบให้เหลือเส้นเดียวใน ~/.claude/settings.json`)
-      else if (mine[0].command !== cmd)
-        log(`  \u2705 matcher ${matcher}: ต่อไว้แล้ว เขียนต่างจากของ installer — ปล่อยไว้ตามเดิม
-     ${mine[0].command}`)
-      continue
-    }
-    const entry = { type: 'command', command: cmd, timeout: 15, statusMessage: 'Committing wayfinder-vault...' }
-    if (blocks.length) (blocks[0].hooks ??= []).push(entry)
-    else settings.hooks.PostToolUse.push({ matcher, hooks: [entry] })
-    added++
-  }
-  if (added) {
-    if (await exists(p)) await copyFile(p, `${p}.bak`)
-    await writeFile(p, JSON.stringify(settings, null, 2) + '\n')
-    log(`  ${MARK} ${WILL}ต่อ hook ${added} เส้นเข้า ~/.claude/settings.json (สำรองไว้ที่ settings.json.bak)`)
+// ── 4f. hook + allow rule ของ wf ใน ~/.claude/settings.json (Q15 · Q7 · Q21) ────────────────────
+// ต่อ frontmatter guard (PreToolUse `Write|Edit`) กับ autocommit ใหม่ (PostToolUse `Write|Edit` **เท่านั้น**
+// ไม่มี `|| true`) · ถอด autocommit รุ่นเก่าทุกเส้นของ vault นี้ รวม matcher `Bash` ที่ spec ตัดทิ้ง
+// (`wf` commit งานของตัวเอง) · เติม allow rule ของ `node <wf>` ตรงตัว — **ไม่แตะ `PATH`** (Q21)
+// กฎว่าเส้นไหน "ของเรา" อยู่ใน lib/wiring.mjs ที่เดียว (ขั้นที่ 2 ใช้ตัวเดียวกันรายงาน) · key อื่นทุกตัว
+// อยู่ตามเดิม · เขียนเฉพาะเมื่อมีอะไรเปลี่ยน ⇒ รันซ้ำแล้วไม่มีไบต์ไหนขยับ
+// diff เต็มของไฟล์นอก vault โชว์ในแผนทุกบรรทัด — git ของ vault กู้ไฟล์พวกนี้ให้ไม่ได้ มีแค่ `.bak`
+const showDiff = (label, before, after) => log(`\n${unifiedDiff(label, before, after).trimEnd()}\n`)
+const hookLine = (c) =>
+  c.action === 'allow' ? `+ permissions.allow  ${c.rule}`
+  : c.action === 'add' ? `+ ${c.event} "${c.matcher}"  ${c.command}`
+  : c.action === 'replace' ? `↻ ${c.event} "${c.matcher}"  ${c.from}  →  ${c.command}`
+  : `− ${c.event} "${c.matcher}"  ${c.command}  (เส้นเก่า/ซ้ำของ vault นี้)`
+if (WIRE_HOOK) {
+  const { settings, changes } = wireSettings(globalNow.settings.value, { vault: TARGET, vaults: [TARGET_RAW, ...pastVaults] })
+  if (changes.length) {
+    const next = JSON.stringify(settings, null, 2) + '\n'
+    otherChanges.push('~/.claude/settings.json')
+    log(`  ${MARK} ${WILL}แก้ ~/.claude/settings.json ${changes.length} จุด${globalNow.settings.text === null ? '' : ' (สำรองไว้ที่ settings.json.bak)'}`)
+    for (const c of changes) log(`     ${hookLine(c)}`)
+    // diff **เฉพาะ key ที่ installer เป็นเจ้าของ** ไม่ใช่ทั้งไฟล์: settings.json มักมี token/API key อยู่ใน
+    // `env` และแผนนี้มักถูกรันโดย agent ⇒ diff ทั้งไฟล์ = ความลับไปโผล่ใน transcript (ไฟล์ที่เขียนบรรทัด
+    // เดียวทั้งก้อน re-serialize แล้ว diff ออกมาทุกบรรทัด) · key อื่นไม่เปลี่ยนค่า — บอกแค่ว่าจัดรูปใหม่ไหม
+    const owned = (s) => `${JSON.stringify({ hooks: s?.hooks ?? {}, permissions: { allow: s?.permissions?.allow ?? [] } }, null, 2)}\n`
+    showDiff('~/.claude/settings.json (hooks + permissions.allow)', owned(globalNow.settings.value), owned(settings))
+    const reformatted = globalNow.settings.text !== null &&
+      globalNow.settings.text !== `${JSON.stringify(globalNow.settings.value, null, 2)}\n`
+    if (reformatted) log('     ↪️  key อื่นค่าเดิมทุกตัว แต่ไฟล์จะถูกเขียนใหม่เป็น JSON เว้น 2 ช่อง (รูปแบบเดิมอยู่ใน .bak)')
+    await mkdir(CLAUDE, { recursive: true })
+    if (globalNow.settings.text !== null) await copyFile(SETTINGS, `${SETTINGS}.bak`)
+    await writeFile(SETTINGS, next)
     log('     ⚠️ ต้องรีสตาร์ต Claude Code หรือเปิด /hooks หนึ่งครั้ง config ถึงจะโหลดใหม่')
-  } else log('  ✅ hook ต่อไว้ครบทั้งสองเส้นแล้ว (ข้าม)')
-} else log('  ⏭  ข้าม hook')
+  } else log(`  ✅ hook (guard + autocommit) และ allow rule ของ wf ต่อไว้ครบแล้ว (ข้าม)`)
+} else log('  ⏭  ข้าม hook + allow rule ของ wf')
 
-// ── 4g. ย่อหน้าใน ~/.claude/CLAUDE.md ───────────────────────────────────────
+// ── 4g. ย่อหน้าของ wf ใน ~/.claude/CLAUDE.md ─────────────────────────────────────────────
 // ย่อหน้านี้เป็น **ตัวชี้** ไม่ใช่ตัว format — layout · frontmatter · operation อยู่ใน README ของ vault
-// ที่ update ตามได้ · ข้อความที่ก๊อปลง CLAUDE.md คือสำเนาที่สองซึ่งไม่มีใคร update ให้ (รุ่นก่อนลิสต์
-// `status` ไว้แค่ 3 ค่า แล้วตกรุ่นทันทีที่ vault มี `waiting`) ⇒ เหลือแค่ที่อยู่ + ชื่อหัวข้อที่ต้องอ่าน
-const MEMORY_BLOCK = `
-## Wayfinder maps live in the vault, never in a repo
-
-The tracker for \`/wayfinder\` is the vault at **\`${TARGET}\`**, whatever repo the
-session runs in — in place of \`.scratch/\`, GitHub issues, or a repo's
-\`docs/agents/issue-tracker.md\`. Before any tracker operation, read its \`README.md\`:
-
-- **§ Wayfinding operations** — maps and tickets: chart, claim, resolve, frontier.
-- **§ Spec & ticket operations** — what the build skills after it (\`/to-spec\`,
-  \`/to-tickets\`, \`/implement\`, \`/implement-spec\`) do to the vault. Specs and build
-  tickets live where the work repo's own tracker config says, not in the vault; the
-  map keeps a \`## Build board\` that points at them.
-
-Those sections own the layout, frontmatter, and operations, and win where a skill's
-own text disagrees.
-
-- Write maps to the vault by absolute path. A map in a repo's \`docs/plan/\` dies with the
-  worktree and can never be committed.
-- **One copy, one place** — no sync or mirror between a repo and the vault. A map found
-  under a repo's \`docs/plan/wayfinder/\` has drifted: move it into the vault, and only
-  when no other session is working that map.
-- The \`autocommit.sh\` PostToolUse hook commits the vault on every Write/Edit — leave
-  committing to it.
-`
-if (parts.has('memory') || has('wire-memory')) {
-  const p = join(CLAUDE, 'CLAUDE.md')
-  const cur = await readFile(p, 'utf8').catch(() => '')
-  if (cur.includes(STALE_MEMORY_HEADING)) {
-    // รุ่นที่ส่ง spec และ build ticket เข้า vault — ชี้หัวข้อถูก แต่บรรทัดของมันเองสั่งของที่ README เลิกแล้ว
-    log(`  ⚠️  ~/.claude/CLAUDE.md ยังมีย่อหน้า wayfinder รุ่นที่บอกว่า spec และ build ticket อยู่ใน vault
-     ซึ่ง README § Spec & ticket operations เลิกแล้ว (ไปอยู่ที่ tracker ของ repo งาน) · ลบย่อหน้า
-     "## ${STALE_MEMORY_HEADING} ..." ทิ้งแล้วรัน --wire-memory ซ้ำ installer จะเติมรุ่นใหม่ให้`)
-  } else if (cur.includes('Wayfinding operations')) {
-    log('  ✅ ~/.claude/CLAUDE.md มีย่อหน้าอยู่แล้ว (ข้าม)')
-  } else if (cur.includes('Wayfinder maps live in') || cur.includes(TARGET)) {
-    // ย่อหน้ารุ่นก่อน (หรือที่เจ้าของเขียนเอง) — ไม่แก้ CLAUDE.md ของเขาเอง แต่ห้ามเงียบ
-    log(`  ⚠️  ~/.claude/CLAUDE.md มีย่อหน้า wayfinder อยู่แล้ว แต่ยังไม่ชี้ไป README § Wayfinding operations
-     กับ § Spec & ticket operations ⇒ ไม่มีอะไรบอก /wayfinder · /to-spec · /to-tickets ว่าให้เชื่อ vault
-     มากกว่าตัว skill · ลบย่อหน้าเดิมทิ้งแล้วรัน --wire-memory ซ้ำ installer จะเติมรุ่นใหม่ให้`)
-  } else {
-    if (cur) await copyFile(p, `${p}.bak`)
-    await writeFile(p, `${cur.trimEnd()}\n${MEMORY_BLOCK}`)
-    log(`  ${MARK} ${WILL}เติมย่อหน้า wayfinder ลง ~/.claude/CLAUDE.md`)
+// ที่ update ตามได้ · ที่ต้องอยู่ใน CLAUDE.md จริง ๆ มีแค่ที่อยู่ของ vault กับ **วิธีเรียก `wf`** (path
+// เต็ม เพราะไม่แตะ `PATH` · Q21) และกติกาว่า state เปลี่ยนผ่าน `wf` ส่วนเนื้อเขียนด้วย Write/Edit
+// อยู่ระหว่าง marker ⇒ รันซ้ำแทนที่ตรงที่เดิม · ย่อหน้ารุ่นก่อน marker (หัวข้อเดิม) ถูกหาเจอแล้วแทนที่
+// ไม่ซ้อนซ้ำ — ย่อหน้ารุ่นนั้นสั่ง "ปล่อย commit ให้ autocommit" ซึ่งผิดแล้วเมื่อ `wf` commit เอง
+if (WIRE_MEMORY) {
+  const cur = globalNow.claudeMd
+  const { text, status } = withWfBlock(cur, TARGET)
+  if (status === 'current') log('  ✅ ~/.claude/CLAUDE.md มีย่อหน้า wf รุ่นปัจจุบันแล้ว (ข้าม)')
+  else {
+    log(`  ${MARK} ${WILL}${status === 'added' ? 'เติม' : 'แทนที่ตรงที่เดิม —'} ย่อหน้า wf ใน ~/.claude/CLAUDE.md` +
+      `${cur ? ' (สำรองไว้ที่ CLAUDE.md.bak)' : ''} · agent เรียก ${wfCommand(TARGET)} <verb>`)
+    showDiff('~/.claude/CLAUDE.md', cur, text)
+    otherChanges.push('~/.claude/CLAUDE.md')
+    await mkdir(CLAUDE, { recursive: true })
+    if (cur) await copyFile(CLAUDE_MD, `${CLAUDE_MD}.bak`)
+    await writeFile(CLAUDE_MD, text)
   }
 } else {
   log(`  ⏭  ข้ามย่อหน้าใน ~/.claude/CLAUDE.md
-     ⚠️ นี่คือที่ **เดียว** ที่บอก /wayfinder ว่า vault อยู่ไหน — ไม่เติมแล้วมันจะไปทำตาม
-        docs/agents/issue-tracker.md ของ repo ที่เปิดอยู่แทน ⇒ ต้องพิมพ์ path บอกเองทุกครั้ง`)
+     ⚠️ นี่คือที่ **เดียว** ที่บอก /wayfinder ว่า vault อยู่ไหน และบอก agent ให้เปลี่ยน state ผ่าน wf
+        ไม่เติมแล้วมันจะไปทำตาม docs/agents/issue-tracker.md ของ repo ที่เปิดอยู่แทน`)
 }
 
 // ── 4h. Obsidian ────────────────────────────────────────────────────────────
@@ -749,6 +793,7 @@ if (parts.has('obsidian')) {
      มันจะ flush ทับค่าที่เพิ่งเขียน ⇒ ปิดให้สนิทแล้วรันซ้ำถ้า Graph View ไม่มีสี`)
   if (!env.obsidianApp) {
     if (answers.allowBrew === 'yes' && env.brew) {
+      otherChanges.push('brew install --cask obsidian')
       await runWrite('brew', ['install', '--cask', 'obsidian']).then(
         () => log(`  ${MARK} ${WILL}brew install --cask obsidian`),
         (e) => log(`  ❌ brew ล้ม: ${String(e.message).split('\n')[0]}`))
@@ -759,6 +804,7 @@ if (parts.has('obsidian')) {
   if (!o) log('  ⏭  ยังไม่มี obsidian.json — เปิดแอปครั้งแรกแล้วใช้ "Open folder as vault"')
   else if (Object.values(o.vaults ?? {}).some((v) => v.path === TARGET)) log('  ✅ Obsidian รู้จัก vault นี้แล้ว')
   else {
+    otherChanges.push('obsidian.json')
     await copyFile(p, `${p}.bak`)
     o.vaults ??= {}
     let key
@@ -790,7 +836,8 @@ const manifest = {
   schema: 1,
   // schema ของ *เนื้อ vault* (คนละตัวกับ `schema` ของ manifest) — `wf migrate --yes` เป็นคนตั้ง
   // ⇒ update ต้องยกค่าเดิมมา ไม่งั้น vault ที่ migrate แล้วกลับไปอ่านเป็น schema 1 แล้ว `wf` ปฏิเสธการเขียน
-  vault_schema: oldManifest?.vault_schema,
+  // install: seed ทุกใบเป็น schema ปัจจุบันอยู่แล้ว ⇒ จดเลย · ยกเว้นของเดิมที่ยังต้อง migrate (ขั้น 3c)
+  vault_schema: MODE === 'update' ? oldManifest.vault_schema : installNeedsMigrate ? undefined : SCHEMA_VERSION,
   template_sha: templateSha,
   template_version: templateVersion,
   source_repo: REPO,
@@ -840,6 +887,11 @@ if (PLAN) {
      ${dirtyBefore.split('\n').length} รายการ แล้ว commit ปิดท้ายกวาด \`git add -A\` ทั้ง tree`)
     else log(`  จะ commit ลง vault: ไม่มี (ไม่มีอะไรเปลี่ยน)`)
   }
+  if (migration.files.length) log(`  จะ wf migrate: ${migration.files.length} ไฟล์ (commit แยก)`)
+  if (otherChanges.length) log(`  จะแก้นอกไฟล์ template: ${otherChanges.join(' · ')}`)
+  // บรรทัดเดียวที่ตอบ "รันซ้ำแล้วเป็น no-op ไหม" — เขียวได้เฉพาะเมื่อ **ทุก** ขั้นข้างบนว่าง
+  if (!mine && !dirtyBefore && !migration.files.length && !otherChanges.length)
+    log(`  ทั้งหมด: ไม่มีอะไรต้องเปลี่ยน — รันด้วย --yes ก็ไม่มีไบต์ไหนขยับ`)
 
   // ตรวจว่าที่พูดมาทั้งหมดเป็นจริง — ตัวกัน `--plan` อยู่ที่ตัวห่อ fs/`runWrite` จุดเดียว แต่ "จุดเดียว"
   // เป็นจริงได้ก็ต่อเมื่อไม่มีใครเผลอเรียกของเดิมตรง ๆ ในอนาคต ⇒ ข้อนี้เฝ้าสมมติฐานนั้นแทนคอมเมนต์เตือน
@@ -857,7 +909,15 @@ if (PLAN) {
   }
   log(`  ✅ ไม่มีไบต์ไหนขยับ — เทียบ ${after.size} จุด (ไฟล์ที่ manifest/template ครอบ · สกิล ·
      ~/.claude/settings.json · ~/.claude/CLAUDE.md · obsidian.json · git HEAD ของ vault)`)
-  log(`
+  if (MODE === 'update') {
+    log(`
+ลงมือจริงด้วยคำสั่งเดิม${ASKED_PLAN ? 'โดยตัด `--plan` ออก แล้ว' : ''}เติม \`--yes\` — update ไม่ลงมือถ้าไม่มี \`--yes\`
+`)
+    if (!ASKED_PLAN) {
+      console.error('❌ update ต้องมี --yes ถึงจะลงมือ — ข้างบนคือแผน ยังไม่มีอะไรถูกเขียน (อ่านแผนก่อน แล้วรันซ้ำพร้อม --yes)')
+      process.exit(2)
+    }
+  } else log(`
 รันจริงด้วยคำสั่งเดิมโดย **ตัด \`--plan\` ออก**
 `)
   process.exit(0)
@@ -956,6 +1016,18 @@ if (parts.has('vault')) {
         `chore(vault): ${MODE} wayfinder template ${templateLabel}`]))
       .then(() => log(`  ✅ commit ${MODE} ลง vault แล้ว`),
         (e) => log(`  ⚠️  commit ไม่ผ่าน: ${String(e.message).split('\n')[0]}`))
+  }
+}
+
+// ── 4j. wf migrate --yes — หลัง commit ของ update เพื่อให้ได้ tree สะอาดและ commit แยกของมันเอง ─────
+// รันด้วย `wf` ตัวที่ **เพิ่งวางลง vault** (lock · commit `wf(migrate): …` ของมันเอง) — แผนที่โชว์ไว้ที่ขั้น 4d2
+// มาจาก lib ชุดเดียวกันนี้ · ไม่ได้เลือกส่วน vault = `_tools/` ไม่ได้ถูกอัปเดต ⇒ ห้ามสั่ง wf รุ่นที่ไม่รู้จัก
+if (migration.files.length) {
+  if (!parts.has('vault')) verify(false, 'wf migrate', `ข้าม — ส่วน vault ไม่ได้เลือก จึงไม่มี _tools/wf.mjs รุ่นนี้ให้รัน`)
+  else {
+    const r = await runWrite(process.execPath, [join(TARGET, '_tools/wf.mjs'), 'migrate', '--yes'])
+      .then((out) => ({ ok: true, text: out.stdout.trim() }), (e) => ({ ok: false, text: `${e.stdout ?? ''}${e.stderr ?? e.message}`.trim() }))
+    verify(r.ok, `wf migrate --yes → vault schema ${SCHEMA_VERSION}`, r.text.split('\n').slice(-3).join(' · '))
   }
 }
 
