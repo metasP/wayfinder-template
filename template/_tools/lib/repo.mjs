@@ -41,12 +41,15 @@ export function gitDirs(vault) {
   return { gitDir: resolve(vault, gitDir), commonDir: resolve(vault, commonDir) }
 }
 
+/** The half-done operation a checkout's git dir holds, as `[marker, state, abort command]`, or undefined. */
+export const operationInProgress = (gitDir) => IN_PROGRESS.find(([marker]) => existsSync(join(gitDir, marker)))
+
 /**
  * Refuse to write a checkout git can't take a commit in: one mid-merge, mid-rebase or similar, or a
  * repository with no committer identity. Nothing has been written when this throws.
  */
 export function assertCommittable(vault, gitDir) {
-  const busy = IN_PROGRESS.find(([marker]) => existsSync(join(gitDir, marker)))
+  const busy = operationInProgress(gitDir)
   if (busy) {
     const [, state, abort] = busy
     throw usageError(`the vault's main checkout ${vault} is ${state} — nothing was written`, {
