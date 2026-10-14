@@ -48,9 +48,17 @@ const keyRange = (lines, key) => {
   return { start, end }
 }
 
+// A key's lines: a scalar on one line; a list as `[]` when empty, else one `- item` line per item.
+const keyLines = (key, value, eol) => {
+  if (value == null) return []
+  if (!Array.isArray(value)) return [`${key}: ${yamlScalar(value)}${eol}`]
+  if (!value.length) return [`${key}: []${eol}`]
+  return [`${key}:${eol}`, ...value.map((item) => `  - ${yamlScalar(item)}${eol}`)]
+}
+
 /**
- * Set or remove frontmatter keys in `text`. `changes` is `[key, value]` pairs: a string value
- * replaces the key's line in place (or is appended before the closing `---` when the key is
+ * Set or remove frontmatter keys in `text`. `changes` is `[key, value]` pairs: a string or list value
+ * replaces the key's lines in place (or is appended before the closing `---` when the key is
  * missing); `null` removes the key and any lines under it. Nothing else changes.
  */
 export function editFrontmatter(text, changes) {
@@ -62,7 +70,7 @@ export function editFrontmatter(text, changes) {
   let fm = lines.slice(1, close)
   for (const [key, value] of changes) {
     const range = keyRange(fm, key)
-    const replacement = value == null ? [] : [`${key}: ${yamlScalar(value)}${eol}`]
+    const replacement = keyLines(key, value, eol)
     fm = range
       ? [...fm.slice(0, range.start), ...replacement, ...fm.slice(range.end)]
       : [...fm, ...replacement]
@@ -128,4 +136,42 @@ export function withTicketsBlock(text, rendered, path = "the map") {
   const section = ["## Tickets", "", ...blockLines(rendered), ""]
   const needsGap = at > 0 && contentOf(lines[at - 1]).trim() !== ""
   return insertLines(lines, at, needsGap ? ["", ...section] : section, eol)
+}
+
+const headingRe = (heading) => new RegExp(`^##\\s+${heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`)
+
+// The `## heading` section's line range: `start` is the heading, `end` the next `#`/`##` heading or
+// the end of the text. Null when there's no such heading.
+const sectionRange = (lines, heading) => {
+  const isHeading = headingMask(lines)
+  const start = headingIndex(lines, isHeading, headingRe(heading))
+  if (start === -1) return null
+  const next = headingIndex(lines, isHeading, SECTION_HEADING_RE, start + 1)
+  return { start, end: next === -1 ? lines.length : next }
+}
+
+/** The text under `## heading` (to the next `#`/`##` heading), or null when the note has no such section. */
+export function sectionText(text, heading) {
+  const lines = linesOf(text)
+  const range = sectionRange(lines, heading)
+  return range && lines.slice(range.start + 1, range.end).join("")
+}
+
+/**
+ * `text` with `line` appended to the `## heading` section, after its last non-blank line; a missing
+ * section is added at the end. Nothing else changes.
+ */
+export function appendToSection(text, heading, line) {
+  const lines = linesOf(text)
+  const eol = eolOf(lines)
+  const range = sectionRange(lines, heading)
+  if (!range) {
+    const gap = lines.length && contentOf(lines[lines.length - 1]).trim() !== "" ? [""] : []
+    return insertLines(lines, lines.length, [...gap, `## ${heading}`, "", line], eol)
+  }
+  let last = range.end - 1
+  while (last > range.start && contentOf(lines[last]).trim() === "") last--
+  const inserted = last === range.start ? ["", line] : [line]
+  const after = last + 1 === lines.length || last + 1 < range.end ? [] : [""]
+  return insertLines(lines, last + 1, [...inserted, ...after], eol)
 }

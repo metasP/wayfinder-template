@@ -5,8 +5,10 @@
 //   8. lint the touched efforts; findings are warnings and never fail a verb that succeeded.
 //
 // A write verb is a read verb's shape plus `writes(args) → boolean`, `plan(ctx, args) → { ref,
-// edits: [{ path, text }], data }` (runs under the lock; throws to refuse) and optionally
-// `report(outcome, args) → { data, text, exitCode?, message?, warnings? }`.
+// edits: [{ path, text, create? }], data }` (runs under the lock; throws to refuse) and optionally
+// `prepare(args) → args` (runs before the lock: read stdin, check flags) and `report(outcome, args) →
+// { data, text, exitCode?, message?, warnings? }`. An edit with `create: true` makes a new file and
+// refuses to overwrite one that appeared meanwhile.
 import { buildIndex, formatRef, isoDate, lint, parseRef, renderTicketsBlock } from "./core.mjs"
 import { withTicketsBlock } from "./edit.mjs"
 import { WfError } from "./errors.mjs"
@@ -50,10 +52,10 @@ const withBlocks = (vault, edits, before, after, language) => {
 const touchedEfforts = (paths, ref) => new Set([...paths, ref].map(effortKeyOf).filter(Boolean))
 
 // Steps 4 and 6: if the commit fails, the files and their index entries go back as they were.
-const writeAndCommit = (vault, edits, message) => {
+const writeAndCommit = (vault, edits, message, creates) => {
   const paths = edits.map((e) => e.path)
   const staged = indexEntries(vault, paths)
-  const { undo } = writeFiles(vault, edits)
+  const { undo } = writeFiles(vault, edits.map((e) => ({ ...e, create: creates.has(e.path) })))
   try {
     return commitFiles(vault, paths, message)
   } catch (e) {
@@ -80,7 +82,8 @@ const transact = (verb, args, { vault, checkout, gitDir }) => {
   // The state lint sees: the verb's edits and the regenerated blocks, as they are about to land.
   const after = buildIndex(notesAfter(notes, edits))
   const files = edits.map((e) => e.path)
-  const commit = edits.length ? writeAndCommit(vault, edits, `wf(${verb.name}): ${plan.ref}`) : null
+  const creates = new Set(plan.edits.filter((e) => e.create).map((e) => e.path))
+  const commit = edits.length ? writeAndCommit(vault, edits, `wf(${verb.name}): ${plan.ref}`, creates) : null
   return { ...plan, files, commit, index: after, config, sort, today }
 }
 
@@ -103,7 +106,8 @@ export function report(outcome, text) {
 }
 
 /** Run a write verb end to end. Returns the verb's report plus the pipeline's own warnings. */
-export function runWrite(verb, args, { toolsDir }) {
+export function runWrite(verb, given, { toolsDir }) {
+  const args = verb.prepare ? verb.prepare(given) : given
   const { vault, checkout } = locateVault(toolsDir)
   checkSchema(vault)
   const { gitDir, commonDir } = gitDirs(vault)
