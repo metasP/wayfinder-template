@@ -73,9 +73,9 @@ export function git(cwd, ...args) {
   return r.stdout.trim()
 }
 
-/** Run `node <vault>/_tools/wf.mjs …args`. `json` is stdout parsed, when it parses. */
-export function wf(vault, args = [], { cwd = vault, script = join(vault, "_tools/wf.mjs"), env = {} } = {}) {
-  const r = spawnSync(process.execPath, [script, ...args], { cwd, encoding: "utf8", env: { ...process.env, ...env } })
+/** Run `node <vault>/_tools/wf.mjs …args`, `input` on stdin. `json` is stdout parsed, when it parses. */
+export function wf(vault, args = [], { cwd = vault, script = join(vault, "_tools/wf.mjs"), env = {}, input = "" } = {}) {
+  const r = spawnSync(process.execPath, [script, ...args], { cwd, encoding: "utf8", input, env: { ...process.env, ...env } })
   return { code: r.status, stdout: r.stdout, stderr: r.stderr, json: parsed(r) }
 }
 

@@ -340,6 +340,26 @@ export function frontier(index, { repo, from, sort } = {}) {
   return pickOrder(index, ready, sort, { from })
 }
 
+/**
+ * The shortest chain of blockers from ticket `from` to ticket `to` — `[from, …, to]`, each ticket
+ * blocked by the next — or null when `to` isn't among `from`'s blockers, however indirectly. With
+ * `from === to` it is the shortest cycle through `from`. A cycle check before adding an edge.
+ */
+export function blockerPath(index, from, to) {
+  const parent = new Map()
+  const queue = [from]
+  while (queue.length) {
+    const ref = queue.shift()
+    for (const next of [...new Set(index.tickets.get(ref)?.blockers ?? [])].filter(Boolean).sort(compare)) {
+      if (next === to) return [...pathTo(parent, ref, from), to]
+      if (next === from || parent.has(next) || !index.tickets.has(next)) continue
+      parent.set(next, ref)
+      queue.push(next)
+    }
+  }
+  return null
+}
+
 /** How many open tickets list this one in `blockers` (real edges — inlinks don't count). */
 export function unblocks(index, ticketOrRef) {
   const ref = typeof ticketOrRef === "string" ? ticketOrRef : ticketOrRef.ref
@@ -519,9 +539,19 @@ const blockedOnMap = (status) => (status === "done" ? "cleared" : STOPPED_MAP.ha
 // ── Rendering ──────────────────────────────────────────────────────────────
 
 // Text the core writes into notes follows *Wayfinder Config* `language:` (Q36); English otherwise.
-const EMPTY_TICKETS = Object.freeze({ en: "_No tickets yet._", th: "_ยังไม่มีใบ_" })
+// Headings, frontmatter keys and wikilinks stay English in every language.
+export const NOTE_TEXT = deepFreeze({
+  emptyTickets: { en: "_No tickets yet._", th: "_ยังไม่มีใบ_" },
+  answerPlaceholder: { en: "(filled in at resolve)", th: "(เติมตอน resolve)" },
+})
 
 const languageOf = (language) => String(language ?? "en").toLowerCase().split(/[-_]/)[0]
+
+/** `NOTE_TEXT[key]` in `language` (*Wayfinder Config* `language:`), English when it has no translation. */
+export function noteText(key, language) {
+  const texts = NOTE_TEXT[key]
+  return texts[languageOf(language)] ?? texts.en
+}
 
 const ticketLine = (index, t) => {
   const title = t.title ?? t.slug.replace(/-/g, " ")
@@ -536,7 +566,7 @@ const ticketLine = (index, t) => {
  */
 export function renderTicketsBlock(index, effort, language) {
   const tickets = index.efforts.get(effort)?.tickets ?? []
-  if (!tickets.length) return EMPTY_TICKETS[languageOf(language)] ?? EMPTY_TICKETS.en
+  if (!tickets.length) return noteText("emptyTickets", language)
   return tickets.map((t) => ticketLine(index, t)).join("\n")
 }
 
@@ -662,20 +692,7 @@ const danglingBlockers = (t) =>
   })
 
 // The shortest blocker path from `start` back to itself, as refs (start first), or null.
-const cycleThrough = (index, start) => {
-  const parent = new Map()
-  const queue = [start]
-  while (queue.length) {
-    const ref = queue.shift()
-    for (const next of [...new Set(index.tickets.get(ref).blockers)].filter(Boolean).sort(compare)) {
-      if (next === start) return [...pathTo(parent, ref, start), start]
-      if (parent.has(next) || !index.tickets.has(next)) continue
-      parent.set(next, ref)
-      queue.push(next)
-    }
-  }
-  return null
-}
+const cycleThrough = (index, start) => blockerPath(index, start, start)
 
 const pathTo = (parent, ref, start) => {
   const path = [ref]

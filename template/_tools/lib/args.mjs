@@ -8,8 +8,9 @@ import { vaultRelative } from "./store.mjs"
 export const GLOBAL_FLAGS = Object.freeze({ json: "boolean", help: "boolean" })
 
 /**
- * Split argv into `{ flags, positionals }` against `spec` (`{ name: "boolean" | "string" }`).
- * `--name value` and `--name=value` both work; `--` ends the flags. Unknown flags are usage errors.
+ * Split argv into `{ flags, positionals }` against `spec` (`{ name: "boolean" | "string" | "strings" }`;
+ * a `strings` flag may repeat and collects a list). `--name value` and `--name=value` both work; `--`
+ * ends the flags. Unknown flags are usage errors.
  */
 export function parseArgs(argv, spec) {
   const known = { ...GLOBAL_FLAGS, ...spec }
@@ -40,7 +41,7 @@ export function parseArgs(argv, spec) {
     const value = eq === -1 ? argv[++i] : arg.slice(eq + 1)
     if (value === undefined || value === "" || (eq === -1 && value.startsWith("--")))
       throw usageError(`--${name} needs a value`)
-    flags[name] = value
+    flags[name] = known[name] === "strings" ? [...(flags[name] ?? []), value] : value
   }
   return { flags, positionals }
 }
@@ -60,15 +61,22 @@ export function effortArg(input, { roots, index }) {
 }
 
 /**
- * The ticket an argument names — `repo/effort#NN`, a vault path, or a full-path wikilink (a bare
- * `[[NN-slug]]` has no effort to resolve in). It must be in `index`.
+ * The ticket ref an argument names — `repo/effort#NN`, a vault path, a full-path wikilink, or a bare
+ * `[[NN-slug]]` when `home` (`{ repo, effort }`) gives it an effort. The ticket may not exist.
  */
-export function ticketArg(input, { roots, index }) {
-  const id = parseRef(vaultRelative(input, roots))
-  if (!id || id.nn == null)
-    throw usageError(`cannot read ${JSON.stringify(input)} as a ticket ref — use repo/effort#NN, a vault path or a full-path wikilink`)
-  const ref = formatRef(id)
-  const t = index.tickets.get(ref)
+export function ticketRefArg(input, { roots }, { home } = {}) {
+  const id = parseRef(vaultRelative(input, roots), { home })
+  if (!id || id.nn == null) {
+    const forms = home ? "repo/effort#NN, a vault path or a wikilink" : "repo/effort#NN, a vault path or a full-path wikilink"
+    throw usageError(`cannot read ${JSON.stringify(input)} as a ticket ref — use ${forms}`)
+  }
+  return formatRef(id)
+}
+
+/** The ticket an argument names (see `ticketRefArg`). It must be in `index`. */
+export function ticketArg(input, ctx, opts) {
+  const ref = ticketRefArg(input, ctx, opts)
+  const t = ctx.index.tickets.get(ref)
   if (!t) throw usageError(`no ticket ${ref} in the vault`)
   return t
 }
