@@ -93,6 +93,32 @@ describe("wf lint", () => {
     assert.equal(r.json.error, null)
   })
 
+  test("a flood of one rule's warnings folds into one line; errors print last; --rule and --json keep all", () => {
+    const keys = Object.fromEntries(Array.from({ length: core.WARN_FOLD_AT }, (_, i) => [`k${i}`, "x"]))
+    const vault = makeVault({
+      notes: [
+        { ...map("r/e/map.md"), body: ticketsBlock("- [[01-a]] · task · waiting · 01-a") },
+        ticket("r/e/issues/01-a.md", { status: "waiting", ...keys }),
+      ],
+    })
+    const r = wf(vault, ["lint"])
+    assert.equal(r.code, 1)
+    assert.equal(
+      r.stdout,
+      [
+        `warn   ${"unknown-key".padEnd("waiting-without-note".length)}  ${core.WARN_FOLD_AT} warnings in 1 effort — all of them: wf lint --rule unknown-key`,
+        "error  waiting-without-note  r/e#01  waiting without status_note — release it, then wait again with --note <note>",
+        "       fix: wf release r/e#01",
+        `1 error, ${core.WARN_FOLD_AT} warnings`,
+        "",
+      ].join("\n"),
+    )
+    const all = wf(vault, ["lint", "--rule", "unknown-key"])
+    assert.equal(all.code, 0)
+    assert.equal(all.stdout.match(/^warn {2}unknown-key {2}r\/e#01 {2}unknown frontmatter key k\d$/gm).length, core.WARN_FOLD_AT)
+    assert.equal(wf(vault, ["lint", "--json"]).json.data.findings.length, core.WARN_FOLD_AT + 1)
+  })
+
   test("a vault with only warnings exits 0; a clean vault says so", () => {
     const warnOnly = makeVault({ notes: [map("r/e/map.md"), ticket("r/e/issues/01-a.md")] })
     const w = wf(warnOnly, ["lint"])

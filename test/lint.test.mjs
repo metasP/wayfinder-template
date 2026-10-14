@@ -366,6 +366,27 @@ describe("finding order", () => {
   })
 })
 
+describe("folding a report", () => {
+  const warn = (rule, ref) => ({ severity: "warn", rule, ref, message: "m", fix: null })
+  const error = (rule, ref) => ({ severity: "error", rule, ref, message: "m", fix: null })
+
+  test("a rule with WARN_FOLD_AT warnings or more becomes one summary; errors are never folded", () => {
+    const many = Array.from({ length: core.WARN_FOLD_AT }, (_, i) => warn("unknown-key", i < 2 ? `r/a#0${i + 1}` : `r/b#0${i}`))
+    const errors = Array.from({ length: core.WARN_FOLD_AT }, (_, i) => error("missing-field", `r/c#0${i + 1}`))
+    const few = [warn("idle-map", "r/a"), warn("stale-claim", "r/b#01")]
+    assert.deepEqual(core.foldFindings([...errors, ...many, ...few]), {
+      warnings: few,
+      folded: [{ rule: "unknown-key", count: core.WARN_FOLD_AT, efforts: 2 }],
+      errors,
+    })
+  })
+
+  test("below the threshold nothing folds", () => {
+    const some = Array.from({ length: core.WARN_FOLD_AT - 1 }, (_, i) => warn("unknown-key", `r/a#0${i + 1}`))
+    assert.deepEqual(core.foldFindings(some), { warnings: some, folded: [], errors: [] })
+  })
+})
+
 describe("review edge cases", () => {
   test("overlapping cycles are one strongly connected group, reported once with every member", () => {
     const findings = lint([

@@ -102,6 +102,25 @@ describe("doctor: content comes from the core's lint()", () => {
   })
 })
 
+describe("doctor's text report", () => {
+  test("folds a flood of one rule's warnings and prints errors last, right above the pass count", async () => {
+    const { WARN_FOLD_AT } = await import("../template/_tools/lib/core.mjs")
+    const keys = Object.fromEntries(Array.from({ length: WARN_FOLD_AT }, (_, i) => [`k${i}`, "x"]))
+    const vault = vaultWithDoctor({ notes: [map("r/a/map.md"), ticket("r/a/issues/01-a.md", { status: "waiting", ...keys })] })
+    const r = spawnSync(process.execPath, [join(vault, "_tools/doctor.mjs")], { encoding: "utf8", env: { ...process.env, HOME: homeWith(null) } })
+    const lines = r.stdout.split("\n")
+    const lint = lines.slice(lines.findIndex((l) => l.startsWith("🩺 wf lint")))
+    assert.doesNotMatch(r.stdout, /unknown frontmatter key k0/)
+    assert.match(lint.join("\n"), new RegExp(`⚠️ {3}unknown-key {2}${WARN_FOLD_AT} warnings in 1 effort — all of them: node _tools/wf\\.mjs lint --rule unknown-key`))
+    const pass = lint.findIndex((l) => /^\d+\/\d+ ผ่าน/.test(l))
+    assert.deepEqual(lint.slice(pass - 3, pass), [
+      "  ❌  waiting-without-note  r/a#01  waiting without status_note — release it, then wait again with --note <note>",
+      "        fix: wf release r/a#01",
+      "",
+    ])
+  })
+})
+
 describe("doctor --json", () => {
   test("prints the whole report through a pipe, however many findings there are", () => {
     // Enough findings for the pretty-printed JSON to pass a pipe buffer (64 KiB).

@@ -1024,6 +1024,34 @@ const unknownSortKeys = (sort) =>
     finding("error", "unknown-sort-key", PICKS_REF, `unknown sort rule ${quote(rule)} — keys: ${PICK_SORT_KEYS.join(", ")}`),
   )
 
+/** A rule with this many warnings or more prints as one summary line in a text report. */
+export const WARN_FOLD_AT = 5
+
+/**
+ * Findings laid out for a text report, so a flood of warnings can't push an error out of a cut-off
+ * terminal: `{ warnings, folded, errors }`. A rule with `foldAt` warnings or more becomes one
+ * `{ rule, count, efforts }` in `folded` (rule order); the other warnings stay as they are. Errors never
+ * fold — a report prints them last, next to its count. JSON output keeps every finding instead.
+ */
+export function foldFindings(findings, { foldAt = WARN_FOLD_AT } = {}) {
+  const warnings = findings.filter((f) => f.severity !== "error")
+  const ofRule = (rule) => warnings.filter((f) => f.rule === rule)
+  const isFolded = (rule) => ofRule(rule).length >= foldAt
+  const folded = [...new Set(warnings.map((f) => f.rule))]
+    .filter(isFolded)
+    .sort(compare)
+    .map((rule) => ({
+      rule,
+      count: ofRule(rule).length,
+      efforts: new Set(ofRule(rule).map((f) => f.ref.replace(/#\d+$/, ""))).size,
+    }))
+  return {
+    warnings: warnings.filter((f) => !isFolded(f.rule)),
+    folded,
+    errors: findings.filter((f) => f.severity === "error"),
+  }
+}
+
 /**
  * Every content rule over the read model (spec *Lint rules*): `Finding[]` of
  * `{ severity: "error"|"warn", rule, ref, message, fix }`, errors first, then by ref. `fix` is the
