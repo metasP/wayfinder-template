@@ -325,16 +325,19 @@ vault needs `wf migrate` once; the update runs it for you. Four steps, in this o
    Obsidian runs the plugin code in `.obsidian/`; a Claude Code session started in the vault
    loads settings, hooks and MCP servers from `.claude/` and `.mcp.json`. Writable, any of
    them lets a sandboxed command run code outside the sandbox. `denyWrite` wins over
-   `allowWrite`, and `wf` writes none of them. Merge it into the `sandbox` key you already have,
-   if any; use your vault's path if it lives elsewhere (the installer prints the list for yours
-   at the end of its run). With the sandbox off, skip this step. Then restart Claude Code, so
-   the new hooks and this setting load. `doctor` fails while the vault is granted without every
-   deny.
+   `allowWrite`, and `wf` writes none of them. Claude Code protects `.git/hooks` and
+   `.git/config` on its own only in the session's working directory, and the vault usually
+   isn't one.
 
    One way out stays open: the pages run Dataview JS, so Obsidian runs any `dataviewjs` block in
    a note when you open that note, and notes are what `wf` writes. Treat a block you didn't put
    there as you would an unknown script, and look at what agents changed (`git log -p` in the
    vault) before opening a page they touched.
+
+   Merge the JSON into the `sandbox` key you already have, if any; a vault elsewhere uses its own
+   path in every entry, and the installer prints the list for yours at the end of its run. With
+   the sandbox off, skip this step. Then restart Claude Code, so the new hooks and this setting
+   load. `doctor` fails while the vault is granted without every deny.
 
 4. **Run `doctor`.**
 

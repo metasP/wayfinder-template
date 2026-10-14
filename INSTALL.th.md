@@ -195,7 +195,7 @@ node ~/Documents/Git/wayfinder-vault/_tools/doctor.mjs
 3. เปิดโน้ต **Wayfinder Dashboard** กับ **Wayfinder Efforts** ค้างไว้ — นั่นคือหน้างานจริง
 4. ถ้าเพิ่งต่อ hook: เปิด `/hooks` ใน Claude Code หนึ่งครั้ง หรือรีสตาร์ตมัน ให้ config โหลดใหม่
 5. ถ้า Claude Code รัน Bash ใน sandbox: เพิ่ม path ของ vault เข้าไปใน path ที่ sandbox เขียนได้
-   ไม่งั้น `wf` เขียนลง vault ไม่ได้ และห้ามเขียน path ข้างในที่เก็บโค้ด — ดูขั้นที่ 3 ของ
+   ไม่งั้น `wf` เขียนลง vault ไม่ได้ และห้ามเขียน path ใน vault ที่เก็บโค้ด — ดูขั้นที่ 3 ของ
    [อัปเกรดจาก 0.4.x](#อัปเกรดจาก-04x) · installer พิมพ์ทั้งสองอย่างของ vault คุณไว้ให้แล้ว
 
 ---
@@ -296,14 +296,16 @@ frontmatter · หน้า Dataview โหลด core กลางตัวเ�
    นอก sandbox ซึ่งอ่าน `.git/hooks` · `.git/config` · `.git/modules` · Obsidian รันโค้ดปลั๊กอินใน `.obsidian/`
    · Claude Code ที่เปิดใน vault โหลด settings · hook · MCP server จาก `.claude/` กับ `.mcp.json`
    · ถ้าเขียนได้ คำสั่งใน sandbox จะใช้ตัวไหนก็ได้รันโค้ด
-   นอก sandbox · `denyWrite` ชนะ `allowWrite` และ `wf` ไม่เขียนสักตัว · ถ้ามีคีย์ `sandbox` อยู่แล้วให้รวมเข้าไป
-   ถ้า vault อยู่ที่อื่นให้ใช้ path ของคุณ (installer พิมพ์รายการของ vault คุณไว้ท้ายการรัน) · ถ้าไม่ได้เปิด
-   sandbox ข้ามขั้นนี้ได้ · จากนั้นรีสตาร์ต Claude Code ให้ hook ใหม่กับค่านี้โหลด · `doctor` ไม่ผ่านตราบที่
-   ให้เขียน vault แต่ deny ไม่ครบ
+   นอก sandbox · `denyWrite` ชนะ `allowWrite` และ `wf` ไม่เขียนสักตัว · Claude Code กัน `.git/hooks` กับ
+   `.git/config` ให้เองเฉพาะใน working directory ของ session ซึ่ง vault มักไม่ใช่
 
-   ยังเหลือทางหนึ่งที่ปิดไม่ได้: หน้าต่าง ๆ ใช้ Dataview JS ⇒ Obsidian รันบล็อก `dataviewjs` ในโน้ตตอนคุณ
-   เปิดโน้ตนั้น และโน้ตคือสิ่งที่ `wf` เขียน · บล็อกที่คุณไม่ได้ใส่เองให้ถือเป็นสคริปต์แปลกหน้า และดูว่า agent
-   แก้อะไรไป (`git log -p` ใน vault) ก่อนเปิดหน้าที่มันแตะ
+   ยังเหลือทางหลุดหนึ่งทาง: หน้าต่าง ๆ ใช้ Dataview JS ⇒ Obsidian รันบล็อก `dataviewjs` ในโน้ตทุกครั้งที่เปิดโน้ตนั้น
+   และโน้ตคือสิ่งที่ `wf` เขียน · บล็อกที่คุณไม่ได้ใส่เองให้ถือเหมือนสคริปต์ที่ไม่รู้ที่มา และดูว่า agent แก้อะไรไป
+   (`git log -p` ใน vault) ก่อนเปิดหน้าที่มันแตะ
+
+   ถ้ามีคีย์ `sandbox` อยู่แล้วให้รวม JSON เข้าไป · vault ที่อยู่ที่อื่นใช้ path ของมันเองในทุกรายการ
+   (installer พิมพ์รายการของ vault คุณไว้ท้ายการรัน) · ถ้าไม่ได้เปิด sandbox ข้ามขั้นนี้ได้ · จากนั้น
+   รีสตาร์ต Claude Code ให้ hook ใหม่กับค่านี้โหลด · `doctor` ไม่ผ่านตราบที่ให้เขียน vault แต่ deny ไม่ครบ
 
 4. **รัน `doctor`**
 
