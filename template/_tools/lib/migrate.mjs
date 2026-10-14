@@ -8,8 +8,19 @@
 //     section gets the block after `## Notes`.
 // *Wayfinder Picks*, *Wayfinder Config* and the manifest are migrate-seeds.mjs. Every step leaves an
 // already-migrated note as it is, so a second run plans nothing.
-import { BLOCK_CLOSE, BLOCK_OPEN, buildIndex, noteText, parseRef, renderTicketsBlock, TICKET_STATUSES, TICKET_TYPES } from "./core.mjs"
-import { codeMask, contentOf, editFrontmatter, eolOf, foldedCallout, linesOf, withTicketsBlock } from "./edit.mjs"
+import {
+  BLOCK_CLOSE,
+  BLOCK_OPEN,
+  buildIndex,
+  codeMask,
+  noteText,
+  parseRef,
+  renderTicketsBlock,
+  TICKET_STATUSES,
+  TICKET_TYPES,
+  ticketsBlockSpan,
+} from "./core.mjs"
+import { contentOf, editFrontmatter, eolOf, foldedCallout, linesOf, withTicketsBlock } from "./edit.mjs"
 import { usageError } from "./errors.mjs"
 import { OPEN_RE, parseNote } from "./frontmatter.mjs"
 import { migrateConfig, migrateManifest, migratePicks } from "./migrate-seeds.mjs"
@@ -45,7 +56,7 @@ const withChanges = (text, changes) => (changes.length ? editFrontmatter(text, c
  * heading at its level or above, outside fenced code.
  */
 const handWrittenSection = (text) => {
-  if (text.includes(BLOCK_OPEN)) return null
+  if (ticketsBlockSpan(text).start !== -1) return null
   const lines = linesOf(text)
   const isCode = codeMask(lines)
   const levelAt = (i) => (isCode[i] ? null : (HEADING_RE.exec(contentOf(lines[i]))?.[1].length ?? null))
