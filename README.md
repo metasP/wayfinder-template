@@ -159,7 +159,7 @@ Obsidian's plugin browser and no restart to sit through.
 | [`template/`](template) | The vault as it should exist on disk. Replaced wholesale on every update. |
 | [`template/README.md`](template/README.md) | The map/ticket format reference (Thai). Becomes your vault's own README. |
 | [`template/SETUP.md`](template/SETUP.md) | Updating and health-checking a vault you already have. |
-| [`template/_tools/`](template/_tools) | `bootstrap.mjs` (install/update), `doctor.mjs` (install + hook health check, plus the core's `wf lint`), `autocommit.sh` (commits the vault whenever an agent edits a ticket). |
+| [`template/_tools/`](template/_tools) | `wf.mjs` (the only way to change a map's or ticket's state — the vault README's § Wayfinding operations lists its verbs), `bootstrap.mjs` (install/update), `doctor.mjs` (install + hook health check, plus the core's `wf lint`), `autocommit.sh` (commits the vault whenever an agent edits a ticket). |
 | [`template/example-repo/`](template/example-repo) | A worked example effort, seeded **on install only**, so the dashboards have something real to show on day one. Delete it when you're done — no update brings it back. |
 | [`skills/`](skills) | The `/wayfinder-next` skill (English), placed wherever you tell the installer to put it. `/wayfinder` is not here: it is [Matt Pocock's](https://github.com/mattpocock/skills), installed from his plugin — a prerequisite, see [`INSTALL.md`](INSTALL.md). |
 | [`package.json`](package.json) | Declares `template/_tools/bootstrap.mjs` as the `bin`, which is what makes the `npx` one-liner above work. Not published to npm. |
