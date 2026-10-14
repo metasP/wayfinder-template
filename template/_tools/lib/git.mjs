@@ -3,7 +3,7 @@
 import { spawnSync } from "node:child_process"
 
 const GIT_LOCATION_VARS = ["GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY"]
-const gitEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !GIT_LOCATION_VARS.includes(k)))
+export const gitEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !GIT_LOCATION_VARS.includes(k)))
 
 /** `git …args` in `cwd` (`input` on stdin): `{ ok, stdout, stderr, why }`, never throws. `why` says what failed. */
 export function runGit(cwd, args, { input } = {}) {
