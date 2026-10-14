@@ -1,30 +1,34 @@
 #!/usr/bin/env node
 // ตรวจสุขภาพ wayfinder-vault — ทุกข้อที่ตรวจด้วยเครื่องได้
 //
-// ใช้:  node _tools/doctor.mjs
-// exit 0 = ผ่านหมด, exit 1 = มีอย่างน้อยหนึ่งข้อพัง, exit 2 = argument ผิด (doctor ไม่รับ argument)
+// ใช้:  node _tools/doctor.mjs [--json]
+// exit 0 = ผ่านหมด, exit 1 = มีอย่างน้อยหนึ่งข้อพัง, exit 2 = argument ผิด (รับแค่ --json)
+// --json พิมพ์ `{ ok, checks: [{ ok, soft, label, detail }], lint: { findings, errors, warnings } | null }`
+// แทนรายงาน — `lint.findings` คือชุดเดียวกับ `wf lint --json`
 //
 // ข้อที่ *ตรวจด้วยเครื่องไม่ได้* (ต้องเปิด Obsidian ดูเอง) จะขึ้นเป็น MANUAL ท้ายรายงาน
 
 import { readFile, readdir, stat, realpath } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { join, dirname, basename } from 'node:path'
+import { join, dirname, basename, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 
 const run = promisify(execFile)
 const VAULT = join(dirname(fileURLToPath(import.meta.url)), '..')
 
-// doctor ไม่รับ argument — `--help` พิมพ์ "ใช้:" แล้วออก · อย่างอื่น (เช่น `--vault x` ที่หวังจะชี้ vault อื่น)
+// doctor รับแค่ `--json` — `--help` พิมพ์ "ใช้:" แล้วออก · อย่างอื่น (เช่น `--vault x` ที่หวังจะชี้ vault อื่น)
 // ฟ้อง exit 2 แทนการเงียบแล้วตรวจ vault ข้างตัวสคริปต์ ซึ่งคนสั่งจะอ่านผิดว่าเป็นผลของ vault ที่ตั้งใจ
 const argv = process.argv.slice(2)
 if (argv.includes('--help') || argv.includes('-h')) {
-  console.log('ใช้:  node <vault>/_tools/doctor.mjs   (ไม่รับ argument — ตรวจ vault ที่สคริปต์นี้อยู่)\nexit 0 = ผ่านหมด, exit 1 = มีอย่างน้อยหนึ่งข้อพัง, exit 2 = argument ผิด')
+  console.log('ใช้:  node <vault>/_tools/doctor.mjs [--json]   (ตรวจ vault ที่สคริปต์นี้อยู่)\nexit 0 = ผ่านหมด, exit 1 = มีอย่างน้อยหนึ่งข้อพัง, exit 2 = argument ผิด')
   process.exit(0)
 }
-if (argv.length) {
-  console.error(`❌ doctor ไม่รับ argument (เจอ ${argv.map((a) => `"${a}"`).join(' ')}) — รัน doctor.mjs ของ vault ที่จะตรวจตรง ๆ`)
+const JSON_OUT = argv.includes('--json')
+const unknownArgs = argv.filter((a) => a !== '--json')
+if (unknownArgs.length) {
+  console.error(`❌ doctor รับแค่ --json (เจอ ${unknownArgs.map((a) => `"${a}"`).join(' ')}) — รัน doctor.mjs ของ vault ที่จะตรวจตรง ๆ`)
   process.exit(2)
 }
 
@@ -39,6 +43,15 @@ const results = []
 const check = (ok, label, detail = '') => results.push({ ok, label, detail })
 // เตือน แต่ไม่นับว่าพัง — สำหรับสภาพที่ถูกต้องได้ทั้งสองแบบ (เช่น vault ใหม่ที่ยังไม่มี ticket)
 const warn = (ok, label, detail = '') => results.push({ ok, soft: true, label, detail })
+// หนึ่งหมวดของการตรวจ — ข้อที่ throw (ไฟล์ตั้งค่ารูปร่างผิด ฯลฯ) กลายเป็น ❌ ของหมวดนั้น แล้วหมวดถัดไปตรวจต่อ
+// ⇒ doctor ไม่ตายกลางทางด้วย stack trace และ `--json` พิมพ์ JSON เสมอ
+const section = async (name, body) => {
+  try {
+    await body()
+  } catch (e) {
+    check(false, `${name} ตรวจจบหมวด`, `พังกลางทาง: ${String(e?.message ?? e).split('\n')[0]}`)
+  }
+}
 
 const readJson = async (p) => JSON.parse(await readFile(p, 'utf8'))
 const exists = async (p) => stat(p).then(() => true, () => false)
@@ -50,19 +63,8 @@ const git = (...args) => run('git', ['-C', VAULT, ...args]).then((r) => r.stdout
 // ให้คืนตัวเดิม เพื่อให้ผลลัพธ์ยังเทียบได้แทนที่จะโยน
 const real = async (p) => realpath(p).catch(() => p)
 
-// frontmatter หนึ่งก้อน + ตัวอ่านฟิลด์ (ตัดคอมเมนต์ `# …` และเครื่องหมายคำพูดรอบค่า)
-const frontmatter = (raw) => {
-  if (!raw.startsWith('---\n')) return null
-  const fm = raw.slice(4, raw.indexOf('\n---', 4))
-  return {
-    text: fm,
-    get: (k) => fm.match(new RegExp(`^${k}:[ \t]*(.*)$`, 'm'))?.[1]
-      ?.replace(/\s+#.*$/, '').trim().replace(/^"(.*)"$/, '$1'),
-  }
-}
-
 // ── โทเคน `__VAULT__` ที่ installer เรนเดอร์เป็น path จริงตอนติดตั้ง ──────────
-// บรรทัดคอมเมนต์ข้างบนนี้คือ **ตัวล่อ** ของข้อ §10: `_tools/doctor.mjs` อยู่ใน `RENDER_EXEMPT`
+// บรรทัดคอมเมนต์ข้างบนนี้คือ **ตัวล่อ** ของข้อ §9: `_tools/doctor.mjs` อยู่ใน `RENDER_EXEMPT`
 // ของ `bootstrap.mjs` ⇒ เขียนโทเคนไว้ที่นี่ได้ปลอดภัย ไม่ถูกเรนเดอร์ทับ · และถ้าวันหนึ่งมันหายไป
 // แปลว่า doctor **ถูกเรนเดอร์ทับแล้ว** = ตัวเรนเดอร์เสีย ⇒ update รอบถัดไปหยุดเรนเดอร์เงียบ ๆ (ใบ 03)
 //
@@ -82,7 +84,7 @@ try {
 }
 
 // ── 2. .gitignore กันความลับ ────────────────────────────────────────────────
-{
+await section('§2 .gitignore', async () => {
   const gi = await readFile(join(VAULT, '.gitignore'), 'utf8').catch(() => '')
   check(gi.includes('.obsidian/plugins/*/data.json'),
     '.gitignore กัน plugin data.json', 'ไฟล์นั้นเก็บ API key + RSA private key')
@@ -101,10 +103,10 @@ try {
   check(wtRule !== undefined, '.gitignore กัน .claude/worktrees/',
     wtRule !== undefined ? `บรรทัด ${giLines.indexOf(wtRule) + 1}`
       : 'ไม่มีกฎนี้เป็นบรรทัดของตัวเอง — คอมเมนต์ที่พูดถึงมันไม่นับ')
-}
+})
 
 // ── 3. plugin ───────────────────────────────────────────────────────────────
-{
+await section('§3 plugin', async () => {
   const cp = await readJson(join(VAULT, '.obsidian/community-plugins.json')).catch(() => [])
   check(cp.includes('dataview'), 'Dataview เปิดใช้งานอยู่')
   check(!cp.includes('obsidian-local-rest-api'),
@@ -119,10 +121,10 @@ try {
   const gi = await readFile(join(VAULT, '.gitignore'), 'utf8').catch(() => '')
   check(gi.includes('!.obsidian/plugins/dataview/data.json'),
     '.gitignore ยกเว้น data.json ของ Dataview', 'ไม่งั้นค่าตั้งนี้ไม่เดินทางไปเครื่องใหม่')
-}
+})
 
 // ── 4. graph colorGroups ────────────────────────────────────────────────────
-{
+await section('§4 graph', async () => {
   const g = await readJson(join(VAULT, '.obsidian/graph.json')).catch(() => ({}))
   const groups = g.colorGroups ?? []
   check(groups.length >= 4, 'graph.json ตั้ง colorGroups แล้ว', `${groups.length} groups`)
@@ -130,10 +132,10 @@ try {
   check(propQueries.every((x) => /^\[.+\]$/.test(x.query)),
     'colorGroups ใช้ syntax property แบบวงเล็บ',
     propQueries.map((x) => x.query).join(' '))
-}
+})
 
 // ── 5. dashboard ────────────────────────────────────────────────────────────
-{
+await section('§5 dashboard', async () => {
   // สี่หน้า (Dashboard · Efforts · Effort Tickets · Picks) คำนวณจาก core ผ่าน loader กลางทุกบล็อก
   // (ไม่มี DQL / index / กฎ frontier / ตัวอ่าน Config ของตัวเองแล้ว) ⇒ ตรวจว่า loader กับ core อยู่ครบ
   // และทุกบล็อกเรียกผ่าน loader — บล็อกที่ไม่ผ่าน loader = กฎแยกสาย ซึ่งคือสิ่งที่ทำให้หน้าเถียงกันเอง
@@ -440,8 +442,13 @@ try {
   // ชื่อโน้ตคือตัวที่ loader อ่าน (`Wayfinder Config.md`) ⇒ สตริงนั้นต้องสะกดตรงกับโน้ตที่มีอยู่จริง เหมือนข้อ `TICKETS_NOTE`
   const configNote = 'Wayfinder Config'
   const cfgOnDisk = rootNotes.includes(configNote)
-  const cfgFm = !cfgOnDisk ? null
-    : frontmatter(await readFile(join(VAULT, `${configNote}.md`), 'utf8').catch(() => ''))
+  // อ่านด้วย `parseNote` ตัวเดียวกับที่ `wf` อ่านโน้ตนี้ (ไม่ใช่ parser ตัวที่สองใน doctor) · frontmatter นอก
+  // YAML subset = อ่านไม่ได้ (ข้อ `wf lint` ใน §6 บอกบรรทัด)
+  const cfgFm = !cfgOnDisk ? null : await (async () => {
+    const { parseNote } = await import('./lib/frontmatter.mjs')
+    const { frontmatter: fm, errors } = parseNote(await readFile(join(VAULT, `${configNote}.md`), 'utf8').catch(() => ''))
+    return errors.length || !Object.keys(fm).length ? null : { get: (k) => fm[k] }
+  })()
   // คีย์ที่ขาดตกไปค่าเริ่มต้นทีละคีย์ตามที่โน้ตสัญญาไว้ ("ลบโน้ตนี้ทิ้งได้ ไม่พัง") ⇒ เตือน ไม่นับว่าพัง
   // (vault เก่ายังไม่มี `claim_stale_days` จนกว่า `wf migrate` จะเติมให้) · core โหลดไม่ได้ต่างหากที่พัง
   const cfgMissing = cfgFm === null ? cfgKeys : cfgKeys.filter((k) => cfgFm.get(k) === undefined)
@@ -450,7 +457,7 @@ try {
     'Wayfinder Config มีอยู่จริง + frontmatter ครบทุกคีย์ที่ core อ่าน',
     cfgKeys.length === 0 ? 'โหลด _tools/lib/core.mjs ไม่ได้ — ไม่รู้ว่าต้องมีคีย์อะไรบ้าง'
       : !cfgOnDisk ? `ไม่มี ${configNote}.md ที่รากของ vault (สแกน ${rootNotes.length} โน้ต)`
-        : cfgFm === null ? `${configNote}.md ไม่มี frontmatter`
+        : cfgFm === null ? `${configNote}.md ไม่มี frontmatter หรืออยู่นอก YAML subset`
           : cfgMissing.length ? `ขาด ${cfgMissing.length} คีย์: ${cfgMissing.join(' · ')}`
             : `${cfgKeys.length} คีย์: ${cfgKeys.join(' · ')}`)
 
@@ -478,213 +485,106 @@ try {
     picksOnDisk && picksLinked ? `${PICKS}.md`
       : [picksOnDisk ? '' : `ไม่มี ${PICKS}.md ที่รากของ vault`,
         picksLinked ? '' : `Dashboard ไม่มีลิงก์ [[${PICKS}]]`].filter(Boolean).join(' · '))
-}
+})
 
-// ── 6. ticket ทุกใบ ─────────────────────────────────────────────────────────
-const STATUS = ['open', 'claimed', 'resolved', 'waiting']
-const TYPES = ['research', 'prototype', 'grilling', 'task']
-const MAP_STATUS = ['active', 'draft', 'paused', 'done', 'dropped']
-const PENDING = ['open', 'claimed', 'waiting'] // ยังไม่ปิด = ยังนับเป็นของค้าง
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
-
-// wikilink ใน frontmatter ชี้ได้สองแบบ: ชื่อไฟล์ในโฟลเดอร์เดียวกัน (blockers ของใบ)
-// หรือ path จากราก vault (blocked_by / superseded_by ของ map ที่ข้าม effort ได้)
-const linkTargets = (fm) =>
-  [...fm.text.matchAll(/\[\[([^\]]+)\]\]/g)].map((m) => m[1].split('|')[0].trim())
-const linkExists = async (target, dir) =>
-  (await exists(join(dir, `${target}.md`))) || (await exists(join(VAULT, `${target}.md`)))
-
-// เฉพาะ wikilink ที่อยู่ใต้ `blockers:` — ต่างจาก linkTargets ที่กวาดทั้ง frontmatter
-// (รับทั้งแบบ list หลายบรรทัด และแบบ inline `blockers: ["[[…]]"]`)
-const blockerTargets = (fm) => {
-  const lines = fm.text.split('\n')
-  const i = lines.findIndex((l) => /^blockers:/.test(l))
-  if (i < 0) return []
-  const raw = [lines[i]]
-  for (let j = i + 1; j < lines.length && /^\s+-\s/.test(lines[j]); j++) raw.push(lines[j])
-  return raw.flatMap((l) => [...l.matchAll(/\[\[([^\]]+)\]\]/g)].map((m) => m[1].split('|')[0].trim()))
-}
-
-const findIssueDirs = async (dir, acc = []) => {
-  for (const e of await readdir(dir, { withFileTypes: true })) {
-    if (!e.isDirectory() || e.name.startsWith('.') || e.name.startsWith('_')) continue
-    const p = join(dir, e.name)
-    if (e.name === 'issues') acc.push(p)
-    else await findIssueDirs(p, acc)
+// ── 6. เนื้อ vault — `lint()` ของ core ตัวเดียวกับ `wf lint` ──────────────────
+// doctor **ไม่มีกฎเนื้อหาของตัวเอง** (spec *`doctor`*, Q27): ใบ · map · Config · Picks อ่านผ่าน store
+// ของ `wf` แล้วส่งให้ `lint()` ครั้งเดียว ⇒ findings ชุดเดียวกับ `wf lint` และหน้า 🩺 บน Dashboard
+// ไม่มีกฎสองชุดให้ drift · กฎใหม่เติมที่ core ที่เดียว · error = พัง, warn = เตือน
+// อ่าน vault ไม่ได้ (core/store โหลดไม่ขึ้น หรือ frontmatter นอก YAML subset) = ตรวจไม่ได้ ⇒ ไม่ผ่าน ห้ามเขียว
+// vault schema เก่ากว่าก็ยังลินต์ (เหมือน `wf lint`) เพื่อให้ finding ของฟิลด์ legacy ยังโผล่
+let lintReport = null
+await section('§6 เนื้อ vault', async () => {
+  const label = 'เนื้อ vault ผ่าน wf lint (ไม่มี error)'
+  try {
+    const { buildIndex, isoDate, lint } = await import('./lib/core.mjs')
+    const { readVault } = await import('./lib/store.mjs')
+    const { notes, config, sort } = readVault(VAULT)
+    const findings = lint(buildIndex(notes), { today: isoDate(new Date()), config, sort })
+    const errors = findings.filter((f) => f.severity === 'error').length
+    lintReport = { findings, errors, warnings: findings.length - errors }
+    const tickets = notes.filter((n) => !n.path.endsWith('/map.md')).length
+    check(errors === 0, label, `${errors} error · ${notes.length - tickets} map · ${tickets} ใบ`)
+    warn(lintReport.warnings === 0, 'เนื้อ vault ไม่มี lint warning', `${lintReport.warnings} warning`)
+  } catch (e) {
+    check(false, label, `อ่าน vault ไม่ได้: ${[e.message, ...(e.details ?? [])].join(' · ')}`)
   }
-  return acc
-}
+})
 
-// เก็บสถานะใบต่อ effort ไว้ให้ข้อ 7 เอาไปเทียบกับสถานะของ map
-const byEffort = new Map()
-
-{
-  const dirs = await findIssueDirs(VAULT)
-  const tickets = []
-  for (const d of dirs) {
-    for (const f of (await readdir(d)).filter((x) => x.endsWith('.md'))) {
-      const raw = await readFile(join(d, f), 'utf8')
-      tickets.push({ dir: d, name: basename(f, '.md'), raw })
-    }
-  }
-  warn(tickets.length > 0, 'มี ticket ใน vault',
-    tickets.length ? `${tickets.length} ใบ` : 'ยังไม่มี — ปกติสำหรับ vault ที่เพิ่ง init')
-
-  const bad = []
-  const noSince = []
-  const danglingLinks = []
-  const byName = new Map()    // ชื่อไฟล์ใบ -> [effort ที่มีชื่อนี้]
-  const nnSeen = new Map()    // effort -> Map(NN -> [ชื่อใบ])
-  const blockerRefs = []      // { from, target } — เฉพาะที่เขียนใต้ `blockers:`
-  for (const t of tickets) {
-    const fm = frontmatter(t.raw)
-    if (!fm) { bad.push(`${t.name}: ไม่มี frontmatter`); continue }
-    const status = fm.get('status')
-    const type = fm.get('type')
-    const since = fm.get('status_since')
-    if (!STATUS.includes(status)) bad.push(`${t.name}: status="${status}" ไม่ถูกต้อง`)
-    if (!TYPES.includes(type)) bad.push(`${t.name}: type="${type}" ไม่ถูกต้อง`)
-    if (!fm.get('effort')) bad.push(`${t.name}: ไม่มี effort`)
-    // `blockers` ต้อง **มีคีย์เสมอ** — ใบที่ไม่ติดใครเขียน `blockers: []`
-    // DQL ของ Frontier กรองด้วย `all(map(blockers, …))` ซึ่งเป็นจริงบน list ว่าง แต่ **ไม่ใช่**
-    // เมื่อคีย์หายไปทั้งอัน ⇒ ใบที่หยิบได้จริงหลุดจาก Frontier เงียบ ๆ · ทางแก้ที่ระดับ query
-    // (`default(blockers, [])`) ลองแล้วแย่กว่า: มันทำให้ใบที่ **ถูกบล็อกอยู่** โผล่ขึ้น Frontier
-    // แทน ⇒ กติกาอยู่ที่นี่ ที่ซึ่งมันดังได้
-    if (fm.get('blockers') === undefined) bad.push(`${t.name}: ไม่มีคีย์ blockers (ไม่ติดใครให้เขียน blockers: [])`)
-    // waiting = รอเหตุการณ์นอกมือเรา ⇒ ต้องบอกว่ารออะไร ไม่งั้นมันเน่าเงียบ
-    if (status === 'waiting' && !fm.get('status_note')) bad.push(`${t.name}: waiting แต่ไม่มี status_note`)
-    if (!ISO_DATE.test(since ?? '')) noSince.push(`${t.name}${since ? `="${since}"` : ''}`)
-
-    for (const target of linkTargets(fm)) {
-      if (!(await linkExists(target, t.dir))) danglingLinks.push(`${t.name} -> [[${target}]]`)
-    }
-
-    const effort = dirname(t.dir) // …/<repo>/<effort>/issues -> …/<repo>/<effort>
-    if (!byEffort.has(effort)) byEffort.set(effort, [])
-    byEffort.get(effort).push({ name: t.name, status, since })
-
-    // `21a` เป็นคนละใบกับ `21` โดยตั้งใจ (vault ใช้ตัวอักษรท้ายเลขแยกใบที่แตกออกมา)
-    // ⇒ NN ต้องรับตัวอักษรด้วย ไม่งั้นสองใบนั้นจะถูกฟ้องว่าซ้ำทั้งที่ไม่ซ้ำ
-    const nn = t.name.match(/^(\d+[a-z]?)-/)?.[1]
-    if (nn) {
-      if (!nnSeen.has(effort)) nnSeen.set(effort, new Map())
-      const seen = nnSeen.get(effort)
-      seen.set(nn, [...(seen.get(nn) ?? []), t.name])
-    }
-    if (!byName.has(t.name)) byName.set(t.name, [])
-    byName.get(t.name).push(effort)
-    for (const target of blockerTargets(fm)) blockerRefs.push({ from: t.name, target })
-  }
-  check(bad.length === 0, 'ทุก ticket มี frontmatter ที่ถูกต้อง', bad.join(' · '))
-  check(noSince.length === 0, 'ทุก ticket มี status_since เป็นวันที่',
-    noSince.length ? `${noSince.length} ใบ: ${noSince.slice(0, 5).join(' · ')}` : '')
-  check(danglingLinks.length === 0, 'blocker ทุกอันชี้ไปยังไฟล์ที่มีจริง', danglingLinks.join(' · '))
-
-  const rel = (p) => p.slice(VAULT.length + 1)
-
-  // ── NN ซ้ำใน effort เดียว ─────────────────────────────────────────────────
-  // โหนดในกราฟบนหน้า Wayfinder Effort Tickets โชว์ **แค่ `NN`** และ chip ของ /wayfinder-next ก็ตั้งชื่อ
-  // ด้วย `NN` (`#12-G09-…`) ⇒ `NN` คือตัวตนของใบ · ซ้ำเมื่อไหร่อ่านผิดได้ทั้งสองที่
-  //
-  // เตือน ไม่ใช่พัง: คู่เดียวที่มีวันนี้แช่อยู่ใน map ที่ปิดไปแล้ว การเปลี่ยนชื่อจะพาลทำ wikilink
-  // ในเนื้อความพังหลายสิบจุดโดยไม่ได้อะไรกลับมา — และ doctor ที่แดงค้างถาวรสอนให้คนเลิกอ่าน doctor
-  // ซึ่งแย่กว่าตัวข้อบกพร่องเอง · ของใหม่ที่เขียนหลังจากนี้จะเห็น ⚠️ ตั้งแต่ใบแรกที่ซ้ำ
-  const dupNN = []
-  for (const [effort, seen] of nnSeen)
-    for (const [nn, names] of seen)
-      if (names.length > 1) dupNN.push(`${rel(effort)} NN=${nn}: ${names.join(' + ')}`)
-  warn(dupNN.length === 0, 'ไม่มีเลขใบ NN ซ้ำกันใน effort เดียว', dupNN.join(' · '))
-
-  // ── ชื่อไฟล์ใบซ้ำ "ข้าม effort" ───────────────────────────────────────────
-  // `blockers: [[ชื่อใบ]]` ถูกย่อเหลือ **ชื่อไฟล์** ทั้งใน Dataview และบนหน้า Wayfinder Effort Tickets
-  // ⇒ ชื่อกำกวมเมื่อไหร่ blocker resolve ผิดตัวได้โดยไม่มีอะไรฟ้อง (ใบโชว์ว่าปลดแล้วทั้งที่ตัวจริง
-  // ยังเปิดอยู่ — โกหกไปทางที่อันตรายที่สุด)
-  //
-  // แยกสองระดับตามชนวน: ชื่อกำกวมที่ **มี blocker ชี้อยู่จริง** = ระเบิดติดชนวนแล้ว ⇒ ❌
-  // ส่วนชื่อซ้ำที่ยังไม่มีใครอ้าง = ยังไม่ติดชนวน ⇒ ⚠️ ไว้ก่อน (คู่เดียวที่มีวันนี้อยู่ในกลุ่มหลัง)
-  const dupNames = [...byName].filter(([, efforts]) => efforts.length > 1)
-  const armed = blockerRefs.filter((r) => (byName.get(r.target)?.length ?? 0) > 1)
-  check(armed.length === 0, 'ไม่มี blocker ที่ชี้ไปยังชื่อใบซึ่งซ้ำข้าม effort',
-    armed.map((r) => `${r.from} -> [[${r.target}]]`).join(' · '))
-  warn(dupNames.length === 0, 'ไม่มีชื่อไฟล์ใบซ้ำกันข้าม effort',
-    dupNames.map(([n, efforts]) => `${n}: ${efforts.map(rel).join(' + ')}`).join(' · '))
-}
-
-// ── 7. map ทุกใบ ────────────────────────────────────────────────────────────
-// สถานะของ map เป็นของ load-bearing (กรอง Frontier ระดับใบ) ⇒ ต้องลินต์เท่าใบ
-{
-  const maps = []
-  for (const repo of await readdir(VAULT, { withFileTypes: true })) {
-    if (!repo.isDirectory() || repo.name.startsWith('.') || repo.name.startsWith('_')) continue
-    for (const eff of await readdir(join(VAULT, repo.name), { withFileTypes: true })) {
-      if (!eff.isDirectory()) continue
-      const dir = join(VAULT, repo.name, eff.name)
-      const raw = await readFile(join(dir, 'map.md'), 'utf8').catch(() => null)
-      if (raw !== null) maps.push({ dir, name: `${repo.name}/${eff.name}`, raw })
-    }
-  }
-  warn(maps.length > 0, 'มี map ใน vault', maps.length ? `${maps.length} effort` : 'ยังไม่มี')
-
-  const bad = []
-  const lying = []
-  const stranded = []
-  const dangling = []
-  for (const m of maps) {
-    const fm = frontmatter(m.raw)
-    if (!fm) { bad.push(`${m.name}: ไม่มี frontmatter`); continue }
-    const status = fm.get('status')
-    const since = fm.get('status_since')
-    if (!MAP_STATUS.includes(status)) bad.push(`${m.name}: status="${status}" ไม่ถูกต้อง`)
-    if (!ISO_DATE.test(since ?? '')) bad.push(`${m.name}: status_since="${since}" ไม่ใช่วันที่`)
-    // map ที่ไม่เดินต้องบอกเสมอว่า "อะไรจะทำให้กลับมา" (draft = ยังขาดอะไร, dropped = ทำไมทิ้ง)
-    // active/done ไม่ต้อง — สองอันนั้น status_since ก็เล่าครบแล้ว
-    if (['draft', 'paused', 'dropped'].includes(status) && !fm.get('status_note'))
-      bad.push(`${m.name}: ${status} แต่ไม่มี status_note`)
-
-    for (const target of linkTargets(fm)) {
-      if (!(await linkExists(target, m.dir))) dangling.push(`${m.name} -> [[${target}]]`)
-    }
-
-    const tickets = byEffort.get(m.dir) ?? []
-    // สถานะโกหก: ประกาศว่าไม่เดินแล้ว แต่มีใบขยับหลังวันที่ประกาศ
-    if (['paused', 'dropped', 'done'].includes(status) && ISO_DATE.test(since ?? '')) {
-      const moved = tickets.filter((t) => t.since && t.since > since)
-      if (moved.length) lying.push(`${m.name} (${status} ตั้งแต่ ${since}) มี ${moved.length} ใบขยับหลังจากนั้น`)
-    }
-    // ใบค้างใน map ที่ประกาศว่าถึง Destination แล้ว — ต้องเลือกข้าง ไม่ใช่ปล่อยค้าง
-    if (status === 'done') {
-      const open = tickets.filter((t) => PENDING.includes(t.status))
-      if (open.length) stranded.push(`${m.name}: ${open.map((t) => t.name).join(', ')}`)
-    }
-  }
-  check(bad.length === 0, 'ทุก map มี status + status_since ที่ถูกต้อง', bad.join(' · '))
-  check(dangling.length === 0, 'blocked_by/superseded_by ชี้ไปยังไฟล์ที่มีจริง', dangling.join(' · '))
-  check(lying.length === 0, 'ไม่มี map ที่สถานะขัดกับความเคลื่อนไหวของใบ', lying.join(' · '))
-  check(stranded.length === 0, 'ไม่มีใบค้างใน map ที่ปิดแล้ว', stranded.join(' · '))
-}
-
-// ── 8. hook ─────────────────────────────────────────────────────────────────
-{
+// ── 7. hook ─────────────────────────────────────────────────────────────────
+await section('§7 hook', async () => {
   const script = join(MAIN_VAULT, '_tools/autocommit.sh')
   const st = await stat(script).catch(() => null)
   check(st !== null && (st.mode & 0o111) !== 0, 'autocommit.sh มีสิทธิ์ execute')
 
-  const settings = await readJson(join(homedir(), '.claude/settings.json')).catch(() => ({}))
-  // ต้องชี้มาที่ vault *นี้* — ไม่ใช่แค่มีคำว่า autocommit.sh ของ vault อื่น
+  // ไม่มีไฟล์ = ยังไม่ได้ต่ออะไร (ข้อ hook ข้างล่างฟ้องเอง) · มีแต่อ่านไม่ได้ = บอกตรง ๆ ไม่ใช่ทำเป็นว่า "ไม่ได้ต่อ"
+  const settingsPath = join(homedir(), '.claude/settings.json')
+  const settings = await readJson(settingsPath).then((v) => (v && typeof v === 'object' ? v : {}), (e) => {
+    if (e.code !== 'ENOENT') check(false, '~/.claude/settings.json อ่านได้', `${settingsPath}: ${e.message.split('\n')[0]}`)
+    return {}
+  })
+  // hook ต้องชี้มาที่ vault *นี้* — ไม่ใช่แค่มีคำว่า autocommit.sh ของ vault อื่น
   //
   // เทียบสตริงก่อน แล้วค่อยตกมาที่ **realpath** เป็นทางที่สอง (ใบ 03): `import.meta.url` ของ ESM
-  // ผ่าน realpath มาแล้วเสมอ ⇒ `script` ที่นี่เป็น path จริงอยู่ข้างเดียว · ถ้า installer จด path
+  // ผ่าน realpath มาแล้วเสมอ ⇒ path ฝั่งนี้เป็น path จริงอยู่ข้างเดียว · ถ้า installer จด path
   // ที่มี symlink คั่นลง settings.json ข้อนี้จะ ❌ ทั้งที่ hook ยิงอยู่จริงทุกครั้ง — แดงปลอมชนิดที่
   // ไล่หาสาเหตุไม่เจอ เพราะทุกอย่างที่ตาเห็นถูกหมด
-  const hooksRaw = JSON.stringify(settings.hooks?.PostToolUse ?? [])
-  let wired = hooksRaw.includes(script)
-  if (!wired) {
-    const scriptReal = await real(script)
-    for (const m of hooksRaw.matchAll(/\/[^"\\\s]*_tools\/autocommit\.sh/g))
-      if (await real(m[0]) === scriptReal) { wired = true; break }
+  //
+  // matcher เป็น regex ของ Claude Code (`Write|Edit` · `^(Edit|Write)$` · `.*`) · ว่างหรือ `*` = ทุก tool
+  // regex ที่ compile ไม่ได้ตกไปอ่านเป็นชื่อ tool คั่นด้วย `|`
+  const covers = (matcher, tool) => {
+    if (!matcher || matcher === '*') return true
+    try {
+      return new RegExp(`^(?:${matcher})$`).test(tool)
+    } catch {
+      return matcher.split('|').map((m) => m.trim()).includes(tool)
+    }
   }
-  check(wired, 'hook ต่อไว้ใน ~/.claude/settings.json แล้ว',
-    wired ? '' : 'รัน bootstrap.mjs --wire-hook')
+  const on = (hooks, tool) => hooks.filter((h) => covers(h.matcher, tool))
+  // Write และ Edit ต้องถูกจับทั้งคู่ — จะอยู่บล็อกเดียวกันหรือแยกบล็อกก็ได้
+  const wiredOnWriteEdit = (hooks) => on(hooks, 'Write').length > 0 && on(hooks, 'Edit').length > 0
+  // hook ของ `event` ที่เรียก `_tools/<ชื่อ>` ตัวใดตัวหนึ่งใน `names` ของ vault นี้: `[{ matcher, command }]`
+  const hooksTo = async (event, names) => {
+    const targets = names.map((n) => join(MAIN_VAULT, '_tools', n))
+    const realTargets = await Promise.all(targets.map(real))
+    const isOurs = async (p) => targets.includes(p) || realTargets.includes(await real(p))
+    const blocks = Array.isArray(settings.hooks?.[event]) ? settings.hooks[event] : []
+    const found = []
+    for (const block of blocks)
+      for (const h of Array.isArray(block?.hooks) ? block.hooks : []) {
+        const paths = typeof h?.command === 'string' ? h.command.match(/[^"'\s]*_tools\/[\w.-]+\.(?:sh|mjs)/g) ?? [] : []
+        for (const p of paths)
+          if (await isOurs(p)) { found.push({ matcher: block.matcher ?? '', command: h.command }); break }
+      }
+    return found
+  }
+  const REWIRE = 'ต่อ hook ใหม่ด้วย bootstrap (update) หรือแก้ ~/.claude/settings.json เอง'
+
+  // frontmatter guard (spec *Frontmatter guard hook (Q15)*): PreToolUse บน Write|Edit — state ในใบ/map
+  // เปลี่ยนผ่าน `wf` เท่านั้น ⇒ ไม่มี guard = agent แก้ frontmatter ตรง ๆ ได้โดยไม่มีอะไรห้าม
+  const guardFile = join(MAIN_VAULT, '_tools/frontmatter-guard.mjs')
+  const guard = await hooksTo('PreToolUse', ['frontmatter-guard.mjs'])
+  const guardOnDisk = await exists(guardFile)
+  const guardWired = wiredOnWriteEdit(guard)
+  check(guardWired && guardOnDisk, 'frontmatter-guard ต่อไว้บน PreToolUse Write|Edit',
+    !guardOnDisk ? `ไม่มี ${guardFile} — อัปเดต _tools/ ด้วย bootstrap`
+      : guardWired ? on(guard, 'Write')[0].command : `ยังไม่ได้ต่อ — ${REWIRE}: PreToolUse "Write|Edit" → node ${guardFile}`)
+
+  // autocommit ใหม่ (spec *New autocommit (Q7)*): PostToolUse บน Write|Edit **เท่านั้น** — `wf` commit
+  // งานของตัวเอง และ Bash ที่เขียน vault ตรง ๆ โผล่ที่ข้อ "working tree สะอาด" แทน
+  const autocommit = await hooksTo('PostToolUse', ['autocommit.sh', 'autocommit.mjs'])
+  const autocommitWired = wiredOnWriteEdit(autocommit)
+  check(autocommitWired, 'autocommit ต่อไว้บน PostToolUse Write|Edit', autocommitWired ? '' : `ยังไม่ได้ต่อ — ${REWIRE}`)
+  // เส้นที่ต่อค้างจาก wiring รุ่นก่อน `wf`: matcher Bash (spec ตัดทิ้ง) · หรือ Write|Edit ซ้ำสองเส้น
+  // (ของเก่าเหลือค้างข้างของใหม่ ⇒ autocommit รันซ้ำทุก Write/Edit)
+  const onBash = on(autocommit, 'Bash')
+  const twice = Math.max(on(autocommit, 'Write').length, on(autocommit, 'Edit').length)
+  const leftovers = [
+    ...(onBash.length ? [`matcher ที่จับ Bash ${onBash.length} เส้น (Bash ไม่มี autocommit แล้ว)`] : []),
+    ...(twice > 1 ? [`Write|Edit ต่อซ้ำ ${twice} เส้น (รันซ้ำทุกครั้ง)`] : []),
+  ]
+  check(leftovers.length === 0, 'ไม่มี autocommit รุ่นเก่าต่อค้างอยู่',
+    leftovers.length ? `${leftovers.join(' · ')} — ${REWIRE}` : '')
 
   // hook ที่ยิงจริงคือไฟล์ของ **vault หลัก** เสมอ (settings.json ชี้ path นั้นตรง ๆ) ⇒ การแก้ที่ยัง
   // ค้างใน worktree ยังไม่มีผลกับใคร · รุ่นเก่า (ก่อน `autocommit.mjs`) ล้มเงียบไปกับ `|| true`
@@ -718,13 +618,40 @@ const byEffort = new Map()
         : vaultOk ? hookVault
           : `ได้ "${resolved}" แต่ vault อยู่ที่ ${MAIN_VAULT}`
             + (resolved.includes(VAULT_TOKEN) ? ` — โทเคน ${VAULT_TOKEN} ยังไม่ถูกเรนเดอร์` : ''))
-}
+})
 
-// ── 9. Obsidian รู้จัก vault นี้ ─────────────────────────────────────────────
-{
+// ── 7b. autocommit ล้มเหลวที่ยังไม่มีใครเคลียร์ ─────────────────────────────────
+// autocommit ไม่ block และไม่ล้มเงียบ: บอก agent ทาง `additionalContext` ในเทิร์นนั้น และต่อท้ายหนึ่งบรรทัด
+// (`<เวลา ISO>\t<ไฟล์>\t<เหตุ>`) ลง log ใน git dir ร่วมของ vault ⇒ doctor ฟ้องจนกว่าเจ้าของจะล้าง log เอง
+// (ล้าง = รับทราบแล้ว) · log ไม่มีหรือว่าง = ผ่าน · อ่าน git dir หรือ log ไม่ได้ = ตรวจไม่ได้ ⇒ ไม่ผ่าน
+await section('§7b autocommit failure log', async () => {
+  const label = 'ไม่มี autocommit ที่ล้มค้างใน wf-autocommit-failures.log'
+  try {
+    const { FAILURE_LOG } = await import('./lib/autocommit.mjs')
+    const commonDir = await run('git', ['-C', MAIN_VAULT, 'rev-parse', '--git-common-dir'])
+      .then((r) => real(resolve(MAIN_VAULT, r.stdout.trim())))
+    const logPath = join(commonDir, FAILURE_LOG)
+    const text = await readFile(logPath, 'utf8').catch((e) => {
+      if (e.code === 'ENOENT') return ''
+      throw e
+    })
+    const lines = text.split('\n').filter((l) => l.trim())
+    // บรรทัดที่ไม่ได้รูป `<เวลา>\t<ไฟล์>\t<เหตุ>` แสดงทั้งบรรทัดตามที่เป็น
+    const fields = (lines.at(-1) ?? '').split('\t')
+    const latest = fields.length >= 3 ? `${fields[0]} ${fields[1]}: ${fields.slice(2).join(' ')}` : fields.join(' ')
+    const quoted = `'${logPath.replace(/'/g, "'\\''")}'`
+    check(lines.length === 0, label, lines.length === 0 ? '' : `${lines.length} ครั้ง · ล่าสุด ${latest}`
+      + ` — commit ไฟล์ที่ค้างตามเหตุใน log แล้วล้าง log: : > ${quoted}`)
+  } catch (e) {
+    check(false, label, `อ่าน log ไม่ได้: ${e.message.split('\n')[0]}`)
+  }
+})
+
+// ── 8. Obsidian รู้จัก vault นี้ ─────────────────────────────────────────────
+await section('§8 Obsidian', async () => {
   const p = join(homedir(), 'Library/Application Support/obsidian/obsidian.json')
   const o = await readJson(p).catch(() => ({ vaults: {} }))
-  // เทียบ realpath ด้วยเหมือน §8 — Obsidian จดตาม path ที่ผู้ใช้ลากเข้าไป ซึ่งอาจมี symlink คั่น
+  // เทียบ realpath ด้วยเหมือน §7 — Obsidian จดตาม path ที่ผู้ใช้ลากเข้าไป ซึ่งอาจมี symlink คั่น
   // ⇒ เทียบสตริงตรง ๆ อย่างเดียวจะบอกว่า "ยังไม่ลงทะเบียน" ทั้งที่เปิด vault นี้อยู่ (ใบ 03)
   const vaultPaths = Object.values(o.vaults ?? {}).map((v) => v?.path).filter(Boolean)
   let known = vaultPaths.includes(MAIN_VAULT)
@@ -733,20 +660,26 @@ const byEffort = new Map()
     for (const v of vaultPaths) if (await real(v) === mainReal) { known = true; break }
   }
   check(known, 'Obsidian ลงทะเบียน vault นี้ไว้แล้ว')
-}
+})
 
-// ── 10. ติดตั้งจากเทมเพลต — manifest · โทเคนที่ต้องถูกเรนเดอร์ ───────────────
+// ── 9. ติดตั้งจากเทมเพลต — manifest · โทเคนที่ต้องถูกเรนเดอร์ ───────────────
 // vault ที่ติดตั้งจาก public template มี `.wayfinder-template.json` เป็นสัญญาว่า *ไฟล์ไหนเป็นของ
-// template* · หมวดนี้ตรวจฝั่ง "ติดตั้งครบและยังครบอยู่ไหม" ซึ่ง §1-§7 ไม่ได้มองเลย (ใบ 03)
-{
+// template* · หมวดนี้ตรวจฝั่ง "ติดตั้งครบและยังครบอยู่ไหม" ซึ่ง §1-§6 ไม่ได้มองเลย (ใบ 03)
+await section('§9 manifest', async () => {
   const MANIFEST = '.wayfinder-template.json'
-  const man = await readJson(join(VAULT, MANIFEST)).catch(() => null)
+  // ไม่มีไฟล์ = ยังไม่ได้ติดตั้ง (⚠️ ข้างล่าง) · มีแต่อ่านไม่ได้ = พัง (`wf` ก็ปฏิเสธ vault นี้ทั้งก้อน)
+  let unreadable = null
+  const man = await readJson(join(VAULT, MANIFEST)).catch((e) => {
+    if (e.code !== 'ENOENT') unreadable = e.message.split('\n')[0]
+    return null
+  })
+  if (unreadable !== null) check(false, `${MANIFEST} อ่านได้และมีรายชื่อไฟล์`, `อ่านไม่ได้: ${unreadable}`)
 
   // vault ที่ยังไม่เคยผ่าน installer **ไม่ใช่ความผิดพลาด** — vault ที่มีมาก่อน template ก็หน้าตาแบบนี้
   // ⇒ ⚠️ ไม่ใช่ ❌ (แบบเดียวกับ "มี ticket ใน vault") · และข้อที่ขึ้นกับ manifest จะ **ไม่ถูก
   // ลงทะเบียนเลย** แทนที่จะลงทะเบียนแบบเขียวโดยไม่ได้ตรวจอะไร — ตัวเลข `N/M` จะได้ไม่โกหกว่า
   // ตรวจครบแล้ว · บรรทัด ⚠️ นี้คือสิ่งที่บอกว่าทำไม M ถึงน้อยลง
-  warn(man !== null, `มี ${MANIFEST} (vault นี้ติดตั้งจากเทมเพลต)`,
+  if (unreadable === null) warn(man !== null, `มี ${MANIFEST} (vault นี้ติดตั้งจากเทมเพลต)`,
     man ? `template ${man.template_sha ? String(man.template_sha).slice(0, 12)
         : man.template_version ? `v${man.template_version} · npx` : '?'}`
       + ` · ติดตั้ง ${String(man.installed_at ?? '?').slice(0, 10)}`
@@ -760,9 +693,19 @@ const byEffort = new Map()
       `schema=${man.schema} · managed ${files.length}`
       + ` · seed ${Object.keys(man.seeded_once ?? {}).length} · สกิล ${skillFiles.length}`)
 
+    // vault schema (ฟิลด์ `vault_schema` แยกจาก `schema` ของ manifest เอง) — ตัดสินด้วย `checkSchema` ตัวเดียวกับ
+    // ที่ `wf` ใช้ปฏิเสธการเขียน ⇒ เก่ากว่า = "run `wf migrate`" · ใหม่กว่า = อัปเดต template
+    const schemaLabel = 'vault_schema ตรงกับที่ wf รองรับ'
+    try {
+      const { checkSchema } = await import('./lib/store.mjs')
+      check(true, schemaLabel, `vault_schema=${checkSchema(VAULT)}`)
+    } catch (e) {
+      check(false, schemaLabel, e.message)
+    }
+
     // manifest จด path ที่ **เรนเดอร์ลงไปในไฟล์แล้ว** ⇒ ย้าย/ก็อบ vault ไปที่อื่นโดยยังไม่รัน update
     // = ทุก path ที่เรนเดอร์ไว้ (hook · สกิล) ยังชี้กลับไปที่เดิม ทั้งที่ vault ไม่ได้อยู่ตรงนั้นแล้ว
-    // เทียบ realpath ทั้งสองฝั่งเหมือน §8/§9 · เทียบกับ `MAIN_VAULT` เพราะ path ที่เรนเดอร์คือของ
+    // เทียบ realpath ทั้งสองฝั่งเหมือน §7/§8 · เทียบกับ `MAIN_VAULT` เพราะ path ที่เรนเดอร์คือของ
     // vault หลักเสมอ ไม่ใช่ของ worktree ที่ doctor บังเอิญถูกรันอยู่
     const manVault = await real(String(man.vault ?? ''))
     const here = await real(MAIN_VAULT)
@@ -785,7 +728,7 @@ const byEffort = new Map()
     // vault เมื่อไหร่ = แดงใส่ prose ของตัวเอง แล้วคนจะเลิกอ่าน doctor ซึ่งแย่กว่าตัวบั๊ก
     //
     // `RENDER_EXEMPT` ของ bootstrap ถูกยกเว้นตรงนี้เพราะทั้งสามตัว *พูดถึง* โทเคนโดยตั้งใจ —
-    // ฝั่งที่เฝ้าสามตัวนั้นคือข้อ §8 (`autocommit.sh` resolve ได้ถูกไหม) กับข้อกลับด้านข้างล่าง
+    // ฝั่งที่เฝ้าสามตัวนั้นคือข้อ §7 (`autocommit.sh` resolve ได้ถูกไหม) กับข้อกลับด้านข้างล่าง
     const EXEMPT = new Set(['_tools/autocommit.sh', '_tools/bootstrap.mjs', '_tools/doctor.mjs'])
     const leftover = []
     for (const rel of files) {
@@ -824,31 +767,47 @@ const byEffort = new Map()
   }
   check(lost.length === 0, `ตัวเรนเดอร์ยังถือโทเคน ${VAULT_TOKEN} ไว้เอง`,
     lost.length ? `ถูกเรนเดอร์ทับ/หายไปแล้ว: ${lost.join(' · ')}` : holders.join(' · '))
-}
+})
 
 // ── รายงาน ──────────────────────────────────────────────────────────────────
-const pad = Math.max(...results.map((r) => [...r.label].length))
-for (const r of results) {
-  const icon = r.ok ? '✅' : r.soft ? '⚠️ ' : '❌'
-  console.log(`${icon}  ${r.label.padEnd(pad)}  ${r.detail}`.trimEnd())
-}
-
 const failed = results.filter((r) => !r.ok && !r.soft)
 const warned = results.filter((r) => !r.ok && r.soft)
 const hard = results.filter((r) => !r.soft)
-console.log(`\n${hard.length - failed.length}/${hard.length} ผ่าน` +
-  (warned.length ? ` · ${warned.length} เตือน (ไม่นับว่าพัง)` : ''))
 
-console.log(`
+// `process.exitCode` ไม่ใช่ `process.exit()` — exit ทันทีหลัง console.log ตัด stdout ที่ยังค้างใน pipe ทิ้ง
+// (เกิน ~64 KiB ⇒ JSON ขาดกลางทาง) · ปล่อยให้ process จบเองหลังเขียนครบ
+process.exitCode = failed.length ? 1 : 0
+if (JSON_OUT) console.log(JSON.stringify({ ok: failed.length === 0, checks: results, lint: lintReport }, null, 2))
+else printReport()
+
+function printReport() {
+  const pad = Math.max(...results.map((r) => [...r.label].length))
+  for (const r of results) {
+    const icon = r.ok ? '✅' : r.soft ? '⚠️ ' : '❌'
+    console.log(`${icon}  ${r.label.padEnd(pad)}  ${r.detail}`.trimEnd())
+  }
+
+  // finding ทีละบรรทัดแบบเดียวกับ `wf lint` — ข้อ §6 บอกแค่จำนวน
+  if (lintReport?.findings.length) {
+    console.log(`\n🩺 wf lint — ${lintReport.errors} error · ${lintReport.warnings} warning`)
+    for (const f of lintReport.findings) {
+      console.log(`  ${f.severity === 'error' ? '❌' : '⚠️ '}  ${f.rule}  ${f.ref}  ${f.message}`)
+      if (f.fix) console.log(`        fix: ${f.fix}`)
+    }
+  }
+
+  console.log(`\n${hard.length - failed.length}/${hard.length} ผ่าน` +
+    (warned.length ? ` · ${warned.length} เตือน (ไม่นับว่าพัง)` : ''))
+
+  // รายการรับงานด้วยมือใน Obsidian จาก spec (*Testing Decisions → Manual acceptance in Obsidian*) อยู่สี่ข้อแรก
+  console.log(`
 ตรวจด้วยเครื่องไม่ได้ — ต้องเปิด Obsidian ดูเอง:
-  • Dashboard แต่ละ view เรนเดอร์เป็นตาราง ไม่ใช่กล่องแดง "Dataview: <error>"
-    (view ว่างขึ้นบรรทัดเอียง "ไม่มี…" · 🩺 สะอาดขึ้น "✅ lint clean" = ปกติ ไม่ใช่พัง)
-  • 🔥 Frontier บน Dashboard ตรงกับ \`node _tools/wf.mjs frontier\` · 🩺 ตรงกับ \`wf lint\`
-  • Efforts · Effort Tickets · Picks เรนเดอร์ผ่าน loader · frontier ตรงกับ Dashboard ทุกหน้า
+  • ทุกหน้า (Dashboard · Efforts · Effort Tickets · Picks) เรนเดอร์ผ่าน \`dv.view\` กับ loader กลาง
+    เป็นตาราง ไม่ใช่กล่องแดง "Dataview: <error>" (view ว่างขึ้นบรรทัดเอียง "ไม่มี…" · 🩺 สะอาดขึ้น "✅ lint clean" = ปกติ)
+  • แก้ _tools/lib/core.mjs แล้ว render รอบถัดไปเห็นของใหม่โดยไม่ต้องรีสตาร์ต Obsidian (อาศัย mtime ใน getResourcePath)
+  • core พัง (ลองใส่ syntax error) ⇒ ทุกบล็อกขึ้นข้อความของ loader ที่บอกชื่อไฟล์ core + doctor
+  • หน้าทั้งสี่กับ \`node _tools/wf.mjs frontier\` แสดง frontier ชุดเดียวกัน · 🩺 บน Dashboard ตรงกับ \`wf lint\`
     (Picks เรียงเหมือน \`wf frontier\` · แก้ \`sort:\` แล้วทั้งสองเปลี่ยนตาม) · blocker ข้าม effort ขึ้นสถานะเดียวกันทุกหน้า
   • คลิกตัวเลขใบ (\`44/47\`) บน Efforts ⇒ เปิด Effort Tickets พร้อมเลือก effort นั้น
-  • แก้ _tools/lib/core.mjs แล้ว Dashboard รอบถัดไปเห็นของใหม่โดยไม่ต้องรีสตาร์ต Obsidian
-  • core พัง (ลองใส่ syntax error) ⇒ ทุกบล็อกขึ้น "โหลด core ไม่ได้" ที่บอกชื่อไฟล์ + doctor
   • Graph View ระบายสี node ตาม status จริง`)
-
-process.exit(failed.length ? 1 : 0)
+}
