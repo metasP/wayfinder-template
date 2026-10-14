@@ -37,7 +37,9 @@ const PICKS_REF = "Wayfinder Picks"
 // Every core export the pages call; a core without them is too old (or not the core) — same message.
 const REQUIRED = [
   "buildIndex", "frontier", "lint", "ticketsBlockOf", "isoDate",
-  "ticketState", "isPending", "openBlockers", "unblocks",
+  "ticketState", "isPending", "openBlockers", "unblocks", "dependents",
+  "parsePickSort", "parseRef", "readConfig", "daysBetween",
+  "effortSummary", "mapWarnings", "blockerEdges",
 ]
 
 const say = (text) => dv.paragraph(text)
