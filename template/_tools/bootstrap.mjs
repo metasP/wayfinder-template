@@ -779,6 +779,9 @@ log(`
      (ตัวปลั๊กอิน Dataview + ค่าตั้ง + สี Graph View มากับ repo แล้ว ไม่ต้องโหลดใหม่)
   3. เปิดโน้ต "Wayfinder Dashboard" กับ "Wayfinder Efforts"
   4. ถ้าเพิ่งต่อ hook: เปิด /hooks ใน Claude Code หนึ่งครั้งให้ config โหลดใหม่
+  5. ถ้า Claude Code รัน Bash ใน sandbox: เพิ่ม ${TARGET}
+     เข้า sandbox.filesystem.allowWrite ใน ~/.claude/settings.json ไม่งั้น wf เขียนลง vault ไม่ได้
+     แล้วรีสตาร์ต Claude Code ให้ค่านี้โหลด
 ────────────────────────────────────────────────────────────
 `)
 
