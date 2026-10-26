@@ -1,23 +1,8 @@
 // `wf claim <ref> [--by name]` — open → claimed (spec *Verbs*; *`claimed_by` value*). The ticket is
 // re-read under the lock, so a claim another session made a moment ago is never overwritten.
 import { ticketArg } from "../args.mjs"
-import { usageError } from "../errors.mjs"
 import { report } from "../pipeline.mjs"
-import { linkedWorktreeBranch } from "../repo.mjs"
-import { assertMapActive, assertTransition, assertUnblocked, transition } from "./ticket.mjs"
-
-const SESSION_ID_CHARS = 8
-
-// Who is claiming: `--by`, else the branch of a linked worktree the caller runs in, else the Claude
-// Code session id. A main checkout's branch names no session, so it is never used.
-const claimant = (by) => {
-  if (by !== undefined) return by
-  const branch = linkedWorktreeBranch(process.cwd())
-  if (branch) return branch
-  const session = process.env.CLAUDE_CODE_SESSION_ID?.trim()
-  if (session) return `session:${session.slice(0, SESSION_ID_CHARS)}`
-  throw usageError("cannot tell who is claiming — pass `--by <name>`")
-}
+import { assertMapActive, assertTransition, assertUnblocked, claimant, transition } from "./ticket.mjs"
 
 export default {
   name: "claim",

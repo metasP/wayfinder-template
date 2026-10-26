@@ -288,8 +288,8 @@ Ticket transitions (Q24):
 | --- | --- | --- |
 | `new <repo/effort> --type T --title "…" [--question "…" \| stdin] [--blocker ref]… [--target-repo R]` | — → `open` | Map exists and is not `done` / `dropped`. NN = highest + 1, reserved under the lock with an exclusive create. Writes the `## Question` / `## Answer` skeleton. Blockers must resolve and must not form a cycle. |
 | `claim <ref> [--by name]` | `open` → `claimed` | Re-read under the lock. Not blocked; map `active`. Stamps `claimed_by`. |
-| `release <ref>` | `claimed`/`waiting` → `open` | Clears `claimed_by`, `status_note`, `wait_until`. |
-| `wait <ref> --note "…" [--until YYYY-MM-DD]` | `open`/`claimed` → `waiting` | Note required. |
+| `release <ref>` | `claimed`/`waiting` → `open` | Clears `claimed_by`, `status_note`, `wait_until`. Refuses a `claimed_by` other than the caller (found as for `claim`) unless `--force`; a ticket `wf migrate` marked `unknown (before wf)` is anyone's. |
+| `wait <ref> --note "…" [--until YYYY-MM-DD]` | `open`/`claimed` → `waiting` | Note required. Refuses a `claimed_by` other than the caller unless `--force`. |
 | `resolve <ref> --gist "…"` | `claimed`/`waiting` → `resolved` | `## Answer` non-empty and not the placeholder. Appends `- [[NN-slug]]: <gist>` to *Decisions so far*, re-reading the map under the lock. |
 | `resolve <ref> --out-of-scope --gist "…"` | `open`/`claimed` → `resolved` | Appends to `## Out of scope` instead. |
 
