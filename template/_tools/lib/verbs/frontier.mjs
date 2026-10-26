@@ -11,6 +11,7 @@ const row = (index, t) => ({
   type: t.type,
   title: t.title,
   target_repo: t.targetRepo,
+  serial: index.maps.get(t.effortKey).serial,
   unblocks: unblocks(index, t),
 })
 

@@ -105,7 +105,7 @@ Get the candidates from the same read model as the Dashboard — one call serves
 node __VAULT__/_tools/wf.mjs frontier --from <repo/effort> --json
 ```
 
-`data.tickets` lists every open, unblocked ticket on an active map, already in the owner's **pick order** (the `sort:` in *Wayfinder Picks*; `--from` gives its `same_effort` key a context). Each row carries `ref` (`repo/effort#NN`), `repo`, `effort`, `nn`, `type`, `title` and `target_repo`. Keep the rows of this map's `repo`/`effort`, in the order given — **that order is the ranking**, and its top row is the top pick.
+`data.tickets` lists every open, unblocked ticket on an active map, already in the owner's **pick order** (the `sort:` in *Wayfinder Picks*; `--from` gives its `same_effort` key a context). Each row carries `ref` (`repo/effort#NN`), `repo`, `effort`, `nn`, `type`, `title`, `target_repo` and `serial`. Keep the rows of this map's `repo`/`effort`, in the order given — **that order is the ranking**, and its top row is the top pick.
 
 Then walk the rows from the top and add each one that **collides** with nothing already in the batch, until the batch holds 3. Two tickets collide on:
 
@@ -113,6 +113,8 @@ Then walk the rows from the top and add each one that **collides** with nothing 
 - **same repo** — both change code in one repo (a ticket's repo is its `target_repo` when set, else its home `repo`).
 
 A colliding row is skipped and the walk goes on to the next row. **1 is a fine batch.**
+
+**Serial map** — the rows carry `serial: true` (the map's frontmatter has `serial: true`; `wf serial <repo/effort> on` set it): its tickets are worked one at a time, so the batch is **the top row alone**. If the map's `## Tickets` block already shows a `claimed` line, spawn nothing — `wf claim` in the new session would refuse it — and report which ticket holds the map.
 
 ⇒ Spawn without asking; [step 7](#workflow) reports the walk so the user can override in one word.
 

@@ -1,7 +1,8 @@
-// `wf chart <repo/effort> --title "…"` — — → draft (spec *Verbs*: map transitions; Q25). Creates
+// `wf chart <repo/effort> --title "…" [--serial]` — — → draft (spec *Verbs*: map transitions; Q25). Creates
 // `map.md` with the standard section skeleton and the generated `## Tickets` block. Headings stay
 // English; the Destination placeholder and the empty-block line follow `language:` (Q36). `map-status
-// active` treats the placeholder as no Destination.
+// active` treats the placeholder as no Destination. `--serial` writes `serial: true`, as `wf serial … on`
+// does on a map that exists.
 import { effortRefArg, oneLineFlag } from "../args.mjs"
 import { BLOCK_CLOSE, BLOCK_OPEN, noteText, renderTicketsBlock } from "../core.mjs"
 import { editFrontmatter } from "../edit.mjs"
@@ -50,8 +51,8 @@ const assertNoMap = (ctx, key, path) => {
 export default {
   name: "chart",
   summary: "— → draft: a new map with the section skeleton",
-  usage: 'wf chart <repo/effort> --title "…" [--json]',
-  flags: { title: "string" },
+  usage: 'wf chart <repo/effort> --title "…" [--serial] [--json]',
+  flags: { title: "string", serial: "boolean" },
   minPositionals: 1,
   maxPositionals: 1,
   writes: () => true,
@@ -62,9 +63,10 @@ export default {
     assertNoMap(ctx, key, path)
     const language = ctx.config.language
     const fields = { kind: "map", title: flags.title, status: "draft", status_since: ctx.today, created: ctx.today }
+    if (flags.serial) fields.serial = true
     const rendered = renderTicketsBlock(ctx.index, key, language)
     const text = editFrontmatter("---\n---\n", Object.entries(fields)) + body(flags.title, rendered, language).join("\n")
-    const data = { ref: key, path, title: flags.title, status: "draft", status_since: ctx.today, created: ctx.today }
+    const data = { ref: key, path, title: flags.title, status: "draft", status_since: ctx.today, created: ctx.today, ...(flags.serial && { serial: true }) }
     return { ref: key, edits: [{ path, text, create: true }], data }
   },
   report: (outcome) =>

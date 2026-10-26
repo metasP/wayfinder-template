@@ -90,3 +90,18 @@ export function blockerArg(input, ctx, home) {
 
 /** How a ticket in effort `homeKey` links blocker `b`: a bare wikilink within an effort, a full path across. */
 export const blockerLink = (homeKey, b) => `[[${b.effortKey === homeKey ? b.name : b.path.replace(/\.md$/, "")}]]`
+
+/**
+ * Refuse a claim on a serial map (`serial: true`) while another of its tickets is `claimed` — its
+ * tickets are worked one at a time. `--force` claims anyway.
+ */
+export function assertSerialFree(index, t, { force }) {
+  const m = index.efforts.get(t.effortKey)?.map
+  if (force || !m?.serial) return
+  const held = index.efforts.get(t.effortKey).tickets.filter((o) => o.ref !== t.ref && o.status === "claimed")
+  if (!held.length) return
+  const what = held.map((o) => `${o.ref} (claimed by ${o.claimedBy ?? "nobody"})`).join(", ")
+  throw invariantError(`map ${m.key} is serial and ${what} is in progress — its tickets are claimed one at a time`, {
+    fix: [`wf resolve ${held[0].ref} --gist "…" (finish it first)`, `wf claim ${t.ref} --force (work them in parallel anyway)`],
+  })
+}

@@ -43,6 +43,7 @@ export const MAP_FIELDS = deepFreeze({
   status_since: { required: true, shape: "scalar", format: "date" },
   status_note: { required: ["paused", "dropped"], shape: "scalar" },
   runs: { required: false, shape: "scalar", format: "integer" },
+  serial: { required: false, shape: "scalar", values: [true, false] },
   repos: { required: false, shape: "list" },
   blocked_by: { required: false, shape: "scalar", format: "wikilink" },
   superseded_by: { required: false, shape: "scalar" },
@@ -213,6 +214,7 @@ const mapRecord = (id, note) => {
     statusNote: optionalString(fm.status_note),
     blockedBy: fm.blocked_by === "" ? null : (fm.blocked_by ?? null),
     supersededBy: fm.superseded_by ?? null,
+    serial: fm.serial === true,
     // The text between the `wf:tickets` markers, when the caller read the body: null = no markers,
     // undefined = not read (drift isn't checked).
     ticketsBlock: note.ticketsBlock,
