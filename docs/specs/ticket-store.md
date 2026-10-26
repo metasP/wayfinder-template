@@ -275,7 +275,7 @@ A claim whose `status_since` is older than `claim_stale_days` is reported. `clai
 
 All verbs:
 
-- Accept refs as `repo/effort#NN`, a vault path, or a wikilink, and print refs as `repo/effort#NN`.
+- Accept refs as `repo/effort#NN`, `repo/effort/NN`, a vault path, or a wikilink, and print refs as `repo/effort#NN`.
 - Support `--json`.
 - Exit `0` on success; `1` when an invariant is violated (the message states the invariant and the fixing
   command); `2` on usage or environment errors. A write that fails with `EPERM`/`EACCES` says the vault is
@@ -286,7 +286,7 @@ Ticket transitions (Q24):
 
 | Verb | From → to | Invariants and side effects |
 | --- | --- | --- |
-| `new <repo/effort> --type T --title "…" [--question "…" \| stdin] [--blocker ref]… [--target-repo R]` | — → `open` | Map exists and is not `done` / `dropped`. NN = highest + 1, reserved under the lock with an exclusive create. Writes the `## Question` / `## Answer` skeleton. Blockers must resolve and must not form a cycle. |
+| `new <repo/effort> --type research\|prototype\|grilling\|task\|R\|P\|G\|T --title "…" [--question "…" \| stdin] [--blocker ref]… [--target-repo R]` | — → `open` | Map exists and is not `done` / `dropped`. NN = highest + 1, reserved under the lock with an exclusive create. Writes the `## Question` / `## Answer` skeleton. Blockers must resolve and must not form a cycle. |
 | `claim <ref> [--by name]` | `open` → `claimed` | Re-read under the lock. Not blocked; map `active`. Stamps `claimed_by`. |
 | `release <ref>` | `claimed`/`waiting` → `open` | Clears `claimed_by`, `status_note`, `wait_until`. |
 | `wait <ref> --note "…" [--until YYYY-MM-DD]` | `open`/`claimed` → `waiting` | Note required. |
@@ -312,7 +312,7 @@ Other verbs:
   a full-path wikilink across efforts, and rejects cycles.
 - `bump-runs <repo/effort> [--count k]` allocates `runs+1 … runs+k` and prints the range.
 - `frontier [--repo R] [--from repo/effort] [--json]` returns open, unblocked tickets on active maps, ordered by
-  the Picks rules. `--repo` matches the home repo or `target_repo`. `--from` gives `same_effort` its context.
+  the Picks rules. `--repo` matches the home repo or `target_repo`. `--from` gives `same_effort` its context: it sorts, it never filters.
 - `lint [repo/effort…] [--rule <rule>] [--json] [--fix]` prints findings for the whole vault or the named efforts.
   `--fix` only regenerates derived blocks; it never changes state. The text report (and `doctor`'s) folds a rule
   with 5 or more warnings into one line that names `wf lint --rule <rule>`, and prints errors last, so a

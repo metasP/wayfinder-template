@@ -69,6 +69,18 @@ describe("wf new", () => {
   })
 })
 
+describe("wf new — --type letters", () => {
+  test("R/P/G/T (either case) write the full type", () => {
+    const vault = vaultWith(effort())
+    for (const [letter, type] of [["R", "research"], ["p", "prototype"], ["G", "grilling"], ["t", "task"]]) {
+      const r = run(vault, ["new", "r/e", "--type", letter, "--title", `T ${letter}`, "--question", "q", "--json"])
+      assert.equal(r.code, 0, r.stderr)
+      assert.equal(r.json.data.type, type)
+      assert.match(read(vault, r.json.data.path), new RegExp(`^type: ${type}$`, "m"))
+    }
+  })
+})
+
 describe("wf new — options", () => {
   const base = () =>
     vaultWith([
@@ -136,7 +148,7 @@ describe("wf new refuses", () => {
 
   test("usage errors (exit 2): a bad --type, no --title, no question", () => {
     const vault = vaultWith(effort())
-    unchanged(vault, ["new", "r/e", "--type", "chore", "--title", "T", ...Q], 2, /--type must be one of research, prototype, grilling, task/)
+    unchanged(vault, ["new", "r/e", "--type", "chore", "--title", "T", ...Q], 2, /--type must be one of research, prototype, grilling, task \(or R\/P\/G\/T\)/)
     unchanged(vault, ["new", "r/e", "--type", "task", ...Q], 2, /new needs --title/)
     assert.equal(wf(vault, ["new", "r/e", "--type", "task", "--title", "T"], { env: NO_SESSION, input: "" }).code, 2)
   })

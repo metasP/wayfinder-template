@@ -195,7 +195,7 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
   ยังเขียนด้วย Write/Edit ตามปกติ แล้ว `autocommit.sh` commit ให้
 - เรียกด้วย **absolute path** เสมอ (`<vault>` = โฟลเดอร์ของ README นี้ — ย่อหน้า wayfinder ใน `~/.claude/CLAUDE.md`
   จดไว้ให้) · `wf` เขียนและ commit ลง main checkout ของ vault เสมอ ไม่ว่าจะเรียกจาก repo หรือ worktree ไหน
-- อ้างใบด้วย `repo/effort#NN` · path ใน vault · หรือ wikilink ก็ได้ — `wf` พิมพ์กลับเป็น `repo/effort#NN` เสมอ
+- อ้างใบด้วย `repo/effort#NN` · `repo/effort/NN` · path ใน vault · หรือ wikilink ก็ได้ — `wf` พิมพ์กลับเป็น `repo/effort#NN` เสมอ
 - exit `0` สำเร็จ · `1` ผิด invariant (ข้อความบอกกฎ + คำสั่งที่แก้) · `2` ใช้ผิดหรือสภาพแวดล้อมไม่พร้อม
   (vault schema เก่า ⇒ `wf migrate` แล้ว `wf migrate --yes` · เขียนไม่ได้เพราะ `EPERM` ⇒ vault อยู่นอก path ที่ sandbox ให้เขียน)
 - verb ที่เขียนทำตามลำดับเดียวกันหมด: lock → อ่านโน้ตใหม่ → เช็ค invariant → เขียนแบบ atomic → สร้าง
@@ -214,7 +214,7 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
 | `wf map-status <repo/effort> paused --note "…"` | map: อื่น ๆ → `paused` | `--note` บังคับ · `--superseded-by <repo/effort>` ได้ |
 | `wf map-status <repo/effort> dropped --note "…"` | map: อื่น ๆ → `dropped` | `--note` บังคับ · `--superseded-by <repo/effort>` ได้ |
 | `wf map-status <repo/effort> done` | map: อื่น ๆ → `done` | ไม่มีใบ `open`/`claimed`/`waiting` ค้าง · เตือนให้รัน `/retro` |
-| `wf new <repo/effort> --type T --title "…"` | ticket: — → `open` | map ต้องไม่ `done`/`dropped` (`draft`/`active`/`paused` รับใบใหม่ได้) · `NN` = เลขสูงสุด + 1 จองใต้ lock ด้วย exclusive create ⇒ สอง session ไม่มีทางได้เลขเดียวกัน · เขียนโครง Question/Answer (`--question "…"` หรือ stdin) · `--blocker ref` ต้องชี้ใบที่มีจริง · `--target-repo R` ได้ |
+| `wf new <repo/effort> --type research\|prototype\|grilling\|task --title "…"` | ticket: — → `open` | map ต้องไม่ `done`/`dropped` (`draft`/`active`/`paused` รับใบใหม่ได้) · `NN` = เลขสูงสุด + 1 จองใต้ lock ด้วย exclusive create ⇒ สอง session ไม่มีทางได้เลขเดียวกัน · เขียนโครง Question/Answer (`--question "…"` หรือ stdin) · `--blocker ref` ต้องชี้ใบที่มีจริง · `--target-repo R` ได้ · `--type` รับตัวอักษร `R`/`P`/`G`/`T` แบบชื่อ chip ด้วย |
 | `wf claim <ref>` | `open` → `claimed` | อ่านใบใหม่ใต้ lock ⇒ สอง session claim ใบเดียวกันไม่ได้ · ใบต้องไม่ติด blocker และ map ต้อง `active` · ประทับ `claimed_by` (`--by name` · ไม่งั้นชื่อ branch ของ worktree ที่เรียก · ไม่งั้น session id) |
 | `wf release <ref>` | `claimed`/`waiting` → `open` | ล้าง `claimed_by` · `status_note` · `wait_until` |
 | `wf wait <ref> --note "…"` | `open`/`claimed` → `waiting` | ต้องบอกว่ารออะไร · `--until YYYY-MM-DD` ⇒ lint เตือนเมื่อเลยวัน · `claimed_by` คงอยู่ — คนเดิมยังถือใบ |
@@ -222,7 +222,7 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
 | `wf resolve <ref> --out-of-scope --gist "…"` | `open`/`claimed` → `resolved` | ใบที่เลย Destination · ต่อท้าย `## Out of scope` แทน `## Decisions so far` |
 | `wf block <ref> <blocker-ref>` | — | เพิ่ม (หรือ `--remove`) blocker หนึ่งเส้น · ไม่ยอมถ้าเกิดวง |
 | `wf bump-runs <repo/effort>` | — | จองเลขรอบถัดไป (`--count k` ⇒ `k` เลข) ใต้ lock แล้วพิมพ์ช่วงนั้น |
-| `wf frontier` | — (อ่านอย่างเดียว) | ใบที่หยิบได้ เรียงตาม [[Wayfinder Picks]] · `--repo R` (repo ต้นทางหรือ `target_repo`) · `--from repo/effort` |
+| `wf frontier` | — (อ่านอย่างเดียว) | ใบที่หยิบได้ เรียงตาม [[Wayfinder Picks]] · `--repo R` (repo ต้นทางหรือ `target_repo`) กรอง · `--from repo/effort` แค่เรียงใบของ effort นั้นขึ้นก่อน ไม่ได้กรอง (`same_effort`) |
 | `wf lint` | — (อ่านอย่างเดียว) | findings ทั้ง vault หรือเฉพาะ effort ที่ระบุ · `--fix` สร้าง block ที่ derive ได้ใหม่ ไม่เปลี่ยนสถานะ |
 | `wf migrate` | vault schema 1 → 2 | ค่าเริ่มต้นแค่พิมพ์ diff · `--yes` เขียนทั้งหมดเป็น commit เดียว |
 

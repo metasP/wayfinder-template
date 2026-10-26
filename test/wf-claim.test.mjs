@@ -29,6 +29,14 @@ describe("wf claim", () => {
     assert.match(fm, new RegExp(`^status_since: ${day}$`, "m"))
     assert.match(fm, /^claimed_by: alice$/m)
   })
+
+  test("takes the ticket as repo/effort/NN too", () => {
+    const vault = oneTicket()
+    const r = run(vault, ["claim", "r/e/01", "--by", "alice", "--json"])
+    assert.equal(r.code, 0, r.stderr)
+    assert.equal(r.json.data.ref, "r/e#01")
+    assert.match(frontmatterOf(vault, "r/e/issues/01-a.md"), /^status: claimed$/m)
+  })
 })
 
 // An invariant refusal: exit 1, the invariant on stderr, the fixing command under it, nothing written.
