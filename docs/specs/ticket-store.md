@@ -87,7 +87,9 @@ Give the tracker a real module with a small interface, and make the vault's stat
 19. As an agent, I want a usage or environment error (bad arguments, vault not writable from my sandbox, lock held
     too long) to exit 2 and say which, so that I can tell "I did something wrong" from "the environment is wrong".
 20. As an agent running in a git worktree, I want `wf` to write and commit in the vault's main checkout regardless
-    of my current directory, so that tracker state never strands on a branch.
+    of my current directory, so that tracker state never strands on a branch. When the ticket I name has different prose in my worktree
+    than in the main checkout, I want a warning naming the main checkout's path (never a refusal), and
+    `resolve --answer-file` to carry my worktree's answer over in the resolve's own commit.
 21. As an agent, I want a direct Edit of tracker frontmatter to be refused with a message naming the verb to use,
     so that I can't bypass the invariants by accident.
 22. As an agent, I want to be told in the same turn when a prose autocommit fails, so that I can fix it before the
@@ -290,7 +292,7 @@ Ticket transitions (Q24):
 | `claim <ref> [--by name]` | `open` → `claimed` | Re-read under the lock. Not blocked; map `active`. Stamps `claimed_by`. |
 | `release <ref>` | `claimed`/`waiting` → `open` | Clears `claimed_by`, `status_note`, `wait_until`. |
 | `wait <ref> --note "…" [--until YYYY-MM-DD]` | `open`/`claimed` → `waiting` | Note required. |
-| `resolve <ref> --gist "…"` | `claimed`/`waiting` → `resolved` | `## Answer` non-empty and not the placeholder. Appends `- [[NN-slug]]: <gist>` to *Decisions so far*, re-reading the map under the lock. |
+| `resolve <ref> --gist "…" [--answer-file <file>]` | `claimed`/`waiting` → `resolved` | `## Answer` non-empty and not the placeholder. Appends `- [[NN-slug]]: <gist>` to *Decisions so far*, re-reading the map under the lock. `--answer-file` first replaces the ticket's `## Answer` in the main checkout with the file's (its `## Answer` section when it has one, else all of it), in the same commit — how a session in a vault worktree resolves. |
 | `resolve <ref> --out-of-scope --gist "…"` | `open`/`claimed` → `resolved` | Appends to `## Out of scope` instead. |
 
 An `open` ticket can't be resolved directly unless `--out-of-scope` is given.

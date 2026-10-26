@@ -51,7 +51,7 @@ describe("usage errors exit 2", () => {
     assert.match(top.stdout, /wf release <ref> \[--json\]/)
     assert.match(top.stdout, /wf wait <ref> --note "…" \[--until YYYY-MM-DD\] \[--json\]/)
     assert.match(top.stdout, /wf new <repo\/effort> --type T --title "…" \[--question "…" \| stdin\] \[--blocker ref\]… \[--target-repo R\] \[--json\]/)
-    assert.match(top.stdout, /wf resolve <ref> --gist "…" \[--out-of-scope\] \[--json\]/)
+    assert.match(top.stdout, /wf resolve <ref> --gist "…" \[--answer-file <file>\] \[--out-of-scope\] \[--json\]/)
     assert.match(top.stdout, /wf block <ref> <blocker-ref> \[--remove\] \[--json\]/)
     assert.match(top.stdout, /wf chart <repo\/effort> --title "…" \[--json\]/)
     assert.match(top.stdout, /wf map-status <repo\/effort> active\|paused\|dropped\|done \[--note "…"\] \[--superseded-by <repo\/effort>\] \[--json\]/)

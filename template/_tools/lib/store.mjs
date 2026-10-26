@@ -59,6 +59,24 @@ export function locateVault(toolsDir) {
   return { vault: join(mainTop, relative(realTopDir, checkout)), checkout }
 }
 
+/**
+ * The vault directory as the linked worktree holding `cwd` has it, when `cwd` is in a linked worktree of
+ * the vault's repository (wf run by the main checkout's path from a session's worktree); else null.
+ */
+export function worktreeVaultOf(cwd, vault) {
+  const r = runGit(cwd, ["rev-parse", "--show-toplevel", "--git-common-dir"])
+  if (!r.ok) return null
+  const [top, commonDir] = r.stdout.trim().split("\n")
+  try {
+    const vaultTop = realTop(vault)
+    if (realpathSync(resolve(cwd, commonDir)) !== realpathSync(resolve(vault, git(vault, ["rev-parse", "--git-common-dir"]).trim()))) return null
+    const tree = realpathSync(top)
+    return tree === vaultTop ? null : join(tree, relative(vaultTop, realpathSync(vault)))
+  } catch {
+    return null
+  }
+}
+
 const isInside = (rel) => rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)
 
 // The real path when it exists — the roots are real paths, the input may go through a symlink.
