@@ -119,11 +119,13 @@ blocked_by: "[[example-repo/schema-cleanup/issues/12-freeze-legacy-columns]]"
 
 ตอนปิด map คือจังหวะเดียวที่เห็นทั้ง effort ครบ ⇒ เก็บบทเรียนเข้า harness ไว้ก่อนจะลืม
 
-1. `wf map-status <repo/effort> done` — ไม่ยอมถ้ายังมีใบค้าง · สำเร็จแล้วพิมพ์เตือนให้รัน `/retro` · map ที่มี
+1. `wf map-status <repo/effort> done` — ไม่ยอมถ้ายังมีใบค้าง หรือ `wf lint` ของ effort มี error (`--force` ปิดทั้งที่มี) ·
+   สำเร็จแล้วพิมพ์เตือนให้รัน `/retro` · map ที่มี
    `## Build board` ต้องรอให้การ์ดทุกใบในนั้นปิดก่อน (`wf` มองไม่เห็นการ์ด — เช็คเอง)
 2. **บอกผู้ใช้ให้พิมพ์ `/retro` เอง** — skill นี้ตั้ง `disable-model-invocation: true` ⇒ agent เรียกผ่าน
    Skill tool ไม่ได้ · ถ้าไม่ระบุ มันจะ retro แค่ *session ปัจจุบัน* แต่ map เดินมาหลาย session ⇒ ให้ระบุ
-   ขอบเขตเป็นทั้ง effort เช่น `/retro ทุก session ที่แตะ <vault>/<repo>/<effort>/`
+   ขอบเขตเป็นทั้ง effort เช่น `/retro ทุก session ที่แตะ <vault>/<repo>/<effort>/` · หรือแทนการรอผู้ใช้พิมพ์:
+   เปิด side session ที่ prompt เป็นบรรทัดนั้น (ผู้ใช้กดเริ่มอย่างเดียว)
 3. ข้อเสนอแต่ละข้อที่ผู้ใช้รับ ไปลงที่ใดที่หนึ่ง **ที่เดียว** (ข้อที่ผู้ใช้ปัดไม่ต้องลงที่ไหน)
 
    | ข้อเสนอเป็น… | ไปที่ |
@@ -213,7 +215,7 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
 | `wf map-status <repo/effort> active` | map: อื่น ๆ → `active` | `## Destination` ต้องมีเนื้อจริง ไม่ใช่ข้อความ placeholder ของ `chart` |
 | `wf map-status <repo/effort> paused --note "…"` | map: อื่น ๆ → `paused` | `--note` บังคับ · `--superseded-by <repo/effort>` ได้ |
 | `wf map-status <repo/effort> dropped --note "…"` | map: อื่น ๆ → `dropped` | `--note` บังคับ · `--superseded-by <repo/effort>` ได้ |
-| `wf map-status <repo/effort> done` | map: อื่น ๆ → `done` | ไม่มีใบ `open`/`claimed`/`waiting` ค้าง · เตือนให้รัน `/retro` |
+| `wf map-status <repo/effort> done` | map: อื่น ๆ → `done` | ไม่มีใบ `open`/`claimed`/`waiting` ค้าง · lint ของ effort ไม่มี error (`--force` ข้าม) · เตือนให้รัน `/retro` |
 | `wf new <repo/effort> --type T --title "…"` | ticket: — → `open` | map ต้องไม่ `done`/`dropped` (`draft`/`active`/`paused` รับใบใหม่ได้) · `NN` = เลขสูงสุด + 1 จองใต้ lock ด้วย exclusive create ⇒ สอง session ไม่มีทางได้เลขเดียวกัน · เขียนโครง Question/Answer (`--question "…"` หรือ stdin) · `--blocker ref` ต้องชี้ใบที่มีจริง · `--target-repo R` ได้ |
 | `wf claim <ref>` | `open` → `claimed` | อ่านใบใหม่ใต้ lock ⇒ สอง session claim ใบเดียวกันไม่ได้ · ใบต้องไม่ติด blocker และ map ต้อง `active` · ประทับ `claimed_by` (`--by name` · ไม่งั้นชื่อ branch ของ worktree ที่เรียก · ไม่งั้น session id) |
 | `wf release <ref>` | `claimed`/`waiting` → `open` | ล้าง `claimed_by` · `status_note` · `wait_until` |

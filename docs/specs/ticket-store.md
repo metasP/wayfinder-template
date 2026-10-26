@@ -302,7 +302,7 @@ Map transitions (Q25):
 | `chart <repo/effort> --title "…"` | Creates `map.md` in `draft` with the standard section skeleton. Refuses if the map exists. |
 | `map-status <repo/effort> active` | Requires a non-empty `## Destination`. |
 | `map-status <repo/effort> paused\|dropped --note "…" [--superseded-by <repo/effort>]` | `--note` is required. |
-| `map-status <repo/effort> done` | Requires no ticket in `open`/`claimed`/`waiting`. Prints a reminder to run `/retro`. |
+| `map-status <repo/effort> done [--force]` | Requires no ticket in `open`/`claimed`/`waiting`, and no lint error in the effort unless `--force`. Prints a reminder to run `/retro`. |
 
 Every map transition clears or replaces `status_note`.
 
@@ -392,6 +392,8 @@ What every write verb does, in order:
 - `done` map with pending tickets.
 - Unknown pick-sort key.
 - YAML outside the subset.
+- `resolved` ticket whose `## Answer` is empty or the placeholder (`resolved-without-answer`), unless the map lists
+  it under `## Out of scope`.
 
 **warn:**
 
@@ -406,6 +408,13 @@ What every write verb does, in order:
 - A `.md` file directly in an effort's `issues/` whose name doesn't start with `NN-` (`unindexed-ticket`): the
   index can't read it, so every view and verb would skip it silently.
 - Legacy `repo`/`effort` fields still present ("run `wf migrate`").
+- `resolved` ticket with `target_repo` or `target_branch` whose `## Answer` names a branch but links no PR
+  (`branch-without-pr`).
+- A file in an effort's `issues/` and a `.md` under its `assets/` with the same name (`issue-asset-name-clash`): a bare
+  `[[name]]` is ambiguous.
+- The same effort slug under two repo folders (`effort-in-two-repos`).
+- An asset with `superseded_by:` that a live note still links (`superseded-asset-linked`) — live: a map outside its
+  `## Decisions so far`/`## Retro`, an unresolved ticket, an asset not itself superseded; the successor is exempt.
 
 ### Frontmatter guard hook (Q15)
 

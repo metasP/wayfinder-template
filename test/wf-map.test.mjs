@@ -218,6 +218,7 @@ describe("wf map-status", () => {
     const text = run(vaultWith(effort({}, [ticket("r/e/issues/01-a.md", { status: "resolved" })])), ["map-status", "r/e", "done"])
     assert.match(text.stdout, /^map r\/e: active → done/)
     assert.match(text.stdout, /run \/retro/)
+    assert.match(text.stdout, /start a side session with the prompt "\/retro every session that touched r\/e\/"/)
     assert.match(frontmatterOf(vault, "r/e/map.md"), /^status: done$/m)
   })
 
@@ -298,6 +299,20 @@ describe("wf map-status refuses", () => {
     refused(vaultWith(effort({ status: "done" })), ["map-status", "r/e", "done"], 1, /map r\/e is already done/)
   })
 
+  test("done with a lint error in the effort (exit 1), and --force closes it anyway", () => {
+    const unanswered = { ...ticket("r/e/issues/01-a.md", { status: "resolved" }), body: "## Answer\n\n(filled in at resolve)\n" }
+    const vault = vaultWith(effort({}, [unanswered]))
+    refused(vault, ["map-status", "r/e", "done"], 1, /r\/e has 1 lint error: r\/e#01 resolved-without-answer — a map is done when wf lint shows none/, "wf lint r/e")
+    assert.equal(run(vault, ["map-status", "r/e", "done", "--force"]).code, 0)
+    assert.match(frontmatterOf(vault, "r/e/map.md"), /^status: done$/m)
+  })
+
+  test("another effort's lint error doesn't stop done", () => {
+    const other = [map("r/o/map.md"), { ...ticket("r/o/issues/01-a.md", { status: "resolved" }), body: "## Answer\n\n\n" }]
+    const vault = vaultWith([...effort({}, [ticket("r/e/issues/01-a.md", { status: "resolved" })]), ...other])
+    assert.equal(run(vault, ["map-status", "r/e", "done"]).code, 0)
+  })
+
   test("a map whose status isn't a map status (exit 1)", () => {
     refused(vaultWith(effort({ status: "actve" })), ["map-status", "r/e", "done"], 1, /map r\/e has status "actve", which is not a map status/, "wf lint r/e")
   })
@@ -317,6 +332,7 @@ describe("wf map-status refuses", () => {
     refused(vault, ["map-status", "r/e", "dropped"], 2, /map-status dropped needs --note "…"/)
     refused(vault, ["map-status", "r/e", "draft"], 2, /status must be one of active, paused, dropped, done, got "draft"/)
     refused(vault, ["map-status", "r/e", "done", "--superseded-by", "r/e"], 2, /--superseded-by goes with paused or dropped/)
+    refused(vault, ["map-status", "r/e", "active", "--force"], 2, /--force goes with done/)
     refused(vault, ["map-status", "r/e", "dropped", "--note", "x", "--superseded-by", "r/e#01"], 2, /cannot read "r\/e#01" as an effort/)
     refused(vault, ["map-status", "r/e"], 2, /missing argument/)
     refused(vault, ["map-status", "r/e", "paused", "--note", "a\nb"], 2, /--note must be one line/)
