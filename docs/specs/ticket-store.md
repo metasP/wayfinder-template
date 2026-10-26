@@ -313,13 +313,13 @@ Other verbs:
 - `bump-runs <repo/effort> [--count k]` allocates `runs+1 … runs+k` and prints the range.
 - `frontier [--repo R] [--from repo/effort] [--json]` returns open, unblocked tickets on active maps, ordered by
   the Picks rules. `--repo` matches the home repo or `target_repo`. `--from` gives `same_effort` its context.
-- `show <ref> [--json]` prints one ticket file as it is, its map's `## Destination` and `## Notes`, and every other
-  map line with a wikilink to the ticket (the derived `## Tickets` block left out), so an agent working one ticket
-  needn't read the whole map. It never writes.
 - `lint [repo/effort…] [--rule <rule>] [--json] [--fix]` prints findings for the whole vault or the named efforts.
   `--fix` only regenerates derived blocks; it never changes state. The text report (and `doctor`'s) folds a rule
   with 5 or more warnings into one line that names `wf lint --rule <rule>`, and prints errors last, so a
   terminal that keeps only the tail still shows them. `--rule` and `--json` list every finding.
+- `show <ref> [--json]` prints one ticket file as it is, its map's `## Destination` and `## Notes`, and every other
+  map line with a wikilink to the ticket (the derived `## Tickets` block left out), so an agent working one ticket
+  needn't read the whole map. It never writes.
 - `migrate [--yes]` prints a unified diff by default and writes only with `--yes`.
 
 What every write verb does, in order:
