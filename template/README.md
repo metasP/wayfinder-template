@@ -223,6 +223,7 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
 | `wf block <ref> <blocker-ref>` | — | เพิ่ม (หรือ `--remove`) blocker หนึ่งเส้น · ไม่ยอมถ้าเกิดวง |
 | `wf bump-runs <repo/effort>` | — | จองเลขรอบถัดไป (`--count k` ⇒ `k` เลข) ใต้ lock แล้วพิมพ์ช่วงนั้น |
 | `wf frontier` | — (อ่านอย่างเดียว) | ใบที่หยิบได้ เรียงตาม [[Wayfinder Picks]] · `--repo R` (repo ต้นทางหรือ `target_repo`) · `--from repo/effort` |
+| `wf show <ref>` | — (อ่านอย่างเดียว) | ใบเดียว (frontmatter + body ตามไฟล์) + `## Destination` · `## Notes` ของ map ทั้งหัวข้อ + บรรทัดอื่นใน map ที่มี wikilink ถึงใบนี้ (`## Decisions so far` · `## Not yet specified` …) · ข้าม `## Tickets` · ใช้แทน `cat` map ทั้งไฟล์ — แต่ยังต้อง Read ไฟล์ก่อน Edit |
 | `wf lint` | — (อ่านอย่างเดียว) | findings ทั้ง vault หรือเฉพาะ effort ที่ระบุ · `--fix` สร้าง block ที่ derive ได้ใหม่ ไม่เปลี่ยนสถานะ |
 | `wf migrate` | vault schema 1 → 2 | ค่าเริ่มต้นแค่พิมพ์ diff · `--yes` เขียนทั้งหมดเป็น commit เดียว |
 
