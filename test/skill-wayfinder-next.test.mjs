@@ -22,6 +22,17 @@ describe("wayfinder-next skill", () => {
     assertCommandsParse(commands)
   })
 
+  // The desktop harness dropped spawn_task; an "offer" start shows a Do it here button that turned a
+  // planning session into a build session, and an app-picked worktree name hid the session from a retro.
+  test("starts sessions with start_session user_asked, on a branch named after the ticket", () => {
+    assert.doesNotMatch(SKILL, /spawn_task/, "the skill still names spawn_task")
+    assert.match(SKILL, /mcp__ccd_session__start_session/)
+    assert.match(SKILL, /`initiation`: \*\*`"user_asked"`\*\*/)
+    assert.match(SKILL, /`branch_name`: \*\*`<effort>-<NN>`\*\*/)
+    assert.match(SKILL, /## This session never works the ticket/)
+    assert.match(SKILL, /never runs `wf claim`/)
+  })
+
   test("leaves runs to bump-runs and ranking to frontier", () => {
     assert.doesNotMatch(SKILL, /\bruns:/, "the skill still edits runs: itself")
     assert.doesNotMatch(SKILL, /urgen|unblocks the most|lowest[- ]number|tie-break|parallel-safe/i, "the skill still ranks")
