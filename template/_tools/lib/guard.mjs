@@ -5,7 +5,7 @@ import { existsSync, readFileSync, realpathSync } from "node:fs"
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { formatRef, parseRef } from "./core.mjs"
 import { parseNote } from "./frontmatter.mjs"
-import { creationReason, denialReason } from "./guard-hints.mjs"
+import { creationReason, denialReason, mainCheckoutReason } from "./guard-hints.mjs"
 import { gitEnv } from "./git.mjs"
 
 const deny = (reason) => ({
@@ -154,8 +154,8 @@ const parseInput = (stdin) => {
   return input
 }
 
-// The decision for one guarded tool call: `{ decision }` to deny, `{}` to pass.
-const decide = (input, toolsDir) => {
+// The frontmatter decision for one guarded tool call: `{ decision }` to deny, `{}` to pass.
+const frontmatterDecision = (input, toolsDir) => {
   const { tool_name: tool, tool_input: toolInput } = input
   const vault = realPath(resolve(toolsDir, ".."))
   const file = resolve(input.cwd ?? process.cwd(), toolInput.file_path)
@@ -174,6 +174,49 @@ const decide = (input, toolsDir) => {
   if (after === null) return {}
   const before = parseNote(text).frontmatter
   return { decision: deny(denialReason({ id, rel: shown, before, after: parseNote(after).frontmatter, wf })) }
+}
+
+// The top of this session's work tree when it is a linked worktree of the vault (`home`), or null.
+const worktreeOf = (cwd, home) => {
+  const here = gitPlace(existingDir(cwd))
+  return here && here.common === home.common && here.top !== home.top ? here.top : null
+}
+
+// A Write or Edit of any file in the vault's main checkout from a worktree session of the desktop app
+// is denied too, with the way that works (ticket 15): the app blocks it already, but its denial points
+// at the worktree's copy, which wf never reads. Outside the desktop app such an Edit goes through and
+// is the right way to change the vault, so this is null there — and wherever else it doesn't apply.
+const mainCheckoutDecision = (input, toolsDir) => {
+  const vault = realPath(resolve(toolsDir, ".."))
+  const cwd = input.cwd ?? process.cwd()
+  const file = realPath(resolve(cwd, input.tool_input.file_path))
+  const rel = relative(vault, file)
+  if (!process.env.CLAUDE_CODE_DESKTOP_APP_VERSION || !isInside(rel)) return null
+  const home = gitPlace(vault)
+  const worktree = home && worktreeOf(cwd, home)
+  if (!worktree) return null
+  // A worktree inside the vault (`.claude/worktrees/…`) is not the main checkout, nor is `.claude/`.
+  const owner = gitPlace(existingDir(dirname(file)))
+  const inRepo = relative(home.top, file).split(sep)
+  if (owner?.top !== home.top || inRepo[0] === ".claude") return null
+  const id = trackerIdentity(rel)
+  const reason = mainCheckoutReason({
+    file: shellWord(file),
+    rel: shellWord(rel.split(sep).join("/")),
+    vault: shellWord(vault),
+    worktree,
+    ref: id?.nn != null ? formatRef(id) : null,
+    wf: `node ${shellWord(join(toolsDir, "wf.mjs"))}`,
+  })
+  return { decision: deny(reason) }
+}
+
+// The decision for one guarded tool call: a frontmatter denial first — `wf` works from any worktree.
+const decide = (input, toolsDir) => {
+  const result = frontmatterDecision(input, toolsDir)
+  if (result.decision) return result
+  const main = mainCheckoutDecision(input, toolsDir)
+  return main ? { ...result, ...main } : result
 }
 
 /**

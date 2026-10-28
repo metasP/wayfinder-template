@@ -415,6 +415,11 @@ A new PreToolUse hook on Write|Edit, scoped to ticket and map files inside the v
 - Write is denied when it creates a new ticket or map file, or when it changes the existing frontmatter.
 - The denial reason names the verb to use, for example: "use `wf claim <ref>` to change status".
 - Prose edits below the frontmatter pass through.
+- Under the desktop app (`CLAUDE_CODE_DESKTOP_APP_VERSION` set), a session in a linked worktree of the vault
+  is denied a Write or Edit of any file in the vault's main checkout. The app blocks it already, but its
+  reason points at the worktree's copy, which `wf` never reads; the guard's reason gives the recipe instead:
+  Bash writes the main checkout's path, then `git -C <vault> add … && commit`, or `wf resolve --answer-file`
+  for a ticket's `## Answer` once that flag exists. Outside the desktop app such an Edit is allowed.
 - Bash is not inspected. `doctor` and `wf lint` catch what slips through.
 
 ### New autocommit (Q7)
