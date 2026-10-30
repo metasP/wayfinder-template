@@ -1,21 +1,23 @@
-// `wf map-status <repo/effort> active|paused|dropped|done [--note "…"] [--superseded-by <repo/effort>]`
+// `wf map-status <repo/effort> active|paused|dropped|done [--note "…"] [--superseded-by <repo/effort>] [--force]`
 // (spec *Verbs*: map transitions; Q25). `active` needs a real `## Destination` (not empty, not chart's
 // placeholder); `paused` and `dropped` need `--note`; `done` needs no open, claimed or waiting ticket
-// and reminds to run `/retro`. Every transition restamps `status_since` and replaces `status_note`
+// and no lint error in the effort (`--force` closes it anyway), and reminds to run `/retro`. Every transition restamps `status_since` and replaces `status_note`
 // with `--note` or clears it. `--superseded-by` (paused or dropped only) writes `superseded_by` as a
 // wikilink to the replacing map; any transition without it clears the key.
 import { effortRefArg, oneLineFlag } from "../args.mjs"
-import { isPending, MAP_FIELDS, MAP_STATUSES, MAP_TRANSITIONS, NOTE_TEXT, findTransition } from "../core.mjs"
+import { isPending, lint, MAP_FIELDS, MAP_STATUSES, MAP_TRANSITIONS, NOTE_TEXT, findTransition } from "../core.mjs"
 import { editFrontmatter, sectionText } from "../edit.mjs"
 import { invariantError, usageError } from "../errors.mjs"
-import { report } from "../pipeline.mjs"
+import { effortKeyOf, report } from "../pipeline.mjs"
 import { mapArg, withNext } from "./map.mjs"
 import { noMap } from "./ticket.mjs"
 
 const TARGETS = [...new Set(MAP_TRANSITIONS.filter((row) => row.verb === "map-status").map((row) => row.to))]
 const NEEDS_NOTE = MAP_FIELDS.status_note.required
 const PLACEHOLDERS = new Set(Object.values(NOTE_TEXT.destinationPlaceholder))
-const RETRO = "run /retro — it writes the map's ## Retro"
+// The agent can't invoke /retro itself; a side session whose prompt is the command can.
+const retroOf = (key) =>
+  `run /retro — it writes the map's ## Retro; or start a side session with the prompt "/retro every session that touched ${key}/"`
 const SUPERSEDABLE = ["paused", "dropped"]
 
 const targetArg = (to) => {
@@ -50,6 +52,17 @@ const settle = (t) =>
     ? [`wf resolve ${t.ref} --out-of-scope --gist "…" (past the destination)`, `wf claim ${t.ref}`]
     : [`wf resolve ${t.ref} --gist "…"`]
 
+// What the map says it finished, the effort's lint must not contradict (an answer never written…).
+const assertLintClean = (ctx, m) => {
+  const errors = lint(ctx.index, ctx).filter((f) => f.severity === "error" && effortKeyOf(f.ref) === m.key)
+  if (!errors.length) return
+  const count = `${errors.length} lint error${errors.length === 1 ? "" : "s"}`
+  const list = errors.map((f) => `${f.ref} ${f.rule}`).join(", ")
+  throw invariantError(`${m.key} has ${count}: ${list} — a map is done when wf lint shows none`, {
+    fix: [`wf lint ${m.key}`, `wf map-status ${m.key} done --force (close it anyway)`],
+  })
+}
+
 const assertNothingPending = (index, m) => {
   const pending = index.efforts.get(m.key).tickets.filter((t) => isPending(index, t))
   if (!pending.length) return
@@ -74,8 +87,8 @@ const successorArg = (input, ctx, m, to) => {
 export default {
   name: "map-status",
   summary: "move a map to active, paused, dropped or done",
-  usage: 'wf map-status <repo/effort> active|paused|dropped|done [--note "…"] [--superseded-by <repo/effort>] [--json]',
-  flags: { note: "string", "superseded-by": "string" },
+  usage: 'wf map-status <repo/effort> active|paused|dropped|done [--note "…"] [--superseded-by <repo/effort>] [--force] [--json]',
+  flags: { note: "string", "superseded-by": "string", force: "boolean" },
   minPositionals: 2,
   maxPositionals: 2,
   writes: () => true,
@@ -83,6 +96,7 @@ export default {
     const to = targetArg(positionals[1])
     if (flags["superseded-by"] !== undefined && !SUPERSEDABLE.includes(to))
       throw usageError(`--superseded-by goes with ${SUPERSEDABLE.join(" or ")}`)
+    if (flags.force !== undefined && to !== "done") throw usageError("--force goes with done")
     return { flags: { ...flags, note: noteArg(flags.note, to) }, positionals, to }
   },
   plan(ctx, { flags, positionals, to }) {
@@ -90,10 +104,11 @@ export default {
     assertTransition(m, to)
     if (to === "active") assertDestination(m, ctx.textOf(m.path))
     if (to === "done") assertNothingPending(ctx.index, m)
+    if (to === "done" && flags.force !== true) assertLintClean(ctx, m)
     const supersededBy = successorArg(flags["superseded-by"], ctx, m, to)
     const fields = { status: to, status_since: ctx.today, status_note: flags.note, superseded_by: supersededBy }
     const text = editFrontmatter(ctx.textOf(m.path), Object.entries(fields))
-    const data = { ref: m.key, from: m.status, ...fields, reminder: to === "done" ? RETRO : null }
+    const data = { ref: m.key, from: m.status, ...fields, reminder: to === "done" ? retroOf(m.key) : null }
     return { ref: m.key, edits: [{ path: m.path, text }], data }
   },
   report(outcome) {

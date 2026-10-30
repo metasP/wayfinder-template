@@ -4,9 +4,10 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
-import { chmodSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
+import resolveVerb from "../template/_tools/lib/verbs/resolve.mjs"
 import { git, makeVault, map, noteText, ticket } from "./vault.mjs"
 
 const TICKET = "r/e/issues/03-pick.md"
@@ -17,10 +18,13 @@ const ticketNote = (fields = {}, body = "## Question\n\nWhy?\n") => {
 }
 const vaultWith = (...notes) => makeVault({ notes: [map(MAP), ...notes] })
 
-/** Run `node <vault>/_tools/frontmatter-guard.mjs` with `input` (an object, or raw text) on stdin. */
-function guard(vault, input) {
+/**
+ * Run `node <vault>/_tools/frontmatter-guard.mjs` with `input` (an object, or raw text) on stdin, in
+ * `env` (this process's environment by default).
+ */
+function guard(vault, input, env = process.env) {
   const stdin = typeof input === "string" ? input : JSON.stringify({ hook_event_name: "PreToolUse", cwd: vault, ...input })
-  const r = spawnSync(process.execPath, [join(vault, "_tools/frontmatter-guard.mjs")], { input: stdin, encoding: "utf8" })
+  const r = spawnSync(process.execPath, [join(vault, "_tools/frontmatter-guard.mjs")], { input: stdin, encoding: "utf8", env })
   let json
   try {
     json = JSON.parse(r.stdout)
@@ -241,6 +245,59 @@ describe("vault worktrees are the vault", () => {
   test("a prose Edit in a vault worktree passes", () => {
     const { vault, worktree } = withWorktree(".claude/worktrees/x")
     assertPassed(guard(vault, edit(worktree, TICKET, "Why?", "Why not?")))
+  })
+})
+
+describe("the main checkout from a desktop worktree session: denied with the recipe that works", () => {
+  // The desktop app blocks a worktree session's Edit of the base checkout; the guard says what to do.
+  const DESKTOP = { ...process.env, CLAUDE_CODE_DESKTOP_APP_VERSION: "1.0.0" }
+  const CLI = Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== "CLAUDE_CODE_DESKTOP_APP_VERSION"))
+  const ASSET = "r/e/assets/01-spec.md"
+  const withWorktree = () => {
+    // The guard shows real paths, and a temp dir may sit behind a symlink (`/var` → `/private/var`).
+    const vault = realpathSync(vaultWith(ticketNote()))
+    mkdirSync(join(vault, "r/e/assets"))
+    writeFileSync(join(vault, ASSET), "# Spec\n")
+    git(vault, "add", "-A")
+    git(vault, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init")
+    const worktree = join(vault, ".claude/worktrees/x")
+    git(vault, "worktree", "add", "-q", "-b", `wt-${Math.random().toString(36).slice(2)}`, worktree)
+    return { vault, worktree }
+  }
+  const fromWorktree = (worktree, call) => ({ ...call, cwd: worktree })
+
+  test("a prose Edit of a ticket names Bash, the file and the commit to make", () => {
+    const { vault, worktree } = withWorktree()
+    const r = guard(vault, fromWorktree(worktree, edit(vault, TICKET, "Why?", "Why not?")), DESKTOP)
+    assertDenied(r, /main checkout/)
+    const reason = r.json.hookSpecificOutput.permissionDecisionReason
+    assert.ok(reason.includes(`cat ${join(vault, TICKET)}`), reason)
+    assert.ok(reason.includes(`git -C ${vault} add -- ${TICKET} && git -C ${vault} commit -m`), reason)
+    assert.ok(reason.includes(worktree), reason)
+  })
+
+  test("any file of the main checkout, not just tracker notes", () => {
+    const { vault, worktree } = withWorktree()
+    assertDenied(guard(vault, fromWorktree(worktree, edit(vault, ASSET, "Spec", "Spec v2")), DESKTOP), /git -C .* add -- r\/e\/assets\/01-spec\.md/)
+  })
+
+  test("a frontmatter Edit gets the wf verb — wf works from the worktree", () => {
+    const { vault, worktree } = withWorktree()
+    assertDenied(guard(vault, fromWorktree(worktree, edit(vault, TICKET, 'status: "open"', 'status: "claimed"')), DESKTOP), /wf\.mjs claim r\/e#03/)
+  })
+
+  test("the --answer-file step shows exactly when wf resolve has that flag", () => {
+    const { vault, worktree } = withWorktree()
+    const r = guard(vault, fromWorktree(worktree, edit(vault, TICKET, "Why?", "Why not?")), DESKTOP)
+    const named = r.json.hookSpecificOutput.permissionDecisionReason.includes("resolve r/e#03 --answer-file")
+    assert.equal(named, "answer-file" in resolveVerb.flags)
+  })
+
+  test("the worktree's own copy, the main checkout from itself, and any session outside the desktop app pass", () => {
+    const { vault, worktree } = withWorktree()
+    assertPassed(guard(vault, fromWorktree(worktree, edit(worktree, TICKET, "Why?", "Why not?")), DESKTOP))
+    assertPassed(guard(vault, edit(vault, TICKET, "Why?", "Why not?"), DESKTOP))
+    assertPassed(guard(vault, fromWorktree(worktree, edit(vault, TICKET, "Why?", "Why not?")), CLI))
   })
 })
 

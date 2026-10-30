@@ -1,11 +1,11 @@
-// `wf new <repo/effort> --type T --title "…" [--question "…" | stdin] [--blocker ref]… [--target-repo R]`
+// `wf new <repo/effort> --type research|prototype|grilling|task|R|P|G|T --title "…" [--question "…" | stdin] [--blocker ref]… [--target-repo R]`
 // — — → open (spec *Verbs*: ticket transitions). NN is the effort's highest + 1, taken under the lock
 // and written with an exclusive create, so two sessions never get the same number. The note gets the
 // `## Question` / `## Answer` skeleton; the placeholder follows `language:` (Q36).
 import { readFileSync } from "node:fs"
 import { isatty } from "node:tty"
 import { effortRefArg, oneLineFlag } from "../args.mjs"
-import { formatRef, noteText, TICKET_TYPES } from "../core.mjs"
+import { formatRef, noteText, TICKET_TYPE_LETTERS, TICKET_TYPES } from "../core.mjs"
 import { invariantError, usageError } from "../errors.mjs"
 import { editFrontmatter } from "../edit.mjs"
 import { report } from "../pipeline.mjs"
@@ -48,9 +48,13 @@ const questionOf = (question) => {
   return text
 }
 
+// The type a `--type` names: the full word, or its letter (`T`, `t`) as a chip title writes it.
+const TYPE_HINT = `${TICKET_TYPES.join(", ")} (or ${Object.keys(TICKET_TYPE_LETTERS).join("/")})`
 const typeOf = (type) => {
-  if (!TICKET_TYPES.includes(type)) throw usageError(`--type must be one of ${TICKET_TYPES.join(", ")}, got ${JSON.stringify(type ?? "")}`)
-  return type
+  if (TICKET_TYPES.includes(type)) return type
+  const full = typeof type === "string" ? TICKET_TYPE_LETTERS[type.toUpperCase()] : undefined
+  if (!full) throw usageError(`--type must be one of ${TYPE_HINT}, got ${JSON.stringify(type ?? "")}`)
+  return full
 }
 
 // The effort a new ticket goes in: it must have a map that isn't closed. `draft` (charting), `active`
@@ -78,7 +82,7 @@ const skeleton = (fields, question, language) =>
 export default {
   name: "new",
   summary: "— → open: a new ticket with the next NN",
-  usage: 'wf new <repo/effort> --type T --title "…" [--question "…" | stdin] [--blocker ref]… [--target-repo R] [--json]',
+  usage: 'wf new <repo/effort> --type research|prototype|grilling|task|R|P|G|T --title "…" [--question "…" | stdin] [--blocker ref]… [--target-repo R] [--json]',
   flags: { type: "string", title: "string", question: "string", blocker: "strings", "target-repo": "string" },
   minPositionals: 1,
   maxPositionals: 1,

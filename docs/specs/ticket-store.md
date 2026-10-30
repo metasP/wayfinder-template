@@ -87,7 +87,9 @@ Give the tracker a real module with a small interface, and make the vault's stat
 19. As an agent, I want a usage or environment error (bad arguments, vault not writable from my sandbox, lock held
     too long) to exit 2 and say which, so that I can tell "I did something wrong" from "the environment is wrong".
 20. As an agent running in a git worktree, I want `wf` to write and commit in the vault's main checkout regardless
-    of my current directory, so that tracker state never strands on a branch.
+    of my current directory, so that tracker state never strands on a branch. When the ticket I name has different prose in my worktree
+    than in the main checkout, I want a warning naming the main checkout's path (never a refusal), and
+    `resolve --answer-file` to carry my worktree's answer over in the resolve's own commit.
 21. As an agent, I want a direct Edit of tracker frontmatter to be refused with a message naming the verb to use,
     so that I can't bypass the invariants by accident.
 22. As an agent, I want to be told in the same turn when a prose autocommit fails, so that I can fix it before the
@@ -277,7 +279,7 @@ A claim whose `status_since` is older than `claim_stale_days` is reported. `clai
 
 All verbs:
 
-- Accept refs as `repo/effort#NN`, a vault path, or a wikilink, and print refs as `repo/effort#NN`.
+- Accept refs as `repo/effort#NN`, `repo/effort/NN`, a vault path, or a wikilink, and print refs as `repo/effort#NN`.
 - Support `--json`.
 - Exit `0` on success; `1` when an invariant is violated (the message states the invariant and the fixing
   command); `2` on usage or environment errors. A write that fails with `EPERM`/`EACCES` says the vault is
@@ -288,11 +290,11 @@ Ticket transitions (Q24):
 
 | Verb | From → to | Invariants and side effects |
 | --- | --- | --- |
-| `new <repo/effort> --type T --title "…" [--question "…" \| stdin] [--blocker ref]… [--target-repo R]` | — → `open` | Map exists and is not `done` / `dropped`. NN = highest + 1, reserved under the lock with an exclusive create. Writes the `## Question` / `## Answer` skeleton. Blockers must resolve and must not form a cycle. |
+| `new <repo/effort> --type research\|prototype\|grilling\|task\|R\|P\|G\|T --title "…" [--question "…" \| stdin] [--blocker ref]… [--target-repo R]` | — → `open` | Map exists and is not `done` / `dropped`. NN = highest + 1, reserved under the lock with an exclusive create. Writes the `## Question` / `## Answer` skeleton. Blockers must resolve and must not form a cycle. |
 | `claim <ref> [--by name] [--force]` | `open` → `claimed` | Re-read under the lock. Not blocked; map `active`. On a `serial` map, no other ticket of it `claimed` (`--force` skips this). Stamps `claimed_by`. |
-| `release <ref>` | `claimed`/`waiting` → `open` | Clears `claimed_by`, `status_note`, `wait_until`. |
-| `wait <ref> --note "…" [--until YYYY-MM-DD]` | `open`/`claimed` → `waiting` | Note required. |
-| `resolve <ref> --gist "…"` | `claimed`/`waiting` → `resolved` | `## Answer` non-empty and not the placeholder. Appends `- [[NN-slug]]: <gist>` to *Decisions so far*, re-reading the map under the lock. |
+| `release <ref>` | `claimed`/`waiting` → `open` | Clears `claimed_by`, `status_note`, `wait_until`. Refuses a `claimed_by` other than the caller (found as for `claim`) unless `--force`; a ticket `wf migrate` marked `unknown (before wf)` is anyone's. |
+| `wait <ref> --note "…" [--until YYYY-MM-DD]` | `open`/`claimed` → `waiting` | Note required. Refuses a `claimed_by` other than the caller unless `--force`. |
+| `resolve <ref> --gist "…" [--answer-file <file>]` | `claimed`/`waiting` → `resolved` | `## Answer` non-empty and not the placeholder. Appends `- [[NN-slug]]: <gist>` to *Decisions so far*, re-reading the map under the lock. `--answer-file` first replaces the ticket's `## Answer` in the main checkout with the file's (its `## Answer` section when it has one, else all of it), in the same commit — how a session in a vault worktree resolves. |
 | `resolve <ref> --out-of-scope --gist "…"` | `open`/`claimed` → `resolved` | Appends to `## Out of scope` instead. |
 
 An `open` ticket can't be resolved directly unless `--out-of-scope` is given.
@@ -304,7 +306,7 @@ Map transitions (Q25):
 | `chart <repo/effort> --title "…" [--serial]` | Creates `map.md` in `draft` with the standard section skeleton (`--serial` adds `serial: true`). Refuses if the map exists. |
 | `map-status <repo/effort> active` | Requires a non-empty `## Destination`. |
 | `map-status <repo/effort> paused\|dropped --note "…" [--superseded-by <repo/effort>]` | `--note` is required. |
-| `map-status <repo/effort> done` | Requires no ticket in `open`/`claimed`/`waiting`. Prints a reminder to run `/retro`. |
+| `map-status <repo/effort> done [--force]` | Requires no ticket in `open`/`claimed`/`waiting`, and no lint error in the effort unless `--force`. Prints a reminder to run `/retro`. |
 
 Every map transition clears or replaces `status_note`.
 
@@ -316,12 +318,15 @@ Other verbs:
 - `serial <repo/effort> on|off` writes `serial: true` on the map (`on`) or removes the key (`off`), in any map
   status. It refuses a map already in that state.
 - `frontier [--repo R] [--from repo/effort] [--json]` returns open, unblocked tickets on active maps, ordered by
-  the Picks rules. `--repo` matches the home repo or `target_repo`. `--from` gives `same_effort` its context.
+  the Picks rules. `--repo` matches the home repo or `target_repo`. `--from` gives `same_effort` its context: it sorts, it never filters.
   Each row carries its map's `serial`.
 - `lint [repo/effort…] [--rule <rule>] [--json] [--fix]` prints findings for the whole vault or the named efforts.
   `--fix` only regenerates derived blocks; it never changes state. The text report (and `doctor`'s) folds a rule
   with 5 or more warnings into one line that names `wf lint --rule <rule>`, and prints errors last, so a
   terminal that keeps only the tail still shows them. `--rule` and `--json` list every finding.
+- `show <ref> [--json]` prints one ticket file as it is, its map's `## Destination` and `## Notes`, and every other
+  map line with a wikilink to the ticket (the derived `## Tickets` block left out), so an agent working one ticket
+  needn't read the whole map. It never writes.
 - `migrate [--yes]` prints a unified diff by default and writes only with `--yes`.
 
 What every write verb does, in order:
@@ -397,6 +402,8 @@ What every write verb does, in order:
 - `done` map with pending tickets.
 - Unknown pick-sort key.
 - YAML outside the subset.
+- `resolved` ticket whose `## Answer` is empty or the placeholder (`resolved-without-answer`), unless the map lists
+  it under `## Out of scope`.
 
 **warn:**
 
@@ -411,6 +418,13 @@ What every write verb does, in order:
 - A `.md` file directly in an effort's `issues/` whose name doesn't start with `NN-` (`unindexed-ticket`): the
   index can't read it, so every view and verb would skip it silently.
 - Legacy `repo`/`effort` fields still present ("run `wf migrate`").
+- `resolved` ticket with `target_repo` or `target_branch` whose `## Answer` names a branch but links no PR
+  (`branch-without-pr`).
+- A file in an effort's `issues/` and a `.md` under its `assets/` with the same name (`issue-asset-name-clash`): a bare
+  `[[name]]` is ambiguous.
+- The same effort slug under two repo folders (`effort-in-two-repos`).
+- An asset with `superseded_by:` that a live note still links (`superseded-asset-linked`) — live: a map outside its
+  `## Decisions so far`/`## Retro`, an unresolved ticket, an asset not itself superseded; the successor is exempt.
 
 ### Frontmatter guard hook (Q15)
 
@@ -420,6 +434,11 @@ A new PreToolUse hook on Write|Edit, scoped to ticket and map files inside the v
 - Write is denied when it creates a new ticket or map file, or when it changes the existing frontmatter.
 - The denial reason names the verb to use, for example: "use `wf claim <ref>` to change status".
 - Prose edits below the frontmatter pass through.
+- Under the desktop app (`CLAUDE_CODE_DESKTOP_APP_VERSION` set), a session in a linked worktree of the vault
+  is denied a Write or Edit of any file in the vault's main checkout. The app blocks it already, but its
+  reason points at the worktree's copy, which `wf` never reads; the guard's reason gives the recipe instead:
+  Bash writes the main checkout's path, then `git -C <vault> add … && commit`, or `wf resolve --answer-file`
+  for a ticket's `## Answer` once that flag exists. Outside the desktop app such an Edit is allowed.
 - Bash is not inspected. `doctor` and `wf lint` catch what slips through.
 
 ### New autocommit (Q7)
