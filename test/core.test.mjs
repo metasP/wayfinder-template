@@ -32,6 +32,14 @@ describe("identity", () => {
     assert.deepEqual(core.parseRef("repoA/eff1"), { repo: "repoA", effort: "eff1", nn: null, slug: null })
   })
 
+  test("reads repo/effort/NN as the ticket repo/effort#NN", () => {
+    assert.deepEqual(core.parseRef("repoA/eff1/05"), { repo: "repoA", effort: "eff1", nn: 5, slug: null })
+    assert.deepEqual(core.parseRef("org/repo/eff/12"), { repo: "org/repo", effort: "eff", nn: 12, slug: null })
+    assert.equal(core.formatRef(core.parseRef("repoA/eff1/5")), "repoA/eff1#05")
+    assert.equal(core.parseRef("repoA/eff1/issues/05"), null)
+    assert.equal(core.parseRef("_tools/eff1/05"), null)
+  })
+
   test("a bare wikilink needs a home effort", () => {
     assert.equal(core.parseRef("[[02-ready]]"), null)
     assert.deepEqual(core.parseRef("[[02-ready]]", { home: { repo: "org/r", effort: "e" } }), {

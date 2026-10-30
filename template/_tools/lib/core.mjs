@@ -21,6 +21,8 @@ export const SCHEMA_VERSION = 2
 export const TICKET_STATUSES = deepFreeze(["open", "claimed", "waiting", "resolved"])
 export const MAP_STATUSES = deepFreeze(["draft", "active", "paused", "done", "dropped"])
 export const TICKET_TYPES = deepFreeze(["research", "prototype", "grilling", "task"])
+// The one-letter type a chip title carries (`#RR-LNN-…`); `wf new --type` takes either form.
+export const TICKET_TYPE_LETTERS = deepFreeze({ R: "research", P: "prototype", G: "grilling", T: "task" })
 
 // `required`: true, false, or the statuses in which the field is required.
 // `repo` and `effort` are not fields — identity comes from the path (Q4, Q13).
@@ -105,6 +107,7 @@ export function findTransition(kind, verb, from, { flag, to } = {}) {
 const TICKET_PATH_RE = /^(.+)\/([^/#]+)\/issues\/(\d+)-([^/]+?)(?:\.md)?$/
 const MAP_PATH_RE = /^(.+)\/([^/#]+)\/map(?:\.md)?$/
 const REF_RE = /^(.+)\/([^/#]+)#(\d+)$/
+const SLASH_REF_RE = /^(.+)\/([^/#]+)\/(\d+)$/
 const EFFORT_RE = /^([^/_.#][^#]*)\/([^/#]+)$/
 const BARE_TICKET_RE = /^(\d+)-([^/]+)$/
 const ISSUE_FILE_RE = /^(.+)\/[^/#]+\/issues\/[^/]+\.md$/
@@ -117,7 +120,7 @@ const identity = (repo, effort, nn = null, slug = null) => ({ repo, effort, nn, 
 const isVaultRoot = (repo) => !/^[_.]/.test(repo)
 
 /**
- * Parse a vault path, a ref (`repo/effort#NN`, `repo/effort`) or a wikilink into
+ * Parse a vault path, a ref (`repo/effort#NN`, `repo/effort/NN`, `repo/effort`) or a wikilink into
  * `{ repo, effort, nn, slug }` (`nn`/`slug` null when the input doesn't carry them).
  * A bare `[[NN-slug]]` resolves only against `home` (`{ repo, effort }`). Anything else → null.
  */
@@ -138,6 +141,9 @@ export function parseRef(input, { home } = {}) {
 
   const r = REF_RE.exec(target)
   if (r) return isVaultRoot(r[1]) ? identity(r[1], r[2], Number(r[3])) : null
+  // `repo/effort/NN` reads as `repo/effort#NN`, so an effort is never named by digits alone.
+  const s = SLASH_REF_RE.exec(target)
+  if (s) return isVaultRoot(s[1]) && s[2] !== "issues" ? identity(s[1], s[2], Number(s[3])) : null
   const e = EFFORT_RE.exec(target)
   return e && !target.endsWith(".md") ? identity(e[1], e[2]) : null
 }
