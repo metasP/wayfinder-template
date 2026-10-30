@@ -5,19 +5,21 @@
 //   8. lint the touched efforts; findings are warnings and never fail a verb that succeeded.
 //
 // A write verb is a read verb's shape plus `writes(args) → boolean`, `plan(ctx, args) → { ref,
-// edits: [{ path, text, create? }], data }` (runs under the lock; throws to refuse) and optionally
+// edits: [{ path, text, create? }], data, trailers? }` (runs under the lock; throws to refuse) and optionally
 // `prepare(args) → args` (runs before the lock: read stdin, check flags) and `report(outcome, args) →
 // { data, text, exitCode?, message?, warnings? }`. Only a verb with `writesOlderSchema` (migrate)
 // writes a vault older than the supported schema. An edit with `create: true` makes a new file and
 // refuses to overwrite one that appeared meanwhile.
+import { join } from "node:path"
 import { buildIndex, formatRef, isoDate, lint, parseRef, renderTicketsBlock } from "./core.mjs"
+import { ticketRefArg } from "./args.mjs"
 import { withTicketsBlock } from "./edit.mjs"
 import { WfError } from "./errors.mjs"
 import { parseNote } from "./frontmatter.mjs"
 import { writeFiles } from "./io.mjs"
 import { takeLock } from "./lock.mjs"
 import { assertCommittable, commitFiles, gitDirs, indexEntries, restoreIndex } from "./repo.mjs"
-import { checkSchema, isTrackerNote, locateVault, noteOf, readText, readVault } from "./store.mjs"
+import { checkSchema, isTrackerNote, locateVault, noteOf, readText, readVault, worktreeVaultOf } from "./store.mjs"
 
 /** The `repo/effort` a ref or vault path belongs to, or null (`Wayfinder Picks`). */
 export const effortKeyOf = (ref) => {
@@ -66,14 +68,47 @@ const writeAndCommit = (vault, edits, message, creates) => {
   }
 }
 
-// Steps 2–6, under the lock (step 1 and 7 are runWrite's).
-const transact = (verb, args, { vault, checkout, gitDir }) => {
+// Step 6's message: `wf(<verb>): <ref>`, then the plan's `trailers` ([key, value] pairs), if any.
+const commitMessage = (verb, plan) => {
+  const subject = `wf(${verb.name}): ${plan.ref}`
+  const trailers = (plan.trailers ?? []).map(([key, value]) => `${key}: ${value}`)
+  return trailers.length ? `${subject}\n\n${trailers.join("\n")}` : subject
+}
+
+const bodyOf = (text) => (text === null ? null : parseNote(text).body)
+
+// Run from a vault worktree (by its own `_tools/` or from a cwd inside it), the ticket a verb names may
+// carry prose there that the main checkout — the only one wf reads — lacks: say so, never refuse. A
+// resolve that already carries the answer over (`--answer-file`) isn't told to.
+const worktreeDrift = (ctx, args, trees) => {
+  if (args.flags["answer-file"] !== undefined) return []
+  let ref
+  try {
+    ref = ticketRefArg(args.positionals[0] ?? "", ctx)
+  } catch {
+    return []
+  }
+  const path = ctx.index.tickets.get(ref)?.path
+  if (!path) return []
+  const main = bodyOf(readText(ctx.vault, path))
+  return trees
+    .filter((tree) => ![null, main].includes(bodyOf(readText(tree, path))))
+    .map(
+      (tree) =>
+        `${path} in the worktree ${tree} differs from the main checkout below its frontmatter — wf reads and writes only ${join(ctx.vault, path)}` +
+        ` (to resolve with the worktree's answer: --answer-file ${join(tree, path)})`,
+    )
+}
+
+// Steps 2–6, under the lock (step 1 and 7 are runWrite's). Warnings found on the way go to `warnings`.
+const transact = (verb, args, { vault, checkout, gitDir, trees, warnings }) => {
   checkSchema(vault, { allowOlder: verb.writesOlderSchema === true })
   assertCommittable(vault, gitDir)
   const { notes, config, sort } = readVault(vault)
   const today = isoDate(new Date())
   const before = buildIndex(notes)
-  const ctx = { vault, roots: [vault, checkout], notes, index: before, config, sort, today, textOf: (path) => readText(vault, path) }
+  const ctx = { vault, roots: [vault, checkout, ...trees], notes, index: before, config, sort, today, textOf: (path) => readText(vault, path) }
+  warnings.push(...worktreeDrift(ctx, args, trees))
   const plan = verb.plan(ctx, args)
   const planned = plan.edits.map(parsedEdit)
   const rendered = buildIndex(notesAfter(notes, planned))
@@ -84,7 +119,7 @@ const transact = (verb, args, { vault, checkout, gitDir }) => {
   const after = buildIndex(notesAfter(notes, edits))
   const files = edits.map((e) => e.path)
   const creates = new Set(plan.edits.filter((e) => e.create).map((e) => e.path))
-  const commit = edits.length ? writeAndCommit(vault, edits, `wf(${verb.name}): ${plan.ref}`, creates) : null
+  const commit = edits.length ? writeAndCommit(vault, edits, commitMessage(verb, plan), creates) : null
   return { ...plan, files, commit, index: after, config, sort, today }
 }
 
@@ -112,16 +147,19 @@ export function runWrite(verb, given, { toolsDir }) {
   const { vault, checkout } = locateVault(toolsDir)
   checkSchema(vault, { allowOlder: verb.writesOlderSchema === true })
   const { gitDir, commonDir } = gitDirs(vault)
+  const trees = [...new Set([checkout, worktreeVaultOf(process.cwd(), vault)])].filter((tree) => tree && tree !== vault)
   const lock = takeLock(commonDir, vault)
+  const warnings = []
   let outcome
   try {
-    outcome = transact(verb, args, { vault, checkout, gitDir })
+    outcome = transact(verb, args, { vault, checkout, gitDir, trees, warnings })
   } catch (e) {
-    if (!(e instanceof WfError) || !lock.warnings.length) throw e
-    throw new WfError(e.code, e.message, { details: e.details, warnings: [...lock.warnings, ...e.warnings] })
+    const before = [...lock.warnings, ...warnings]
+    if (!(e instanceof WfError) || !before.length) throw e
+    throw new WfError(e.code, e.message, { details: e.details, warnings: [...before, ...e.warnings] })
   } finally {
     lock.release()
   }
   const result = verb.report({ ...outcome, lint: lintTouched(outcome) }, args)
-  return { ...result, warnings: [...lock.warnings, ...(result.warnings ?? [])] }
+  return { ...result, warnings: [...lock.warnings, ...warnings, ...(result.warnings ?? [])] }
 }

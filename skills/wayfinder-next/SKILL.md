@@ -1,11 +1,11 @@
 ---
 name: wayfinder-next
-description: Create task chips that kick off the NEXT wayfinder session(s). Reads the active wayfinder map's tickets and spawns one chip per ticket, titled `#RR-LNN-{short title}` where RR is a run number allocated by `wf bump-runs`, L is the ticket type letter (T/G/R/P), NN is the ticket number, and the short title is generated from the ticket. Accepts one or more ticket numbers as arguments (e.g. `02` or `01, 02, 04`); with no argument it takes the map's frontier in `wf frontier` order and spawns 1-3 chips — the top ticket plus any that don't collide with it. Confirms with the user before spawning a chip for a ticket that is blocked, claimed, resolved, or missing. Use when a wayfinder session or ticket is done and you want to queue the next ticket(s) as clickable chips, or when the user says "create wayfinder chip", "next wayfinder session", "chip for next ticket", "wayfinder chip".
+description: Start the NEXT wayfinder session(s) — one `start_session` per ticket, each in its own worktree named `<effort>-<NN>`. Reads the active wayfinder map's tickets and starts one session ("chip") per ticket, titled `#RR-LNN-{short title}` where RR is a run number allocated by `wf bump-runs`, L is the ticket type letter (T/G/R/P), NN is the ticket number, and the short title is generated from the ticket. Accepts one or more ticket numbers as arguments (e.g. `02` or `01, 02, 04`); with no argument it takes the map's frontier in `wf frontier` order and spawns 1-3 chips — the top ticket plus any that don't collide with it. Confirms with the user before spawning a chip for a ticket that is blocked, claimed, resolved, or missing. Use when a wayfinder session or ticket is done and you want to queue the next ticket(s) as clickable chips, or when the user says "create wayfinder chip", "next wayfinder session", "chip for next ticket", "wayfinder chip".
 ---
 
 # Wayfinder Next-Session Chip
 
-Spawn background task chips so the user can start the next wayfinder session(s) in one click. Each chip's title is `#RR-LNN-{short title}`; its prompt is a self-contained `/wayfinder` kickoff for that one ticket.
+Start the next wayfinder session(s) with `start_session` — each a "chip" in the sidebar, in its own worktree on a branch named after the ticket. Each chip's title is `#RR-LNN-{short title}`; its prompt is a self-contained `/wayfinder` kickoff for that one ticket. The session that runs this skill only starts them — the ticket is claimed and worked in the new session.
 
 **One chip = one ticket, always.** A chip may cover several tickets only in the sense that you spawn several chips — never write a prompt that tells one session to resolve more than one ticket.
 
@@ -13,7 +13,7 @@ Spawn background task chips so the user can start the next wayfinder session(s) 
 
 Read `language:` from the frontmatter of `__VAULT__/Wayfinder Config.md` **once, before generating anything**. It is an ISO 639-1 code (`en`, `th`, `ja`, …). No note, no key, or a blank value → **`en`**.
 
-It sets the language of everything this skill writes for the user to click or read: the **short title**, the **chip prompt**, the **`tldr`**, and the **`AskUserQuestion` options**. It does **not** change the fixed tokens — `#RR-LNN-` prefix, `/wayfinder work through the map`, `Map:`, file paths, `## Answer`, `status:resolved`, "Decisions so far" — those stay verbatim in every language because the next session matches on them.
+It sets the language of everything this skill writes for the user to click or read: the **short title**, the **chip prompt**, the **`background`**, and the **`AskUserQuestion` options**. It does **not** change the fixed tokens — `#RR-LNN-` prefix, `/wayfinder work through the map`, `Map:`, file paths, `## Answer`, `status:resolved`, "Decisions so far" — those stay verbatim in every language because the next session matches on them.
 
 The templates below are given in `en` and `th`. For any other language, translate the `en` version, keeping the fixed tokens as they are.
 
@@ -53,7 +53,7 @@ Accept comma- and/or space-separated numbers, with or without zero-padding. Anyt
 | `NN` | **ticket number** from `issues/NN-<slug>.md`, zero-padded to 2 |
 | short title | generated in `language` (see below) |
 
-The prefix is exactly 8 chars, so **the short title gets ≤ 52** (`spawn_task` caps titles at 60). Fixed-width prefix is the point — the sidebar reads as columns.
+The prefix is exactly 8 chars, so **the short title gets ≤ 52** (`start_session` caps titles at 60). Fixed-width prefix is the point — the sidebar reads as columns.
 
 ### Short title
 
@@ -105,7 +105,7 @@ Get the candidates from the same read model as the Dashboard — one call serves
 node __VAULT__/_tools/wf.mjs frontier --from <repo/effort> --json
 ```
 
-`data.tickets` lists every open, unblocked ticket on an active map, already in the owner's **pick order** (the `sort:` in *Wayfinder Picks*; `--from` gives its `same_effort` key a context). Each row carries `ref` (`repo/effort#NN`), `repo`, `effort`, `nn`, `type`, `title` and `target_repo`. Keep the rows of this map's `repo`/`effort`, in the order given — **that order is the ranking**, and its top row is the top pick.
+`data.tickets` lists every open, unblocked ticket on an active map, already in the owner's **pick order** (the `sort:` in *Wayfinder Picks*; `--from` gives its `same_effort` key a context). Each row carries `ref` (`repo/effort#NN`), `repo`, `effort`, `nn`, `type`, `title`, `target_repo` and `serial`. Keep the rows of this map's `repo`/`effort`, in the order given — **that order is the ranking**, and its top row is the top pick.
 
 Then walk the rows from the top and add each one that **collides** with nothing already in the batch, until the batch holds 3. Two tickets collide on:
 
@@ -113,6 +113,8 @@ Then walk the rows from the top and add each one that **collides** with nothing 
 - **same repo** — both change code in one repo (a ticket's repo is its `target_repo` when set, else its home `repo`).
 
 A colliding row is skipped and the walk goes on to the next row. **1 is a fine batch.**
+
+**Serial map** — the rows carry `serial: true` (the map's frontmatter has `serial: true`; `wf serial <repo/effort> on` set it): its tickets are worked one at a time, so the batch is **the top row alone**. If the map's `## Tickets` block already shows a `claimed` line, spawn nothing — `wf claim` in the new session would refuse it — and report which ticket holds the map.
 
 ⇒ Spawn without asking; [step 7](#workflow) reports the walk so the user can override in one word.
 
@@ -152,12 +154,19 @@ Respect the answer literally. "Spawn all anyway" is a real choice — the user m
 3. **Validate + confirm** per the section above. Drop or keep flagged tickets according to the answer.
 4. **Read each surviving ticket** for its `## Question` bold line → short title; `type` → `L`.
 5. **Allocate the run numbers** — one `bump-runs` call for the whole batch (see [Run number](#run-number)). Ascending ticket order gets ascending `RR`.
-6. **Spawn one chip per ticket** with `mcp__ccd_session__spawn_task`:
+6. **Start one session per ticket** with `mcp__ccd_session__start_session` (load it with `ToolSearch` `select:mcp__ccd_session__start_session` when it is only listed as deferred):
+   - `initiation`: **`"user_asked"`** — the user ran `/wayfinder-next`, which is the request for these sessions. **Never `"offer"`**: an offer shows a **Do it here** button, and one click turns *this* session into the ticket's session (see [This session never works the ticket](#this-session-never-works-the-ticket)).
+   - `context`: `"fresh"` · `use_worktree`: `true`
    - `title`: `#RR-LNN-<short title>` (e.g. `#12-G09-Per-gate lock wording`)
+   - `branch_name`: **`<effort>-<NN>`** — the effort slug and the zero-padded ticket number, e.g. `checkout-redesign-07`. The app adds its prefix and a suffix; the worktree and branch then name the ticket, so a retro can find the session from the effort alone. Never let the app pick a name (it invents one that traces back to nothing).
+   - `name`: `<initials>-<NN>` — the first letter of each word of the effort slug, then the ticket number (`checkout-redesign` #07 → `cr-07`), at most 24 chars
    - `prompt`: the kickoff template below in `language` (self-contained)
-   - `tldr`: one plain line in `language` — what that session does
-   - `cwd`: the path of the repo the ticket changes — its `target_repo` when set, else the `<repo>` of its ref
-7. **Report** every chip created, one line each (`#RR-LNN-title`), plus one line for anything skipped and why.
+   - `background`: one or two lines in `language`, at least 80 characters — what that session does, the map's Destination in one clause, and that it claims the ticket itself
+   - `cwd`: the path of the repo the ticket changes — its `target_repo` when set, else the `<repo>` of its ref. Leave it out when that is the project this session runs in.
+
+   When the app refuses `"user_asked"` because this turn was not started by the user (another session's message, an automated event), call again with `"own_initiative"` — it leaves a card the user starts, with no **Do it here** button. `own_initiative` takes no `cwd`: for a ticket whose repo is not this project, start nothing and tell the user to run `/wayfinder-next <NN>` from their own message.
+7. **Check where each session landed.** After the last `start_session`, call `mcp__ccd_session_mgmt__list_sessions` `{"linked": true}` once (load it with `ToolSearch` when deferred) and read each started session's folder and branch. Both should contain `<effort>-<NN>`. When one does not — the app reused an old worktree, or picked a name of its own — **warn** in the report: the ticket, the session link, its folder and branch, and that a retro will find it by its claim commit instead (`wf claim` records the full session id and the folder as `Session:` / `Cwd:` trailers). Do not stop or restart the session for this. A session still starting with no folder yet, and an `"own_initiative"` card nobody has started, have nothing to check — say so in one line.
+8. **Report** every session started, one line each (`#RR-LNN-title` and its session link), plus one line for anything skipped and why.
    When you picked with no argument, add the walk: the top pick, and each row skipped for a collision with what it collided with, so the user can swap one in with one word.
 
 ## Chip prompt template (write in `language`)
@@ -191,24 +200,27 @@ en  Note: another session of this map is running at the same time — when recor
 th  หมายเหตุ: มี session อื่นของ map นี้รันพร้อมกัน — ตอน record ให้ merge บรรทัดใน "Decisions so far" อย่าทับของใบอื่น
 ```
 
+## This session never works the ticket
+
+The session that runs `/wayfinder-next` **only starts sessions**. It never runs `wf claim` on a ticket it
+starts a session for, never opens a worktree or edits files for it, and never answers its `## Question` —
+the claim happens **in the new session**, as the first step of its prompt. A planning session that has been
+compacted is the wrong place to build in, and a claim made here has to be released and re-made there
+(and burns a second run number).
+
+- Started with `"user_asked"`, the session is already running — there is nothing to click here.
+- If a **Do it here** / **New session** card appears anyway (an `"offer"` was sent by mistake), answer
+  **New session**; never carry the ticket on in this session.
+- If `start_session` fails, report the error and the ticket — do not fall back to doing the ticket here.
+
 ## Notes
 
-- **Batching chips is fine; batching tickets into one chip is not.** Each chip's prompt still says "resolve at most 1 ticket per session".
-- Prefer batching tickets that **don't block each other** — chips for a chain (05 blocked by 04) queue work that can't start, which is why the confirm step exists.
-- If the map has no open ticket and nothing left in the fog, say the map is complete instead of spawning a chip.
-- **Grouping happens by itself — but the agent cannot target it.** Verified against Claude Code desktop
-  1.34493.1 (2026-08-25): `spawn_task` still takes only `title`/`prompt`/`tldr`/`cwd`, so there is no group
-  parameter to pass. Grouping belongs to the **desktop app's preferences**, not to the session record:
-  `preferences.epitaxyPrefs["dframe-group-scopes"][<account>/<workspace>]` holds `groups[] = {id, name}`
-  (names are **user-authored**, not derived from any session title) and `assignments["code:<sessionId>"] =
-  <groupId>`. The app writes the assignment when the user starts a chip; the user preference
-  `epitaxy-spawn-task-target-v2` (observed value `"here"`) is what routes a new chip into the **spawning
-  session's** group.
-  ⇒ The lever you control is **which session runs `/wayfinder-next`**: run it from the session holding the
-  map and the whole effort lands in one group; run it from a chip's own session and the new chips nest
-  under that chip instead. The chip's session record also gets `spawnedFrom` (`{sessionId, taskId, title}`)
-  pointing at the spawner, but that is a provenance link, not the grouping key.
-  ⚠️ `mcp__ccd_session_mgmt__get_session` returns **neither** the group **nor** `spawnedFrom` — it serves a
-  subset of the record. Do not conclude from its output that grouping does not exist; that exact mistake has
-  been made. Read the prefs file if you need the truth.
-  The title remains the only **label** we control — that is why it carries the run/type/ticket prefix.
+- **Batching sessions is fine; batching tickets into one session is not.** Each prompt still says "resolve at most 1 ticket per session".
+- Prefer batching tickets that **don't block each other** — sessions for a chain (05 blocked by 04) start work that can't finish, which is why the confirm step exists.
+- If the map has no open ticket and nothing left in the fog, say the map is complete instead of starting a session.
+- **Grouping comes from who starts the session.** A session from `start_session` is linked to the session
+  that started it and nests under the top session in the sidebar (`mcp__ccd_session_mgmt__list_sessions`
+  `{"linked": true}` lists the family). ⇒ Run `/wayfinder-next` from the session holding the map and the
+  whole effort lands in one family; run it from a ticket's own session and the new sessions nest under that
+  one instead. The labels we control are the **title** (`#RR-LNN-…`) and the **branch** (`<effort>-<NN>`) —
+  that is why both carry the ticket.
