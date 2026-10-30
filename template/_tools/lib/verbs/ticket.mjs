@@ -3,8 +3,10 @@
 // command that fixes it.
 import { findTransition, openBlockers, TICKET_STATUSES, TICKET_TRANSITIONS } from "../core.mjs"
 import { ticketRefArg } from "../args.mjs"
-import { invariantError } from "../errors.mjs"
+import { invariantError, usageError } from "../errors.mjs"
 import { editFrontmatter } from "../edit.mjs"
+import { UNKNOWN_CLAIMANT } from "../migrate.mjs"
+import { linkedWorktreeBranch } from "../repo.mjs"
 
 // The command that gets a ticket out of `status` when `verb` refuses it there.
 const FIX_FROM = {
@@ -57,6 +59,45 @@ export function assertUnblocked(index, t) {
 export const noMap = (effortKey, why) =>
   invariantError(`${effortKey} has no map — ${why}`, { fix: `wf chart ${effortKey} --title <title>` })
 
+const SESSION_ID_CHARS = 8
+
+/**
+ * Who is calling (spec *`claimed_by` value*): `--by`, else the branch of a linked worktree the caller
+ * runs in, else the Claude Code session id; null when none applies. A main checkout's branch names no
+ * session, so it is never used.
+ */
+export function callerName(by) {
+  if (by !== undefined) return by
+  const branch = linkedWorktreeBranch(process.cwd())
+  if (branch) return branch
+  const session = process.env.CLAUDE_CODE_SESSION_ID?.trim()
+  return session ? `session:${session.slice(0, SESSION_ID_CHARS)}` : null
+}
+
+/** Who is claiming: `callerName`, or exit 2 when it can't tell. */
+export function claimant(by) {
+  const name = callerName(by)
+  if (name === null) throw usageError("cannot tell who is claiming — pass `--by <name>`")
+  return name
+}
+
+/**
+ * Refuse `verb` on a ticket another session holds (Q13): its `claimed_by` names someone other than the
+ * caller (`--by`, or `callerName`'s fallbacks). `--force` takes it anyway; an unclaimed ticket, or one
+ * `wf migrate` marked as claimed before `wf`, is anyone's.
+ */
+export function assertHolder(t, verb, { by, force }) {
+  const holder = t.claimedBy
+  if (force || !holder || holder === UNKNOWN_CLAIMANT) return
+  const caller = callerName(by)
+  if (caller === holder) return
+  const who = caller === null ? "wf can't tell who you are" : `you are ${caller}`
+  const retry = verb === "wait" ? `wf wait ${t.ref} --note "…"` : `wf ${verb} ${t.ref}`
+  throw invariantError(`${t.ref} is held by ${holder} and ${who} — ${verb} acts only on a claim you hold`, {
+    fix: [`${retry} --force (take it from ${holder})`, ...(caller === null ? [`${retry} --by <name>`] : [])],
+  })
+}
+
 /** Refuse a ticket whose effort has no map, or a map that isn't `active`. */
 export function assertMapActive(index, t) {
   const m = index.efforts.get(t.effortKey)?.map
@@ -90,3 +131,18 @@ export function blockerArg(input, ctx, home) {
 
 /** How a ticket in effort `homeKey` links blocker `b`: a bare wikilink within an effort, a full path across. */
 export const blockerLink = (homeKey, b) => `[[${b.effortKey === homeKey ? b.name : b.path.replace(/\.md$/, "")}]]`
+
+/**
+ * Refuse a claim on a serial map (`serial: true`) while another of its tickets is `claimed` — its
+ * tickets are worked one at a time. `--force` claims anyway.
+ */
+export function assertSerialFree(index, t, { force }) {
+  const m = index.efforts.get(t.effortKey)?.map
+  if (force || !m?.serial) return
+  const held = index.efforts.get(t.effortKey).tickets.filter((o) => o.ref !== t.ref && o.status === "claimed")
+  if (!held.length) return
+  const what = held.map((o) => `${o.ref} (claimed by ${o.claimedBy ?? "nobody"})`).join(", ")
+  throw invariantError(`map ${m.key} is serial and ${what} is in progress — its tickets are claimed one at a time`, {
+    fix: [`wf resolve ${held[0].ref} --gist "…" (finish it first)`, `wf claim ${t.ref} --force (work them in parallel anyway)`],
+  })
+}

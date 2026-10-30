@@ -90,6 +90,7 @@ describe("wf frontier", () => {
             type: "task",
             title: "Gate",
             target_repo: "lib",
+            serial: false,
             unblocks: 1,
           },
         ],

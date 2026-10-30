@@ -2,6 +2,7 @@
 // Write or Edit would change, the `wf` verb that changes it (Q16: one verb per transition), spelled as
 // the command to run (Q21: `node <vault>/_tools/wf.mjs …`).
 import { MAP_FIELDS, MAP_TRANSITIONS, TICKET_FIELDS, TICKET_TRANSITIONS, TICKET_TYPES, formatRef } from "./core.mjs"
+import resolveVerb from "./verbs/resolve.mjs"
 
 const KINDS = {
   ticket: { fields: TICKET_FIELDS, transitions: TICKET_TRANSITIONS },
@@ -113,6 +114,28 @@ export function denialReason({ id, rel, before, after, wf }) {
   const what = kind === "ticket" ? `ticket ${ref}` : `the map of ${ref}`
   const said = hints.join("; ")
   return `${rel} is ${what}: its frontmatter is tracker state, changed only through wf. ${said[0].toUpperCase()}${said.slice(1)}. Edit only the body below the closing ${code("---")}.`
+}
+
+/**
+ * Why a desktop worktree session's Write or Edit of `file` in the vault's main checkout is denied, as a
+ * recipe that works at once (ticket 15). `rel` is the file in the vault, `ref` the ticket's ref or null;
+ * the paths come shell-quoted. The `--answer-file` step shows once `wf resolve` has that flag.
+ */
+export function mainCheckoutReason({ file, rel, vault, worktree, ref, wf }) {
+  const answer =
+    ref && "answer-file" in resolveVerb.flags
+      ? ` For this ticket's ${code("## Answer")}: write the answer to a file, then ${code(`${wf} resolve ${ref} --answer-file <file> --gist "…"`)} puts it in the main checkout and resolves, in one commit.`
+      : ""
+  return (
+    `${file} is in the vault's main checkout, and this session runs in a worktree of the vault (${worktree}): ` +
+    `Write and Edit can't change it from here, and the worktree's copy is no substitute — wf and other sessions ` +
+    `read only the main checkout, and nothing merges this worktree's branch into it. ` +
+    `Change the main checkout's file with Bash instead: read it (${code(`cat ${file}`)}), write the change ` +
+    `(a heredoc, or ${code("python3")} replacing the old text with the new), then commit it yourself — Bash ` +
+    `writes are not autocommitted: ${code(`git -C ${vault} add -- ${rel} && git -C ${vault} commit -m "…"`)}.` +
+    answer +
+    ` Frontmatter still changes only through ${code(wf)}, which works from this worktree as it is.`
+  )
 }
 
 /** A ticket's or map's creation is denied: `wf new` or `wf chart` creates it. */

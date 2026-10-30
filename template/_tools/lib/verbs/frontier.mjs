@@ -11,6 +11,7 @@ const row = (index, t) => ({
   type: t.type,
   title: t.title,
   target_repo: t.targetRepo,
+  serial: index.maps.get(t.effortKey).serial,
   unblocks: unblocks(index, t),
 })
 
@@ -28,7 +29,7 @@ const textOf = (rows) => {
 
 export default {
   name: "frontier",
-  summary: "open, unblocked tickets on active maps, in Picks order",
+  summary: "open, unblocked tickets on active maps, in Picks order; --from sorts that effort's tickets first, it doesn't filter (--repo does)",
   usage: "wf frontier [--repo R] [--from repo/effort] [--json]",
   flags: { repo: "string", from: "string" },
   maxPositionals: 0,

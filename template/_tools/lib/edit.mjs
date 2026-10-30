@@ -20,13 +20,13 @@ export const contentOf = (line) => line.replace(/\r?\n$/, "")
 export const eolOf = (lines) => (lines.find((l) => l.endsWith("\n"))?.endsWith("\r\n") ? "\r\n" : "\n")
 
 /**
- * A string or number as a YAML scalar that `parseNote` reads back as the same value: plain when it
- * survives unquoted (`claimed`, `2026-10-14`, `claude/x`, the number `3`), double-quoted otherwise
- * (`a #b`, `true`, the string `007`).
+ * A string, number or boolean as a YAML scalar that `parseNote` reads back as the same value: plain
+ * when it survives unquoted (`claimed`, `2026-10-14`, `claude/x`, the number `3`, the boolean `true`),
+ * double-quoted otherwise (`a #b`, the string `true`, the string `007`).
  */
 export function yamlScalar(value) {
   const text = String(value)
-  const same = typeof value === "number" ? value : text
+  const same = typeof value === "number" || typeof value === "boolean" ? value : text
   const readsBack = (scalar) => {
     const parsed = parseNote(`---\nk: ${scalar}\n---\n`)
     return !parsed.errors.length && parsed.frontmatter.k === same
@@ -161,6 +161,23 @@ export function sectionText(text, heading) {
   const lines = linesOf(text)
   const range = sectionRange(lines, heading)
   return range && lines.slice(range.start + 1, range.end).join("")
+}
+
+/**
+ * `text` with the `## heading` section's content replaced by `content` (a blank line on each side); a
+ * missing section is added at the end. The heading and everything outside the section stay as they are.
+ */
+export function replaceSection(text, heading, content) {
+  const lines = linesOf(text)
+  const eol = eolOf(lines)
+  const body = content.split("\n")
+  const range = sectionRange(lines, heading)
+  if (!range) {
+    const gap = lines.length && contentOf(lines[lines.length - 1]).trim() !== "" ? [""] : []
+    return insertLines(lines, lines.length, [...gap, `## ${heading}`, "", ...body], eol)
+  }
+  const after = range.end < lines.length ? [""] : []
+  return insertLines([...lines.slice(0, range.start + 1), ...lines.slice(range.end)], range.start + 1, ["", ...body, ...after], eol)
 }
 
 /**
