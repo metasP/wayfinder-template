@@ -272,6 +272,18 @@ Rules:
    Bash command, and hooks receive the same id as `session_id`.
 4. Otherwise exit 2: "cannot tell who is claiming — pass `--by`".
 
+### Claim commit trailers
+
+`claimed_by` is cleared on resolve, and a worktree's branch can name another effort (a session started by hand in
+an old worktree, or a directory the app reused). So the `wf(claim)` commit also carries git trailers, whatever
+`claimed_by` says:
+
+- `Session: <full CLAUDE_CODE_SESSION_ID>`, when the variable is set.
+- `Cwd: <the directory wf ran in>` — Claude Code keeps a session's transcript under a folder named after it.
+
+A retro finds every ticket's session from the vault alone:
+`git -C <vault> log --grep '^wf(claim): <repo>/<effort>#' --format='%s %(trailers:key=Session,valueonly,separator=)'`.
+
 A claim whose `status_since` is older than `claim_stale_days` is reported. `claim_stale_days` is a new
 *Wayfinder Config* key with default `3`, spelled in Config's lowercase style (Q17's `CLAIM_STALE_DAYS`).
 

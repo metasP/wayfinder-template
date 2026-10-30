@@ -3,6 +3,7 @@
 // (exit 1 with the fixing command), and who a claim is stamped with.
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
+import { realpathSync } from "node:fs"
 import { join } from "node:path"
 import { git, makeVault, map, onOneDay, read, seed, ticket, wf } from "./vault.mjs"
 
@@ -262,6 +263,36 @@ describe("wf wait", () => {
       assert.match(r.stderr, message)
       assert.match(frontmatterOf(vault, "r/e/issues/01-a.md"), /^status: "open"$/m)
     })
+})
+
+describe("claim commit trailers", () => {
+  const body = (vault) => git(vault, "log", "-1", "--format=%b", "HEAD").trim()
+
+  test("record the full session id and the directory, even when the worktree names another effort", () => {
+    const vault = oneTicket()
+    const repo = seed(makeVault())
+    git(repo, "commit", "-q", "--allow-empty", "-m", "base")
+    const worktree = join(repo, ".worktrees/other-effort-07-abc123")
+    git(repo, "worktree", "add", "-q", "-b", "claude/other-effort-07-abc123", worktree)
+    const r = run(vault, ["claim", "r/e#01", "--json"], { cwd: worktree, env: { CLAUDE_CODE_SESSION_ID: "0123456789abcdef" } })
+    assert.equal(r.code, 0, r.stderr)
+    assert.equal(r.json.data.claimed_by, "claude/other-effort-07-abc123")
+    assert.equal(git(vault, "log", "-1", "--format=%s", "HEAD"), "wf(claim): r/e#01")
+    assert.equal(body(vault), `Session: 0123456789abcdef\nCwd: ${realpathSync(worktree)}`)
+    assert.equal(git(vault, "log", "-1", "--format=%(trailers:key=Session,valueonly)", "HEAD").trim(), "0123456789abcdef")
+  })
+
+  test("without a session id there is no Session trailer, only Cwd", () => {
+    const vault = oneTicket()
+    run(vault, ["claim", "r/e#01", "--by", "alice"], { cwd: vault })
+    assert.equal(body(vault), `Cwd: ${realpathSync(vault)}`)
+  })
+
+  test("other verbs commit the bare subject", () => {
+    const vault = oneTicket({ status: "claimed", claimed_by: "bob" })
+    run(vault, ["release", "r/e#01", "--by", "bob"])
+    assert.equal(body(vault), "")
+  })
 })
 
 // Q13: release and wait act only on a claim the caller holds; `--force` takes someone else's.

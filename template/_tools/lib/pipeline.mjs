@@ -5,7 +5,7 @@
 //   8. lint the touched efforts; findings are warnings and never fail a verb that succeeded.
 //
 // A write verb is a read verb's shape plus `writes(args) → boolean`, `plan(ctx, args) → { ref,
-// edits: [{ path, text, create? }], data }` (runs under the lock; throws to refuse) and optionally
+// edits: [{ path, text, create? }], data, trailers? }` (runs under the lock; throws to refuse) and optionally
 // `prepare(args) → args` (runs before the lock: read stdin, check flags) and `report(outcome, args) →
 // { data, text, exitCode?, message?, warnings? }`. Only a verb with `writesOlderSchema` (migrate)
 // writes a vault older than the supported schema. An edit with `create: true` makes a new file and
@@ -68,6 +68,13 @@ const writeAndCommit = (vault, edits, message, creates) => {
   }
 }
 
+// Step 6's message: `wf(<verb>): <ref>`, then the plan's `trailers` ([key, value] pairs), if any.
+const commitMessage = (verb, plan) => {
+  const subject = `wf(${verb.name}): ${plan.ref}`
+  const trailers = (plan.trailers ?? []).map(([key, value]) => `${key}: ${value}`)
+  return trailers.length ? `${subject}\n\n${trailers.join("\n")}` : subject
+}
+
 const bodyOf = (text) => (text === null ? null : parseNote(text).body)
 
 // Run from a vault worktree (by its own `_tools/` or from a cwd inside it), the ticket a verb names may
@@ -112,7 +119,7 @@ const transact = (verb, args, { vault, checkout, gitDir, trees, warnings }) => {
   const after = buildIndex(notesAfter(notes, edits))
   const files = edits.map((e) => e.path)
   const creates = new Set(plan.edits.filter((e) => e.create).map((e) => e.path))
-  const commit = edits.length ? writeAndCommit(vault, edits, `wf(${verb.name}): ${plan.ref}`, creates) : null
+  const commit = edits.length ? writeAndCommit(vault, edits, commitMessage(verb, plan), creates) : null
   return { ...plan, files, commit, index: after, config, sort, today }
 }
 
