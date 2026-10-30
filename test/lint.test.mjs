@@ -4,6 +4,7 @@ import { test, describe } from "node:test"
 import assert from "node:assert/strict"
 import * as core from "../template/_tools/lib/core.mjs"
 import { TODAY, map, ticket } from "./fixture.mjs"
+import { noteOf } from "../template/_tools/lib/store.mjs"
 
 const lint = (notes, opts = {}) => core.lint(core.buildIndex(notes), { today: TODAY, ...opts })
 const ofRule = (findings, rule) => findings.filter((f) => f.rule === rule)
@@ -510,5 +511,110 @@ describe("review edge cases", () => {
   test("a done map with a pending ticket that moved later is one error, not also lying", () => {
     const notes = [map("r/e/map.md", { status: "done", status_since: "2026-10-05" }), ticket("r/e/issues/01-a.md", { status_since: "2026-10-12" })]
     assert.deepEqual(lint(notes).map((f) => f.rule), ["done-map-pending"])
+  })
+})
+
+// Body rules read what the store pulls from a note's body: build the notes the way it does.
+describe("body rules", () => {
+  const body = (note, text) => noteOf(note.path, { frontmatter: note.frontmatter, body: text })
+  const asset = (path, frontmatter = {}, text = "") => ({ path, frontmatter, links: core.wikilinksOf(text) })
+  const answered = (path, answer, fields = {}) =>
+    body(ticket(path, { status: "resolved", ...fields }), `## Question\n\nq\n\n## Answer\n\n${answer}\n`)
+  const rules = (notes, rule) => ofRule(lint(notes), rule).map((f) => [f.severity, f.ref, f.message])
+
+  test("a resolved ticket whose answer is the placeholder or empty is an error", () => {
+    const notes = [
+      map("r/e/map.md"),
+      answered("r/e/issues/01-a.md", "(filled in at resolve)"),
+      answered("r/e/issues/02-b.md", "(เติมตอน resolve)"),
+      answered("r/e/issues/03-c.md", ""),
+    ]
+    assert.deepEqual(rules(notes, "resolved-without-answer"), [
+      ["error", "r/e#01", "resolved, but ## Answer is still the placeholder — write it in r/e/issues/01-a.md"],
+      ["error", "r/e#02", "resolved, but ## Answer is still the placeholder — write it in r/e/issues/02-b.md"],
+      ["error", "r/e#03", "resolved, but ## Answer is empty — write it in r/e/issues/03-c.md"],
+    ])
+  })
+
+  test("an answer, an open placeholder, an out-of-scope ticket or a body never read is no finding", () => {
+    const notes = [
+      body(map("r/e/map.md"), "## Out of scope\n\n- [[03-c]]: past the destination\n"),
+      answered("r/e/issues/01-a.md", "Decided: ship it."),
+      body(ticket("r/e/issues/02-b.md"), "## Answer\n\n(filled in at resolve)\n"),
+      answered("r/e/issues/03-c.md", "(filled in at resolve)"),
+      ticket("r/e/issues/04-d.md", { status: "resolved" }),
+      body(ticket("r/e/issues/05-e.md", { status: "resolved" }), "## Question\n\nno answer section\n"),
+    ]
+    assert.deepEqual(rules(notes, "resolved-without-answer"), [])
+  })
+
+  test("a targeted resolved ticket whose answer names a branch but links no PR is a warning", () => {
+    const notes = [
+      map("r/e/map.md"),
+      answered("r/e/issues/01-a.md", "Code on branch `feat/x` @ abc1234.", { target_repo: "app" }),
+      answered("r/e/issues/02-b.md", "Shipped on `fix/y`.", { target_branch: "develop" }),
+    ]
+    assert.deepEqual(rules(notes, "branch-without-pr"), [
+      ["warn", "r/e#01", "## Answer names a branch but links no PR — add the PR link"],
+      ["warn", "r/e#02", "## Answer names a branch but links no PR — add the PR link"],
+    ])
+  })
+
+  test("a PR link, no branch, or no target_* is no branch-without-pr finding", () => {
+    const notes = [
+      map("r/e/map.md"),
+      answered("r/e/issues/01-a.md", "branch `feat/x` → https://github.com/o/app/pull/12", { target_repo: "app" }),
+      answered("r/e/issues/02-b.md", "No code: a README line.", { target_repo: "app" }),
+      answered("r/e/issues/03-c.md", "Pushed branch `feat/z`."),
+      answered("r/e/issues/04-d.md", "merx/x#4066 from `feat/y`", { target_repo: "app" }),
+      answered("r/e/issues/05-e.md", "ff `claude/z` into main (no remote, no PR)", { target_repo: "app" }),
+      answered("r/e/issues/06-f.md", "the client sits on another branch, see #12", { target_repo: "app" }),
+      answered("r/e/issues/07-g.md", "documented in `docs/api/PARTNERS_V1.md`", { target_repo: "app" }),
+    ]
+    assert.deepEqual(rules(notes, "branch-without-pr"), [])
+  })
+
+  test("an issue and an asset of one name in one effort is a warning; across efforts it isn't", () => {
+    const notes = [
+      map("r/e/map.md"),
+      ticket("r/e/issues/06-spec.md"),
+      asset("r/e/assets/journey/06-spec.md"),
+      { path: "r/e/issues/A-notes.md", frontmatter: {} },
+      asset("r/e/assets/A-notes.md"),
+      map("r/f/map.md"),
+      ticket("r/f/issues/01-a.md"),
+      asset("r/e/assets/01-a.md"),
+    ]
+    assert.deepEqual(rules(notes, "issue-asset-name-clash"), [
+      ["warn", "r/e", "r/e/issues/A-notes.md and r/e/assets/A-notes.md share a name — a bare [[A-notes]] is ambiguous; rename the asset"],
+      ["warn", "r/e#06", "r/e/issues/06-spec.md and r/e/assets/journey/06-spec.md share a name — a bare [[06-spec]] is ambiguous; rename the asset"],
+    ])
+  })
+
+  test("one effort slug under two repo folders warns at both; distinct slugs don't", () => {
+    const notes = [map("a/x/map.md"), map("b/x/map.md"), ticket("b/x/issues/01-a.md"), map("a/y/map.md"), ticket("a/x/issues/01-a.md")]
+    assert.deepEqual(rules(notes, "effort-in-two-repos"), [
+      ["warn", "a/x", "the same effort is also at b/x — keep one effort in one repo folder"],
+      ["warn", "b/x", "the same effort is also at a/x — keep one effort in one repo folder"],
+    ])
+    assert.deepEqual(rules([map("a/x/map.md"), map("a/y/map.md")], "effort-in-two-repos"), [])
+  })
+
+  test("a live note linking a superseded asset warns; history, the successor and resolved tickets don't", () => {
+    const notes = [
+      body(map("r/e/map.md"), "## Sources of truth\n\n- [[r/e/assets/02-spec|spec]]\n\n## Decisions so far\n\n- [[01-a]]: see [[02-spec]]\n"),
+      body(ticket("r/e/issues/01-a.md", { status: "resolved" }), "## Answer\n\nper [[02-spec]]\n"),
+      body(ticket("r/e/issues/03-c.md"), "Read [[02-spec]] first.\n"),
+      asset("r/e/assets/02-spec.md", { superseded_by: "[[r/e/assets/05-spec]]" }),
+      asset("r/e/assets/05-spec.md", {}, "Replaces [[02-spec]].\n"),
+      asset("r/e/assets/notes.md", {}, "| a | [[02-spec\\|old]] |\n"),
+    ]
+    assert.deepEqual(rules(notes, "superseded-asset-linked"), [
+      ["warn", "r/e", "r/e/assets/notes.md links r/e/assets/02-spec.md, superseded by [[r/e/assets/05-spec]] — link the successor"],
+      ["warn", "r/e", "r/e/map.md links r/e/assets/02-spec.md, superseded by [[r/e/assets/05-spec]] — link the successor"],
+      ["warn", "r/e#03", "r/e/issues/03-c.md links r/e/assets/02-spec.md, superseded by [[r/e/assets/05-spec]] — link the successor"],
+    ])
+    const fixed = notes.map((n) => (n.path === "r/e/assets/02-spec.md" ? asset(n.path) : n))
+    assert.deepEqual(rules(fixed, "superseded-asset-linked"), [])
   })
 })

@@ -189,7 +189,7 @@ describe("wf release", () => {
   ])
     test(`${from} → open, clearing claimed_by, status_note and wait_until`, () => {
       const vault = oneTicket(fields)
-      const { r, day } = onOneDay((day) => ({ r: run(vault, ["release", "r/e#01", "--json"]), day }))
+      const { r, day } = onOneDay((day) => ({ r: run(vault, ["release", "r/e#01", "--by", "bob", "--json"]), day }))
       assert.equal(r.code, 0, r.stderr)
       assert.deepEqual([r.json.data.ref, r.json.data.status], ["r/e#01", "open"])
       const fm = frontmatterOf(vault, "r/e/issues/01-a.md")
@@ -199,7 +199,7 @@ describe("wf release", () => {
     })
 
   test("releasing works on a map that isn't active", () => {
-    assert.equal(run(oneTicket({ status: "claimed", claimed_by: "b" }, { status: "paused", status_note: "x" }), ["release", "r/e#01"]).code, 0)
+    assert.equal(run(oneTicket({ status: "claimed", claimed_by: "b" }, { status: "paused", status_note: "x" }), ["release", "r/e#01", "--by", "b"]).code, 0)
   })
 
   test("refuses an open ticket", () => {
@@ -215,7 +215,7 @@ describe("wf wait", () => {
   for (const from of ["open", "claimed"])
     test(`${from} → waiting with a note and an until date`, () => {
       const vault = oneTicket(from === "claimed" ? { status: "claimed", claimed_by: "bob" } : {})
-      const r = run(vault, ["wait", "r/e#01", "--note", "vendor: reply #2", "--until", "2099-01-31", "--json"])
+      const r = run(vault, ["wait", "r/e#01", "--note", "vendor: reply #2", "--until", "2099-01-31", "--by", "bob", "--json"])
       assert.equal(r.code, 0, r.stderr)
       assert.deepEqual(
         [r.json.data.status, r.json.data.status_note, r.json.data.wait_until],
@@ -254,4 +254,48 @@ describe("wf wait", () => {
       assert.match(r.stderr, message)
       assert.match(frontmatterOf(vault, "r/e/issues/01-a.md"), /^status: "open"$/m)
     })
+})
+
+// Q13: release and wait act only on a claim the caller holds; `--force` takes someone else's.
+describe("wf release and wf wait refuse a claim someone else holds", () => {
+  const heldByBob = { status: "claimed", claimed_by: "bob" }
+  const waitingOnBob = { status: "waiting", claimed_by: "bob", status_note: "vendor" }
+
+  test("release by another caller", () => {
+    refused(oneTicket(heldByBob), ["release", "r/e#01", "--by", "alice"], /r\/e#01 is held by bob and you are alice — release acts only on a claim you hold/, "wf release r/e#01 --force (take it from bob)")
+    refused(oneTicket(waitingOnBob), ["release", "r/e#01", "--by", "alice"], /r\/e#01 is held by bob and you are alice/, "wf release r/e#01 --force (take it from bob)")
+  })
+
+  test("wait by another caller", () => {
+    refused(oneTicket(heldByBob), ["wait", "r/e#01", "--note", "n", "--by", "alice"], /r\/e#01 is held by bob and you are alice — wait acts only on a claim you hold/, 'wf wait r/e#01 --note "…" --force (take it from bob)')
+  })
+
+  test("a caller wf can't name is refused too, and told about --by", () => {
+    refused(oneTicket(heldByBob), ["release", "r/e#01"], /r\/e#01 is held by bob and wf can't tell who you are/, "wf release r/e#01 --force (take it from bob)")
+    const r = run(oneTicket(heldByBob), ["release", "r/e#01"])
+    assert.match(r.stderr, /^  or: wf release r\/e#01 --by <name>$/m)
+  })
+
+  test("the session id names the caller the way claim stamps it", () => {
+    const env = { CLAUDE_CODE_SESSION_ID: "abcd1234-ffff" }
+    const vault = oneTicket()
+    assert.equal(run(vault, ["claim", "r/e#01"], { env }).code, 0)
+    assert.equal(run(vault, ["wait", "r/e#01", "--note", "n"], { env }).code, 0)
+    assert.equal(run(vault, ["release", "r/e#01"], { env: { CLAUDE_CODE_SESSION_ID: "99999999" } }).code, 1)
+    assert.equal(run(vault, ["release", "r/e#01"], { env }).code, 0)
+  })
+
+  test("--force takes it: release clears the claim, wait keeps the holder", () => {
+    const waited = oneTicket(heldByBob)
+    assert.equal(run(waited, ["wait", "r/e#01", "--note", "n", "--force"]).code, 0)
+    assert.match(frontmatterOf(waited, "r/e/issues/01-a.md"), /^claimed_by: "?bob"?$/m)
+    const released = oneTicket(waitingOnBob)
+    assert.equal(run(released, ["release", "r/e#01", "--force"]).code, 0)
+    assert.doesNotMatch(frontmatterOf(released, "r/e/issues/01-a.md"), /claimed_by/)
+  })
+
+  test("a ticket nobody holds is anyone's: waiting from open, or claimed before wf", () => {
+    assert.equal(run(oneTicket({ status: "waiting", status_note: "vendor" }), ["release", "r/e#01"]).code, 0)
+    assert.equal(run(oneTicket({ status: "claimed", claimed_by: "unknown (before wf)" }), ["release", "r/e#01"]).code, 0)
+  })
 })
