@@ -199,6 +199,7 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
   `git -C <vault> commit` เอง)
 - เรียกด้วย **absolute path** เสมอ (`<vault>` = โฟลเดอร์ของ README นี้ — ย่อหน้า wayfinder ใน `~/.claude/CLAUDE.md`
   จดไว้ให้) · `wf` เขียนและ commit ลง main checkout ของ vault เสมอ ไม่ว่าจะเรียกจาก repo หรือ worktree ไหน
+  — ใบที่เนื้อความใน worktree ต่างจาก main ⇒ `wf` เตือนพร้อมบอก path ของ main (ไม่ปฏิเสธ)
 - อ้างใบด้วย `repo/effort#NN` · path ใน vault · หรือ wikilink ก็ได้ — `wf` พิมพ์กลับเป็น `repo/effort#NN` เสมอ
 - exit `0` สำเร็จ · `1` ผิด invariant (ข้อความบอกกฎ + คำสั่งที่แก้) · `2` ใช้ผิดหรือสภาพแวดล้อมไม่พร้อม
   (vault schema เก่า ⇒ `wf migrate` แล้ว `wf migrate --yes` · เขียนไม่ได้เพราะ `EPERM` ⇒ vault อยู่นอก path ที่ sandbox ให้เขียน)
@@ -222,7 +223,7 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
 | `wf claim <ref>` | `open` → `claimed` | อ่านใบใหม่ใต้ lock ⇒ สอง session claim ใบเดียวกันไม่ได้ · ใบต้องไม่ติด blocker และ map ต้อง `active` · ประทับ `claimed_by` (`--by name` · ไม่งั้นชื่อ branch ของ worktree ที่เรียก · ไม่งั้น session id) |
 | `wf release <ref>` | `claimed`/`waiting` → `open` | ล้าง `claimed_by` · `status_note` · `wait_until` · ปล่อยได้เฉพาะใบที่ `claimed_by` ตรงกับผู้เรียก (หาชื่อแบบเดียวกับ `claim` หรือ `--by`) · ใบของคนอื่นต้อง `--force` · ใบ `waiting` ที่จะทำต่อ ⇒ `wf release` แล้ว `wf claim` (`claim` รับแค่ `open`) |
 | `wf wait <ref> --note "…"` | `open`/`claimed` → `waiting` | ต้องบอกว่ารออะไร · `--until YYYY-MM-DD` ⇒ lint เตือนเมื่อเลยวัน · `claimed_by` คงอยู่ — คนเดิมยังถือใบ · ใบ `claimed` ของคนอื่นต้อง `--force` |
-| `wf resolve <ref> --gist "…"` | `claimed`/`waiting` → `resolved` | `## Answer` ต้องไม่ว่างและไม่ใช่ placeholder · ต่อท้าย `## Decisions so far` หนึ่งบรรทัด `- [[NN-slug]]: ‹gist›` โดยอ่าน map ใหม่ใต้ lock ⇒ session ที่ resolve พร้อมกันไม่เขียนทับกัน |
+| `wf resolve <ref> --gist "…"` | `claimed`/`waiting` → `resolved` | `## Answer` ต้องไม่ว่างและไม่ใช่ placeholder · ต่อท้าย `## Decisions so far` หนึ่งบรรทัด `- [[NN-slug]]: ‹gist›` โดยอ่าน map ใหม่ใต้ lock ⇒ session ที่ resolve พร้อมกันไม่เขียนทับกัน · `--answer-file <file>` เขียน `## Answer` ของใบใน main checkout จากไฟล์ก่อน ในคอมมิตเดียวกัน (ไฟล์ที่มี `## Answer` ⇒ เอาแค่ section นั้น) |
 | `wf resolve <ref> --out-of-scope --gist "…"` | `open`/`claimed` → `resolved` | ใบที่เลย Destination · ต่อท้าย `## Out of scope` แทน `## Decisions so far` |
 | `wf block <ref> <blocker-ref>` | — | เพิ่ม (หรือ `--remove`) blocker หนึ่งเส้น · ไม่ยอมถ้าเกิดวง |
 | `wf bump-runs <repo/effort>` | — | จองเลขรอบถัดไป (`--count k` ⇒ `k` เลข) ใต้ lock แล้วพิมพ์ช่วงนั้น |
@@ -294,6 +295,7 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
 - **Claim** — `wf claim <ref>` ก่อนทำอะไรทั้งนั้น — มันอ่านใบใหม่ใต้ lock เอง ใบที่ session อื่นเพิ่งจับจะถูกปฏิเสธ
 - **Resolve** — เขียนคำตอบใต้ `## Answer` (สิ่งที่ตัดสิน · ข้อเท็จจริงที่ใบอื่นต้องใช้ · ลิงก์ PR · ลิงก์ asset)
   แล้ว `wf resolve <ref> --gist "…"`
+  · **session ที่ทำงานใน worktree**: เขียน Answer ลงใบใน worktree (หรือไฟล์ไหนก็ได้) → `wf resolve <ref> --gist "…" --answer-file <ไฟล์นั้น>`
 - **หลัง resolve** — แตกใบใหม่ด้วย `wf new` · ย้าย fog ที่ชัดแล้วออกจาก Not yet specified · ใบที่เลย
   Destination ⇒ `wf resolve <ref> --out-of-scope --gist "…"` (ไม่เข้า Decisions so far)
 - **รอของนอก** — `wf wait <ref> --note "…"` · เลิกรอหรือปล่อยมือ ⇒ `wf release <ref>`

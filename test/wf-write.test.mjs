@@ -229,6 +229,48 @@ describe("the main checkout", () => {
     assert.equal(git(worktree, "log", "-1", "--format=%s"), "seed")
   })
 
+  describe("a ticket whose prose differs in the worktree", () => {
+    const withSide = () => {
+      const vault = twoTickets()
+      const worktree = join(vault, ".worktrees/side")
+      git(vault, "worktree", "add", "-q", "-b", "side", worktree)
+      return { vault, worktree }
+    }
+    const DRIFT = /^wf: warning: r\/e\/issues\/01-a\.md in the worktree .*\.worktrees\/side differs from the main checkout below its frontmatter — wf reads and writes only .*r\/e\/issues\/01-a\.md \(to resolve with the worktree's answer: --answer-file .*\.worktrees\/side\/r\/e\/issues\/01-a\.md\)$/m
+
+    test("is warned about, by the worktree's wf or the main one run from inside it, and the verb still runs", () => {
+      const { vault, worktree } = withSide()
+      write(worktree, "r/e/issues/01-a.md", `${read(worktree, "r/e/issues/01-a.md")}\n## Answer\n\nonly here\n`)
+      const own = run(vault, ["claim", "r/e#01", "--by", "a"], { cwd: worktree, script: join(worktree, "_tools/wf.mjs") })
+      assert.equal(own.code, 0, own.stderr)
+      assert.match(own.stderr, DRIFT)
+      const main = run(vault, ["wait", "r/e#01", "--note", "n", "--by", "a"], { cwd: join(worktree, "r/e") })
+      assert.equal(main.code, 0, main.stderr)
+      assert.match(main.stderr, DRIFT)
+    })
+
+    test("is warned about when the verb is refused too", () => {
+      const { vault, worktree } = withSide()
+      write(worktree, "r/e/issues/01-a.md", `${read(worktree, "r/e/issues/01-a.md")}\n## Answer\n\nonly here\n`)
+      assert.equal(run(vault, ["claim", "r/e#01", "--by", "a"]).code, 0)
+      const r = run(vault, ["resolve", "r/e#01", "--gist", "g"], { cwd: worktree })
+      assert.equal(r.code, 1)
+      assert.match(r.stderr, DRIFT)
+      assert.match(r.stderr, /has no answer/)
+    })
+
+    test("is quiet when only the frontmatter differs, outside a worktree, and with --answer-file", () => {
+      const { vault, worktree } = withSide()
+      assert.equal(run(vault, ["claim", "r/e#01", "--by", "a"], { cwd: worktree }).stderr, "")
+      write(worktree, "r/e/issues/01-a.md", `${read(worktree, "r/e/issues/01-a.md")}\n## Answer\n\nonly here\n`)
+      assert.equal(run(vault, ["wait", "r/e#01", "--note", "n", "--by", "a"]).stderr, "")
+      const r = run(vault, ["resolve", "r/e#01", "--gist", "g", "--answer-file", join(worktree, "r/e/issues/01-a.md")], { cwd: worktree })
+      assert.equal(r.code, 0, r.stderr)
+      assert.doesNotMatch(r.stderr, /differs from the main checkout/)
+      assert.match(read(vault, "r/e/issues/01-a.md"), /\n## Answer\n\nonly here\n$/)
+    })
+  })
+
   test("a main checkout mid-merge exits 2 and nothing is written", () => {
     const vault = twoTickets()
     const branch = git(vault, "branch", "--show-current")

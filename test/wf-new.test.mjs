@@ -4,7 +4,8 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
 import { spawn } from "node:child_process"
-import { chmodSync, existsSync } from "node:fs"
+import { chmodSync, existsSync, mkdtempSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { git, makeVault, map, onOneDay, read, seed, ticket, ticketsBlock, wf, wfAsync, write } from "./vault.mjs"
 
@@ -208,6 +209,62 @@ describe("wf resolve", () => {
   })
 })
 
+describe("wf resolve --answer-file", () => {
+  const claimed = (body) => vaultWith(effort([withBody(ticket("r/e/issues/01-a.md", { title: "A", status: "claimed", claimed_by: "me" }), body)]))
+  const fileWith = (text) => {
+    const path = join(mkdtempSync(join(tmpdir(), "wf-answer-")), "answer.md")
+    writeFileSync(path, text)
+    return path
+  }
+
+  test("writes ## Answer in the main checkout and resolves, in one commit", () => {
+    const vault = claimed(`${PLACEHOLDER}\n## Notes\n\nkept\n`)
+    const r = run(vault, ["resolve", "r/e#01", "--gist", "g", "--answer-file", fileWith("It lives\r\nin the vault.\n"), "--json"])
+    assert.equal(r.code, 0, r.stderr)
+    assert.equal(r.json.data.answer_written, true)
+    const text = read(vault, "r/e/issues/01-a.md")
+    assert.match(text, /\n## Answer\n\nIt lives\nin the vault\.\n\n## Notes\n\nkept\n$/)
+    assert.match(frontmatterOf(vault, "r/e/issues/01-a.md"), /^status: resolved$/m)
+    assert.deepEqual(lastCommit(vault), { subject: "wf(resolve): r/e#01", files: ["r/e/issues/01-a.md", "r/e/map.md"] })
+  })
+
+  test("a file with a ## Answer section (the worktree's copy of the ticket) gives just that section", () => {
+    const vault = claimed(PLACEHOLDER)
+    const copy = fileWith("---\nstatus: open\n---\n\n## Question\n\nq\n\n## Answer\n\nFrom the worktree.\n\n## Notes\n\nn\n")
+    assert.equal(run(vault, ["resolve", "r/e#01", "--gist", "g", "--answer-file", copy]).code, 0)
+    assert.match(read(vault, "r/e/issues/01-a.md"), /\n## Answer\n\nFrom the worktree\.\n$/)
+  })
+
+  test("replaces an answer already there, and adds the section when the ticket has none", () => {
+    const vault = claimed(ANSWERED)
+    assert.equal(run(vault, ["resolve", "r/e#01", "--gist", "g", "--answer-file", fileWith("Newer.")]).code, 0)
+    assert.match(read(vault, "r/e/issues/01-a.md"), /\n## Answer\n\nNewer\.\n$/)
+    const bare = claimed("\n## Question\n\nq\n")
+    assert.equal(run(bare, ["resolve", "r/e#01", "--gist", "g", "--answer-file", fileWith("Added.")]).code, 0)
+    assert.match(read(bare, "r/e/issues/01-a.md"), /\n## Question\n\nq\n\n## Answer\n\nAdded\.\n$/)
+  })
+
+  test("a relative path is read from the cwd", () => {
+    const vault = claimed(PLACEHOLDER)
+    const file = fileWith("Relative.")
+    const r = run(vault, ["resolve", "r/e#01", "--gist", "g", "--answer-file", "answer.md"], { cwd: join(file, "..") })
+    assert.equal(r.code, 0, r.stderr)
+    assert.match(read(vault, "r/e/issues/01-a.md"), /Relative\./)
+  })
+
+  test("a missing, empty or placeholder file is a usage error (exit 2) and nothing is written", () => {
+    for (const path of [join(tmpdir(), "wf-no-such-answer.md"), fileWith("\n\n"), fileWith("## Answer\n\n(filled in at resolve)\n")]) {
+      const vault = claimed(PLACEHOLDER)
+      const head = git(vault, "rev-parse", "HEAD")
+      const r = run(vault, ["resolve", "r/e#01", "--gist", "g", "--answer-file", path])
+      assert.equal(r.code, 2, r.stderr)
+      assert.match(r.stderr, /--answer-file/)
+      assert.equal(git(vault, "rev-parse", "HEAD"), head)
+      assert.equal(git(vault, "status", "--porcelain"), "")
+    }
+  })
+})
+
 describe("wf resolve refuses", () => {
   const refused = (vault, args, invariant, fix) => {
     const head = git(vault, "rev-parse", "HEAD")
@@ -236,7 +293,7 @@ describe("wf resolve refuses", () => {
   })
 
   test("an empty ## Answer, the placeholder in any language, or no ## Answer", () => {
-    const fix = "write the answer under ## Answer in r/e/issues/01-a.md, then rerun"
+    const fix = "write the answer under ## Answer in r/e/issues/01-a.md (or into a file: --answer-file <file>), then rerun"
     refused(claimed("\n## Question\n\nq\n\n## Answer\n\n\n## Notes\n\nx\n"), ["resolve", "r/e#01", "--gist", "g"], /r\/e#01 has no answer — resolve needs a non-empty ## Answer/, fix)
     refused(claimed(PLACEHOLDER), ["resolve", "r/e#01", "--gist", "g"], /has no answer/, fix)
     refused(claimed("\n## Answer\n\n(เติมตอน resolve)\n"), ["resolve", "r/e#01", "--gist", "g"], /has no answer/, fix)

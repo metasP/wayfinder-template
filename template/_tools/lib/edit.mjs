@@ -164,6 +164,23 @@ export function sectionText(text, heading) {
 }
 
 /**
+ * `text` with the `## heading` section's content replaced by `content` (a blank line on each side); a
+ * missing section is added at the end. The heading and everything outside the section stay as they are.
+ */
+export function replaceSection(text, heading, content) {
+  const lines = linesOf(text)
+  const eol = eolOf(lines)
+  const body = content.split("\n")
+  const range = sectionRange(lines, heading)
+  if (!range) {
+    const gap = lines.length && contentOf(lines[lines.length - 1]).trim() !== "" ? [""] : []
+    return insertLines(lines, lines.length, [...gap, `## ${heading}`, "", ...body], eol)
+  }
+  const after = range.end < lines.length ? [""] : []
+  return insertLines([...lines.slice(0, range.start + 1), ...lines.slice(range.end)], range.start + 1, ["", ...body, ...after], eol)
+}
+
+/**
  * `text` with `line` appended to the `## heading` section, after its last non-blank line; a missing
  * section is added at the end. Nothing else changes.
  */
