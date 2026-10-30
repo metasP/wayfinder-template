@@ -194,7 +194,9 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
 - **frontmatter ของ map/ticket เปลี่ยนผ่าน `wf` ทางเดียว** (ฟิลด์ที่ไม่มี verb เช่น `blocked_by` ของ map เป็นของเจ้าของ vault) — verb ถือ lock · เช็ค invariant · commit ให้ในตัว
   ซึ่งการแก้มือข้ามทั้งสามอย่าง · `frontmatter-guard.mjs` ปฏิเสธ Write/Edit ที่แตะ frontmatter หรือสร้างไฟล์
   map/ticket แล้วบอก verb ที่ต้องใช้ · **เนื้อความ** (Destination · Notes · Answer · Not yet specified · Retro …)
-  ยังเขียนด้วย Write/Edit ตามปกติ แล้ว `autocommit.sh` commit ให้
+  ยังเขียนด้วย Write/Edit ตามปกติ แล้ว `autocommit.sh` commit ให้ · session ของ desktop app ที่รันใน worktree
+  เขียน main checkout ของ vault ด้วย Write/Edit ไม่ได้ ⇒ guard ปฏิเสธพร้อมสูตร (Bash เขียน path ของ main checkout แล้ว
+  `git -C <vault> commit` เอง)
 - เรียกด้วย **absolute path** เสมอ (`<vault>` = โฟลเดอร์ของ README นี้ — ย่อหน้า wayfinder ใน `~/.claude/CLAUDE.md`
   จดไว้ให้) · `wf` เขียนและ commit ลง main checkout ของ vault เสมอ ไม่ว่าจะเรียกจาก repo หรือ worktree ไหน
 - อ้างใบด้วย `repo/effort#NN` · path ใน vault · หรือ wikilink ก็ได้ — `wf` พิมพ์กลับเป็น `repo/effort#NN` เสมอ
