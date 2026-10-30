@@ -318,6 +318,11 @@ Other verbs:
   with 5 or more warnings into one line that names `wf lint --rule <rule>`, and prints errors last, so a
   terminal that keeps only the tail still shows them. `--rule` and `--json` list every finding.
 - `migrate [--yes]` prints a unified diff by default and writes only with `--yes`.
+- `stats <repo/effort> [--json]` reads a map's history from the vault's git log (commits that touched the map's
+  folder; moves from their `wf(claim|release|wait|resolve): <ref>` subjects) and prints the span from the first claim
+  to the last resolve, minus stretches where a ticket was waiting and none was claimed, minus gaps over 4 hours with
+  no commit on the map, plus the claimed time of each ticket now waiting or resolved (median, p75, max), leaving out
+  tickets claimed for under a minute. It is the reference a time estimate cites. It never writes.
 
 What every write verb does, in order:
 
