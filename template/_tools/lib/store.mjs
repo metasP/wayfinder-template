@@ -1,10 +1,11 @@
 // The store's read side (spec *Modules* §2): the only module that touches the filesystem or git.
 // It finds the vault's main checkout, checks the vault schema version, and reads every map and ticket
-// into the core's input — `{ path, frontmatter, ticketsBlock? }` — plus *Wayfinder Config* and the
-// *Wayfinder Picks* `sort:` key.
+// into the core's input — `{ path, frontmatter, ticketsBlock?, answer?, links? }`, assets for their
+// links — plus *Wayfinder Config* and the *Wayfinder Picks* `sort:` key.
 import { readdirSync, readFileSync, realpathSync } from "node:fs"
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path"
-import { isUnindexedTicket, parseRef, SCHEMA_VERSION, ticketsBlockOf } from "./core.mjs"
+import { isAssetNote, isUnindexedTicket, parseRef, SCHEMA_VERSION, ticketsBlockOf, wikilinksOf } from "./core.mjs"
+import { sectionText } from "./edit.mjs"
 import { parseNote } from "./frontmatter.mjs"
 import { usageError } from "./errors.mjs"
 import { runGit } from "./git.mjs"
@@ -157,15 +158,45 @@ const readNote = (vault, path) => {
   return text === null ? null : parseNote(text)
 }
 
-/** A parsed note as the core's input: maps carry `ticketsBlock` (null without markers). */
+// A map's history: links there name what was, not what is.
+const HISTORY_SECTIONS = ["Decisions so far", "Retro"]
+
+// The body's links, less those inside `headings` (one occurrence each).
+const linksOutside = (body, headings) => {
+  const links = wikilinksOf(body)
+  for (const link of headings.flatMap((h) => wikilinksOf(sectionText(body, h)))) {
+    const at = links.indexOf(link)
+    if (at >= 0) links.splice(at, 1)
+  }
+  return links
+}
+
+/**
+ * A parsed note as the core's input: every note carries its body's `links`; maps carry `ticketsBlock`
+ * (null without markers) and the links under `## Out of scope`, tickets their `## Answer` (null without one).
+ */
 export const noteOf = (path, { frontmatter, body }) =>
-  basename(path) === "map.md" ? { path, frontmatter, ticketsBlock: ticketsBlockOf(body) } : { path, frontmatter }
+  basename(path) === "map.md"
+    ? {
+        path,
+        frontmatter,
+        ticketsBlock: ticketsBlockOf(body),
+        links: linksOutside(body, HISTORY_SECTIONS),
+        outOfScope: wikilinksOf(sectionText(body, "Out of scope")),
+      }
+    : { path, frontmatter, answer: sectionText(body, "Answer"), links: wikilinksOf(body) }
+
+// An asset's frontmatter is the author's, not wf's: a parse error drops the keys, never the read.
+const assetOf = (vault, path) => {
+  const { frontmatter, body } = readNote(vault, path) ?? NO_NOTE
+  return { path, frontmatter, links: wikilinksOf(body) }
+}
 
 // A missing Config or Picks note is fine: every key has a default.
 const NO_NOTE = Object.freeze({ frontmatter: {}, body: "", errors: [] })
 
 /**
- * Read the vault: `{ notes, config, sort }`. Maps carry `ticketsBlock` (null without markers).
+ * Read the vault: `{ notes, config, sort }`, notes as `noteOf` builds them plus every asset note.
  * Any frontmatter outside the YAML subset → exit 2, every offending `file:line` listed.
  */
 export function readVault(vault) {
@@ -176,10 +207,13 @@ export function readVault(vault) {
   }
   // A file in `issues/` without an NN goes in by path alone: lint names it, and its frontmatter
   // can't stop the read.
-  const notes = markdownFiles(vault)
-    .filter((path) => isTrackerNote(path) || isUnindexedTicket(path))
-    .sort()
-    .map((path) => (isTrackerNote(path) ? noteOf(path, collect(path, readNote(vault, path) ?? NO_NOTE)) : { path, frontmatter: {} }))
+  const files = markdownFiles(vault).sort()
+  const notes = [
+    ...files
+      .filter((path) => isTrackerNote(path) || isUnindexedTicket(path))
+      .map((path) => (isTrackerNote(path) ? noteOf(path, collect(path, readNote(vault, path) ?? NO_NOTE)) : { path, frontmatter: {} })),
+    ...files.filter(isAssetNote).map((path) => assetOf(vault, path)),
+  ]
   const config = collect(CONFIG_NOTE, readNote(vault, CONFIG_NOTE) ?? NO_NOTE).frontmatter
   const picks = collect(PICKS_NOTE, readNote(vault, PICKS_NOTE) ?? NO_NOTE).frontmatter
   if (errors.length) throw usageError(`frontmatter outside the YAML subset in ${vault}`, { details: errors })

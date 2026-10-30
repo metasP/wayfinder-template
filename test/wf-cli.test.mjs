@@ -54,7 +54,7 @@ describe("usage errors exit 2", () => {
     assert.match(top.stdout, /wf resolve <ref> --gist "…" \[--out-of-scope\] \[--json\]/)
     assert.match(top.stdout, /wf block <ref> <blocker-ref> \[--remove\] \[--json\]/)
     assert.match(top.stdout, /wf chart <repo\/effort> --title "…" \[--json\]/)
-    assert.match(top.stdout, /wf map-status <repo\/effort> active\|paused\|dropped\|done \[--note "…"\] \[--superseded-by <repo\/effort>\] \[--json\]/)
+    assert.match(top.stdout, /wf map-status <repo\/effort> active\|paused\|dropped\|done \[--note "…"\] \[--superseded-by <repo\/effort>\] \[--force\] \[--json\]/)
     assert.match(top.stdout, /wf bump-runs <repo\/effort> \[--count k\] \[--json\]/)
     const verb = wf(smallVault(), ["lint", "--help"])
     assert.equal(verb.code, 0)
