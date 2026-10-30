@@ -34,7 +34,15 @@ export default {
     assertUnblocked(ctx.index, t)
     assertMapActive(ctx.index, t)
     const fields = { status: "claimed", status_since: ctx.today, claimed_by: by }
-    return transition(ctx, t, Object.entries(fields), fields)
+    return { ...transition(ctx, t, Object.entries(fields), fields), trailers: claimTrailers() }
   },
   report: (outcome) => report(outcome, `claimed ${outcome.ref} as ${outcome.data.claimed_by}`),
+}
+
+// The claim commit's trailers (spec *Claim commit trailers*): the full Claude Code session id and the
+// directory the claim ran in, whatever `claimed_by` says. A worktree can carry another effort's name,
+// so a retro finds a ticket's session from `git log --grep "wf(claim): <repo>/<effort>#"` instead.
+const claimTrailers = () => {
+  const session = process.env.CLAUDE_CODE_SESSION_ID?.trim()
+  return [...(session ? [["Session", session]] : []), ["Cwd", process.cwd()]]
 }

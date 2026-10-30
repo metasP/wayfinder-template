@@ -163,7 +163,8 @@ Respect the answer literally. "Spawn all anyway" is a real choice — the user m
    - `cwd`: the path of the repo the ticket changes — its `target_repo` when set, else the `<repo>` of its ref. Leave it out when that is the project this session runs in.
 
    When the app refuses `"user_asked"` because this turn was not started by the user (another session's message, an automated event), call again with `"own_initiative"` — it leaves a card the user starts, with no **Do it here** button. `own_initiative` takes no `cwd`: for a ticket whose repo is not this project, start nothing and tell the user to run `/wayfinder-next <NN>` from their own message.
-7. **Report** every session started, one line each (`#RR-LNN-title` and its session link), plus one line for anything skipped and why.
+7. **Check where each session landed.** After the last `start_session`, call `mcp__ccd_session_mgmt__list_sessions` `{"linked": true}` once (load it with `ToolSearch` when deferred) and read each started session's folder and branch. Both should contain `<effort>-<NN>`. When one does not — the app reused an old worktree, or picked a name of its own — **warn** in the report: the ticket, the session link, its folder and branch, and that a retro will find it by its claim commit instead (`wf claim` records the full session id and the folder as `Session:` / `Cwd:` trailers). Do not stop or restart the session for this. A session still starting with no folder yet, and an `"own_initiative"` card nobody has started, have nothing to check — say so in one line.
+8. **Report** every session started, one line each (`#RR-LNN-title` and its session link), plus one line for anything skipped and why.
    When you picked with no argument, add the walk: the top pick, and each row skipped for a collision with what it collided with, so the user can swap one in with one word.
 
 ## Chip prompt template (write in `language`)

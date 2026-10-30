@@ -33,6 +33,14 @@ describe("wayfinder-next skill", () => {
     assert.match(SKILL, /never runs `wf claim`/)
   })
 
+  // A session can still land in a worktree named for another effort (the app reused a directory); the
+  // skill checks after starting and warns, and the claim commit's trailers keep the session findable.
+  test("checks each started session's folder and branch for <effort>-<NN>, and warns", () => {
+    assert.match(SKILL, /\*\*Check where each session landed\.\*\*[^\n]*mcp__ccd_session_mgmt__list_sessions` `\{"linked": true\}`/)
+    assert.match(SKILL, /Both should contain `<effort>-<NN>`[^\n]*\*\*warn\*\*/)
+    assert.match(SKILL, /`Session:` \/ `Cwd:` trailers/)
+  })
+
   test("leaves runs to bump-runs and ranking to frontier", () => {
     assert.doesNotMatch(SKILL, /\bruns:/, "the skill still edits runs: itself")
     assert.doesNotMatch(SKILL, /urgen|unblocks the most|lowest[- ]number|tie-break|parallel-safe/i, "the skill still ranks")
