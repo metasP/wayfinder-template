@@ -28,7 +28,7 @@ vault's state is truthful.
 Give the tracker a real module with a small interface, and make the vault's state unable to lie:
 
 1. **`wf` — the ticket store CLI.** One verb per state transition (`chart`, `new`, `claim`, `release`, `wait`,
-   `resolve`, `map-status`, `block`, `bump-runs`) plus three read/maintenance verbs (`frontier`, `lint`,
+   `resolve`, `map-status`, `block`, `bump-runs`, `serial`) plus three read/maintenance verbs (`frontier`, `lint`,
    `migrate`). Every invariant lives inside the verb that owns the transition. `wf` is the only thing that
    changes tracker state in frontmatter; agents still write prose (`## Question`, `## Answer`, map sections) with
    Write/Edit. Each verb takes the vault lock, writes, regenerates derived blocks, lints what it touched, and
@@ -244,6 +244,8 @@ Map: `kind: map`, `title`, `status` (`draft | active | paused | done | dropped`)
 
 - `status_note` — required for `paused` and `dropped`.
 - `runs` — owned by `bump-runs`.
+- `serial` — `true` or absent; owned by `serial` (and `chart --serial`). On a serial map `claim` refuses a
+  second `claimed` ticket unless `--force`; `/wayfinder-next` spawns one chip at a time for it.
 - `repos` — descriptive only.
 - `blocked_by`, `superseded_by`, `base_branch`, `created`.
 
@@ -289,7 +291,7 @@ Ticket transitions (Q24):
 | Verb | From → to | Invariants and side effects |
 | --- | --- | --- |
 | `new <repo/effort> --type research\|prototype\|grilling\|task\|R\|P\|G\|T --title "…" [--question "…" \| stdin] [--blocker ref]… [--target-repo R]` | — → `open` | Map exists and is not `done` / `dropped`. NN = highest + 1, reserved under the lock with an exclusive create. Writes the `## Question` / `## Answer` skeleton. Blockers must resolve and must not form a cycle. |
-| `claim <ref> [--by name]` | `open` → `claimed` | Re-read under the lock. Not blocked; map `active`. Stamps `claimed_by`. |
+| `claim <ref> [--by name] [--force]` | `open` → `claimed` | Re-read under the lock. Not blocked; map `active`. On a `serial` map, no other ticket of it `claimed` (`--force` skips this). Stamps `claimed_by`. |
 | `release <ref>` | `claimed`/`waiting` → `open` | Clears `claimed_by`, `status_note`, `wait_until`. Refuses a `claimed_by` other than the caller (found as for `claim`) unless `--force`; a ticket `wf migrate` marked `unknown (before wf)` is anyone's. |
 | `wait <ref> --note "…" [--until YYYY-MM-DD]` | `open`/`claimed` → `waiting` | Note required. Refuses a `claimed_by` other than the caller unless `--force`. |
 | `resolve <ref> --gist "…" [--answer-file <file>]` | `claimed`/`waiting` → `resolved` | `## Answer` non-empty and not the placeholder. Appends `- [[NN-slug]]: <gist>` to *Decisions so far*, re-reading the map under the lock. `--answer-file` first replaces the ticket's `## Answer` in the main checkout with the file's (its `## Answer` section when it has one, else all of it), in the same commit — how a session in a vault worktree resolves. |
@@ -301,7 +303,7 @@ Map transitions (Q25):
 
 | Verb | Rule |
 | --- | --- |
-| `chart <repo/effort> --title "…"` | Creates `map.md` in `draft` with the standard section skeleton. Refuses if the map exists. |
+| `chart <repo/effort> --title "…" [--serial]` | Creates `map.md` in `draft` with the standard section skeleton (`--serial` adds `serial: true`). Refuses if the map exists. |
 | `map-status <repo/effort> active` | Requires a non-empty `## Destination`. |
 | `map-status <repo/effort> paused\|dropped --note "…" [--superseded-by <repo/effort>]` | `--note` is required. |
 | `map-status <repo/effort> done [--force]` | Requires no ticket in `open`/`claimed`/`waiting`, and no lint error in the effort unless `--force`. Prints a reminder to run `/retro`. |
@@ -313,8 +315,11 @@ Other verbs:
 - `block <ref> <blocker-ref> [--remove]` adds or removes one edge. It writes a bare wikilink within an effort and
   a full-path wikilink across efforts, and rejects cycles.
 - `bump-runs <repo/effort> [--count k]` allocates `runs+1 … runs+k` and prints the range.
+- `serial <repo/effort> on|off` writes `serial: true` on the map (`on`) or removes the key (`off`), in any map
+  status. It refuses a map already in that state.
 - `frontier [--repo R] [--from repo/effort] [--json]` returns open, unblocked tickets on active maps, ordered by
   the Picks rules. `--repo` matches the home repo or `target_repo`. `--from` gives `same_effort` its context: it sorts, it never filters.
+  Each row carries its map's `serial`.
 - `lint [repo/effort…] [--rule <rule>] [--json] [--fix]` prints findings for the whole vault or the named efforts.
   `--fix` only regenerates derived blocks; it never changes state. The text report (and `doctor`'s) folds a rule
   with 5 or more warnings into one line that names `wf lint --rule <rule>`, and prints errors last, so a
@@ -601,7 +606,7 @@ comments.
 - **Q3** — `wf` is the only way to change tracker state in frontmatter: status, status_since, blockers, claim,
   creating tickets and maps. Body content is still written with Write/Edit.
 - **Q16** — One verb per transition: `chart` · `new` · `claim` · `release` · `resolve` · `wait` · `map-status` ·
-  `block` · `bump-runs` · `frontier` · `lint` · `migrate`. There is no generic `wf set key=value`.
+  `block` · `bump-runs` · `serial` · `frontier` · `lint` · `migrate`. There is no generic `wf set key=value`.
 - **Q24** — Ticket transitions are as in the *Verbs* table above. An `open` ticket can't be resolved directly
   except out of scope.
 - **Q25** — Map transitions are as in the *Verbs* table above. Every map transition clears `status_note`.

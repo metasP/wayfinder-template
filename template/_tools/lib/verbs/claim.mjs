@@ -1,14 +1,15 @@
-// `wf claim <ref> [--by name]` — open → claimed (spec *Verbs*; *`claimed_by` value*). The ticket is
-// re-read under the lock, so a claim another session made a moment ago is never overwritten.
+// `wf claim <ref> [--by name] [--force]` — open → claimed (spec *Verbs*; *`claimed_by` value*). The
+// ticket is re-read under the lock, so a claim another session made a moment ago is never overwritten.
+// On a serial map a second claimed ticket is refused unless `--force`.
 import { ticketArg } from "../args.mjs"
 import { report } from "../pipeline.mjs"
-import { assertMapActive, assertTransition, assertUnblocked, claimant, transition } from "./ticket.mjs"
+import { assertMapActive, assertSerialFree, assertTransition, assertUnblocked, claimant, transition } from "./ticket.mjs"
 
 export default {
   name: "claim",
   summary: "open → claimed, stamped with who holds the ticket",
-  usage: "wf claim <ref> [--by name] [--json]",
-  flags: { by: "string" },
+  usage: "wf claim <ref> [--by name] [--force] [--json]",
+  flags: { by: "string", force: "boolean" },
   minPositionals: 1,
   maxPositionals: 1,
   writes: () => true,
@@ -18,6 +19,7 @@ export default {
     assertTransition(t, "claim")
     assertUnblocked(ctx.index, t)
     assertMapActive(ctx.index, t)
+    assertSerialFree(ctx.index, t, { force: flags.force })
     const fields = { status: "claimed", status_since: ctx.today, claimed_by: by }
     return transition(ctx, t, Object.entries(fields), fields)
   },
