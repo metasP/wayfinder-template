@@ -147,3 +147,31 @@ describe("wf lint", () => {
     assert.equal(c.stdout, "lint clean\n")
   })
 })
+
+const BODY_RULES = new Set(["resolved-without-answer", "superseded-asset-linked", "issue-asset-name-clash"])
+
+describe("wf lint reads bodies and assets", () => {
+  test("an asset on disk, its superseded_by and the links to it reach the body rules", () => {
+    const vault = makeVault({
+      notes: [
+        { ...map("r/e/map.md"), body: "## Sources of truth\n\n- [[02-spec]]\n" },
+        { ...ticket("r/e/issues/01-a.md", { status: "resolved" }), body: "## Answer\n\n(filled in at resolve)\n" },
+        { path: "r/e/assets/02-spec.md", frontmatter: { superseded_by: "[[r/e/assets/03-spec]]" }, body: "old\n" },
+        { path: "r/e/assets/journey/01-a.md", frontmatter: {}, body: "" },
+        // An asset's frontmatter is the author's: outside the YAML subset, it can't stop the read.
+        { path: "r/e/assets/odd.md", text: "---\nk: {a: 1\n---\nsee [[02-spec]]\n" },
+      ],
+    })
+    const r = wf(vault, ["lint", "r/e", "--json"])
+    assert.equal(r.code, 1, r.stderr)
+    assert.deepEqual(
+      r.json.data.findings.filter((f) => BODY_RULES.has(f.rule)).map((f) => [f.rule, f.ref, f.message.split(" ")[0]]),
+      [
+        ["resolved-without-answer", "r/e#01", "resolved,"],
+        ["superseded-asset-linked", "r/e", "r/e/assets/odd.md"],
+        ["superseded-asset-linked", "r/e", "r/e/map.md"],
+        ["issue-asset-name-clash", "r/e#01", "r/e/issues/01-a.md"],
+      ],
+    )
+  })
+})

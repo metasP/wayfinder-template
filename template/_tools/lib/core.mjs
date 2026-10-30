@@ -111,7 +111,10 @@ const SLASH_REF_RE = /^(.+)\/([^/#]+)\/(\d+)$/
 const EFFORT_RE = /^([^/_.#][^#]*)\/([^/#]+)$/
 const BARE_TICKET_RE = /^(\d+)-([^/]+)$/
 const ISSUE_FILE_RE = /^(.+)\/[^/#]+\/issues\/[^/]+\.md$/
+const ASSET_FILE_RE = /^(.+)\/([^/#]+)\/assets\/.+\.md$/
 const WIKILINK_RE = /^\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]$/
+// Every wikilink in a text, embeds too; `\|` is a table cell's escaped alias pipe.
+const WIKILINKS_RE = /\[\[([^\]|#]+?)\\?(?:[|#][^\]]*)?\]\]/g
 
 const identity = (repo, effort, nn = null, slug = null) => ({ repo, effort, nn, slug })
 const isVaultRoot = (repo) => !/^[_.]/.test(repo)
@@ -152,6 +155,17 @@ export function parseRef(input, { home } = {}) {
 export function isUnindexedTicket(path) {
   const m = typeof path === "string" ? ISSUE_FILE_RE.exec(path) : null
   return Boolean(m) && isVaultRoot(m[1]) && parseRef(path) == null
+}
+
+/** A `.md` file anywhere under an effort's `assets/` that isn't a map or ticket: read for its links only. */
+export function isAssetNote(path) {
+  const m = typeof path === "string" ? ASSET_FILE_RE.exec(path) : null
+  return Boolean(m) && isVaultRoot(m[1]) && parseRef(path) == null
+}
+
+/** The target of every wikilink in `text`, as a vault stem (no `.md`, no alias or heading), in order. */
+export function wikilinksOf(text) {
+  return [...String(text ?? "").matchAll(WIKILINKS_RE)].map((m) => m[1].trim().replace(/\.md$/, ""))
 }
 
 /** `repo/effort#NN` for a ticket (NN at least two digits), `repo/effort` for a map. */
@@ -222,6 +236,9 @@ const mapRecord = (id, note) => {
     // The text between the `wf:tickets` markers, when the caller read the body: null = no markers,
     // undefined = not read (drift isn't checked).
     ticketsBlock: note.ticketsBlock,
+    // Wikilinks in the body outside its history sections, and those under `## Out of scope` (store-read).
+    links: note.links ?? [],
+    outOfScope: note.outOfScope ?? [],
     frontmatter: fm,
   }
 }
@@ -244,7 +261,20 @@ const ticketRecord = (id, note) => {
     waitUntil: isoDate(fm.wait_until),
     claimedBy: optionalString(fm.claimed_by),
     targetRepo: optionalString(fm.target_repo),
+    // The `## Answer` text when the caller read the body: null = no such section, undefined = not read.
+    answer: note.answer,
+    links: note.links ?? [],
     frontmatter: fm,
+  }
+}
+
+const assetRecord = (note) => {
+  const [, repo, effort] = ASSET_FILE_RE.exec(note.path)
+  return {
+    path: note.path,
+    effortKey: formatRef({ repo, effort }),
+    supersededBy: optionalString(note.frontmatter?.superseded_by),
+    links: note.links ?? [],
   }
 }
 
@@ -263,7 +293,7 @@ const resolveTicketLink = (raw, home, byStem) => byStem.get(linkStem(raw, home.e
 /**
  * Build the read model from raw notes (`{ path, frontmatter, ticketsBlock? }`). Returns
  * `{ maps: Map<repo/effort, Map>, tickets: Map<repo/effort#NN, Ticket>, efforts: Map<repo/effort,
- * { repo, effort, key, map, tickets }>, duplicates: [{ ref, path }], skipped: [{ path, reason }] }`.
+ * { repo, effort, key, map, tickets }>, assets: [Asset], duplicates: [{ ref, path }], skipped: [{ path, reason }] }`.
  * Notes are taken in path order, so a duplicate NN keeps the first path and reports the others.
  * A `map.md` without `kind: map` is not a map, and a file in `issues/` without an NN is not a ticket;
  * both land in `skipped`.
@@ -274,8 +304,13 @@ export function buildIndex(notes) {
   const parsed = []
   const duplicates = []
   const skipped = []
+  const assets = []
   const seen = new Set()
   for (const note of sorted) {
+    if (isAssetNote(note.path)) {
+      assets.push(assetRecord(note))
+      continue
+    }
     if (isUnindexedTicket(note.path)) {
       skipped.push({ path: note.path, reason: UNINDEXED_REASON })
       continue
@@ -301,7 +336,7 @@ export function buildIndex(notes) {
   const tickets = new Map(
     parsed.map((t) => [t.ref, { ...t, blockers: t.rawBlockers.map((b) => resolveTicketLink(b, t, byStem)) }]),
   )
-  return { maps, tickets, efforts: groupEfforts(maps, tickets), duplicates, skipped }
+  return { maps, tickets, efforts: groupEfforts(maps, tickets), assets, duplicates, skipped }
 }
 
 const groupEfforts = (maps, tickets) => {
@@ -1086,6 +1121,104 @@ const blockDrift = (index, m, language) => {
   return drifted ? [finding("warn", "tickets-block-drift", m.key, "## Tickets block differs from the rendering", fix)] : []
 }
 
+// ── Body rules: what the store read from a note's body (a note built without one is skipped) ──
+
+const ANSWER_PLACEHOLDERS = new Set(Object.values(NOTE_TEXT.answerPlaceholder))
+const nameOf = (path) => stemOf(path).split("/").pop()
+// Whether a link target (a bare name or a path, as Obsidian resolves it) points at the note at `stem`.
+const linksTo = (target, stem) => target === stem || stem.endsWith(`/${target}`)
+const linkTargetOf = (raw) => {
+  const link = WIKILINK_RE.exec(String(raw).trim())
+  return stemOf(link ? link[1].trim() : String(raw).trim())
+}
+
+// `wf resolve` refuses an empty or placeholder answer; a ticket resolved before it (or by hand) may
+// still carry one. A ticket the map lists under `## Out of scope` needs no answer.
+const unansweredResolved = (index) =>
+  [...index.tickets.values()].flatMap((t) => {
+    if (t.status !== "resolved" || typeof t.answer !== "string") return []
+    const answer = t.answer.trim()
+    if (answer && !ANSWER_PLACEHOLDERS.has(answer)) return []
+    if (index.maps.get(t.effortKey)?.outOfScope.some((l) => linksTo(l, stemOf(t.path)))) return []
+    const what = answer ? "still the placeholder" : "empty"
+    return [finding("error", "resolved-without-answer", t.ref, `resolved, but ## Answer is ${what} — write it in ${t.path}`)]
+  })
+
+// A work branch as code: `feat/x`, `claude/name`… — not a file path (`docs/a.md`). The bare word
+// "branch" says too little.
+const BRANCH_RE = /`(?:feat|fix|chore|docs|refactor|test|perf|claude)\/[^`\s]+(?<!\.[a-z]{1,5})`/
+// A PR URL, `PR … #N`, `owner/repo#N` or bare `#N` with three digits or more (a ticket's NN is two),
+// or a plain "no PR" — the answer then accounts for it.
+const PR_LINK_RE = /\/pull\/\d+|\bPR\b[^\n]*#\d+|(?:^|[\s(\w.-])#\d{3,}\b|\bno PR\b|ไม่มี PR/im
+
+// A ticket with a target repo or branch whose answer names a branch has shipped code; the PR is the
+// one place that shows whether it merged. Tickets with no `target_*` aren't checked.
+const branchWithoutPr = (index) =>
+  [...index.tickets.values()].flatMap((t) => {
+    const targeted = t.targetRepo || !isBlank(t.frontmatter.target_branch)
+    if (t.status !== "resolved" || !targeted || typeof t.answer !== "string") return []
+    if (!BRANCH_RE.test(t.answer) || PR_LINK_RE.test(t.answer)) return []
+    return [finding("warn", "branch-without-pr", t.ref, "## Answer names a branch but links no PR — add the PR link")]
+  })
+
+// Obsidian resolves a bare `[[name]]` by file name, so an issue and an asset of one name make it ambiguous.
+const issueAssetClashes = (index) => {
+  const assetsOf = new Map()
+  for (const a of index.assets) {
+    if (!assetsOf.has(a.effortKey)) assetsOf.set(a.effortKey, new Map())
+    assetsOf.get(a.effortKey).set(nameOf(a.path), a.path)
+  }
+  const issues = [
+    ...[...index.tickets.values()].map((t) => ({ ref: t.ref, effortKey: t.effortKey, path: t.path })),
+    ...index.skipped
+      .filter(({ reason }) => reason === UNINDEXED_REASON)
+      .map(({ path }) => {
+        const effortKey = path.split("/").slice(0, -2).join("/")
+        return { ref: effortKey, effortKey, path }
+      }),
+  ]
+  return issues.flatMap(({ ref, effortKey, path }) => {
+    const asset = assetsOf.get(effortKey)?.get(nameOf(path))
+    if (!asset) return []
+    const message = `${path} and ${asset} share a name — a bare [[${nameOf(path)}]] is ambiguous; rename the asset`
+    return [finding("warn", "issue-asset-name-clash", ref, message)]
+  })
+}
+
+const effortInTwoRepos = (index) => {
+  const bySlug = new Map()
+  for (const e of index.efforts.values()) bySlug.set(e.effort, [...(bySlug.get(e.effort) ?? []), e.key])
+  return [...bySlug.values()]
+    .filter((keys) => keys.length > 1)
+    .flatMap((keys) =>
+      keys.map((key) => {
+        const others = keys.filter((k) => k !== key).join(", ")
+        return finding("warn", "effort-in-two-repos", key, `the same effort is also at ${others} — keep one effort in one repo folder`)
+      }),
+    )
+}
+
+// An asset marked `superseded_by` is history; a live note that still links it reads the old value.
+// Live: maps (outside their history sections), unresolved tickets, unsuperseded assets — but not the
+// successor itself, which names what it replaces.
+const supersededAssetLinks = (index) => {
+  const superseded = index.assets.filter((a) => a.supersededBy)
+  if (!superseded.length) return []
+  const live = [
+    ...[...index.maps.values()].map((m) => ({ ref: m.key, path: m.path, links: m.links })),
+    ...[...index.tickets.values()].filter((t) => t.status !== "resolved").map((t) => ({ ref: t.ref, path: t.path, links: t.links })),
+    ...index.assets.filter((a) => !a.supersededBy).map((a) => ({ ref: a.effortKey, path: a.path, links: a.links })),
+  ]
+  return superseded.flatMap((a) => {
+    const successor = linkTargetOf(a.supersededBy)
+    return live
+      .filter((n) => n.links.some((l) => linksTo(l, stemOf(a.path))) && !linksTo(successor, stemOf(n.path)))
+      .map((n) =>
+        finding("warn", "superseded-asset-linked", n.ref, `${n.path} links ${a.path}, superseded by ${a.supersededBy} — link the successor`),
+      )
+  })
+}
+
 // *Wayfinder Picks* isn't an effort, so its findings carry the note's name as the ref.
 const PICKS_REF = "Wayfinder Picks"
 
@@ -1140,6 +1273,11 @@ export function lint(index, { today, config, sort } = {}) {
     ...[...index.maps.values()].flatMap((m) => mapBlockFindings(index, m)),
     ...[...index.efforts.values()].filter((e) => e.map).flatMap(mapStatusFindings),
     ...[...index.maps.values()].flatMap((m) => blockDrift(index, m, config?.language)),
+    ...unansweredResolved(index),
+    ...branchWithoutPr(index),
+    ...issueAssetClashes(index),
+    ...effortInTwoRepos(index),
+    ...supersededAssetLinks(index),
     ...unknownSortKeys(sort),
     ...timeFindings(index, { today, config }),
   ]

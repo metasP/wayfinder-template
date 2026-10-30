@@ -40,9 +40,9 @@ describe("commits", () => {
 
     assert.equal(run(vault, ["claim", "r/e#01", "--by", "a"]).code, 0)
     assert.deepEqual(lastCommit(vault), { subject: "wf(claim): r/e#01", files: ["r/e/issues/01-a.md", "r/e/map.md"] })
-    assert.equal(run(vault, ["wait", "r/e#01", "--note", "n"]).code, 0)
+    assert.equal(run(vault, ["wait", "r/e#01", "--note", "n", "--by", "a"]).code, 0)
     assert.deepEqual(lastCommit(vault).subject, "wf(wait): r/e#01")
-    assert.equal(run(vault, ["release", "r/e#01"]).code, 0)
+    assert.equal(run(vault, ["release", "r/e#01", "--by", "a"]).code, 0)
     assert.deepEqual(lastCommit(vault).subject, "wf(release): r/e#01")
     assert.equal(commitCount(vault), start + 3)
 
@@ -64,7 +64,7 @@ describe("the generated ## Tickets block", () => {
     const vault = twoTickets()
     run(vault, ["claim", "r/e#01", "--by", "a"])
     assert.equal(blockOf(vault), "- [[01-a]] · task · claimed · A\n- [[02-b]] · task · open · B ⛔")
-    run(vault, ["wait", "r/e#01", "--note", "n"])
+    run(vault, ["wait", "r/e#01", "--note", "n", "--by", "a"])
     assert.equal(blockOf(vault), "- [[01-a]] · task · waiting · A\n- [[02-b]] · task · open · B ⛔")
     assert.ok(read(vault, "r/e/map.md").startsWith("---\n"), "the map's frontmatter is untouched")
     assert.match(read(vault, "r/e/map.md"), /## Notes\n\nnone\n\n## Tickets\n\n<!-- wf:tickets -->/)
@@ -193,12 +193,12 @@ describe("byte-for-byte preservation", () => {
     onOneDay((day) => {
       assert.equal(run(vault, ["claim", "r/e#01", "--by", "alice"]).code, 0)
       assert.equal(read(vault, "r/e/issues/01-a.md"), at(day, "status: claimed").replace("zeta: [1, 2]\n", "zeta: [1, 2]\nclaimed_by: alice\n"))
-      assert.equal(run(vault, ["wait", "r/e#01", "--note", "reply", "--until", "2099-01-01"]).code, 0)
+      assert.equal(run(vault, ["wait", "r/e#01", "--note", "reply", "--until", "2099-01-01", "--by", "alice"]).code, 0)
       assert.equal(
         read(vault, "r/e/issues/01-a.md"),
         at(day, "status: waiting").replace("zeta: [1, 2]\n", "zeta: [1, 2]\nclaimed_by: alice\nstatus_note: reply\nwait_until: 2099-01-01\n"),
       )
-      assert.equal(run(vault, ["release", "r/e#01"]).code, 0)
+      assert.equal(run(vault, ["release", "r/e#01", "--by", "alice"]).code, 0)
       assert.equal(read(vault, "r/e/issues/01-a.md"), at(day, "status: open"))
     })
   })
@@ -227,6 +227,48 @@ describe("the main checkout", () => {
     assert.equal(git(vault, "log", "-1", "--format=%s", "HEAD"), "wf(claim): r/e#01")
     assert.match(read(worktree, "r/e/issues/01-a.md"), /^status: "open"$/m)
     assert.equal(git(worktree, "log", "-1", "--format=%s"), "seed")
+  })
+
+  describe("a ticket whose prose differs in the worktree", () => {
+    const withSide = () => {
+      const vault = twoTickets()
+      const worktree = join(vault, ".worktrees/side")
+      git(vault, "worktree", "add", "-q", "-b", "side", worktree)
+      return { vault, worktree }
+    }
+    const DRIFT = /^wf: warning: r\/e\/issues\/01-a\.md in the worktree .*\.worktrees\/side differs from the main checkout below its frontmatter — wf reads and writes only .*r\/e\/issues\/01-a\.md \(to resolve with the worktree's answer: --answer-file .*\.worktrees\/side\/r\/e\/issues\/01-a\.md\)$/m
+
+    test("is warned about, by the worktree's wf or the main one run from inside it, and the verb still runs", () => {
+      const { vault, worktree } = withSide()
+      write(worktree, "r/e/issues/01-a.md", `${read(worktree, "r/e/issues/01-a.md")}\n## Answer\n\nonly here\n`)
+      const own = run(vault, ["claim", "r/e#01", "--by", "a"], { cwd: worktree, script: join(worktree, "_tools/wf.mjs") })
+      assert.equal(own.code, 0, own.stderr)
+      assert.match(own.stderr, DRIFT)
+      const main = run(vault, ["wait", "r/e#01", "--note", "n", "--by", "a"], { cwd: join(worktree, "r/e") })
+      assert.equal(main.code, 0, main.stderr)
+      assert.match(main.stderr, DRIFT)
+    })
+
+    test("is warned about when the verb is refused too", () => {
+      const { vault, worktree } = withSide()
+      write(worktree, "r/e/issues/01-a.md", `${read(worktree, "r/e/issues/01-a.md")}\n## Answer\n\nonly here\n`)
+      assert.equal(run(vault, ["claim", "r/e#01", "--by", "a"]).code, 0)
+      const r = run(vault, ["resolve", "r/e#01", "--gist", "g"], { cwd: worktree })
+      assert.equal(r.code, 1)
+      assert.match(r.stderr, DRIFT)
+      assert.match(r.stderr, /has no answer/)
+    })
+
+    test("is quiet when only the frontmatter differs, outside a worktree, and with --answer-file", () => {
+      const { vault, worktree } = withSide()
+      assert.equal(run(vault, ["claim", "r/e#01", "--by", "a"], { cwd: worktree }).stderr, "")
+      write(worktree, "r/e/issues/01-a.md", `${read(worktree, "r/e/issues/01-a.md")}\n## Answer\n\nonly here\n`)
+      assert.equal(run(vault, ["wait", "r/e#01", "--note", "n", "--by", "a"]).stderr, "")
+      const r = run(vault, ["resolve", "r/e#01", "--gist", "g", "--answer-file", join(worktree, "r/e/issues/01-a.md")], { cwd: worktree })
+      assert.equal(r.code, 0, r.stderr)
+      assert.doesNotMatch(r.stderr, /differs from the main checkout/)
+      assert.match(read(vault, "r/e/issues/01-a.md"), /\n## Answer\n\nonly here\n$/)
+    })
   })
 
   test("a main checkout mid-merge exits 2 and nothing is written", () => {
@@ -325,7 +367,7 @@ describe("concurrency and the lock", () => {
 describe("lint after every verb", () => {
   test("a clean vault stays clean: no warnings after claim, wait and release", () => {
     const vault = twoTickets()
-    for (const args of [["claim", "r/e#01", "--by", "a"], ["wait", "r/e#01", "--note", "n"], ["release", "r/e#01"]]) {
+    for (const args of [["claim", "r/e#01", "--by", "a"], ["wait", "r/e#01", "--note", "n", "--by", "a"], ["release", "r/e#01", "--by", "a"]]) {
       const r = run(vault, [...args, "--json"])
       assert.equal(r.code, 0, r.stderr)
       assert.deepEqual(r.json.data.lint, [], args[0])
