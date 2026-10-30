@@ -16,10 +16,11 @@ import release from "./lib/verbs/release.mjs"
 import resolve from "./lib/verbs/resolve.mjs"
 import serial from "./lib/verbs/serial.mjs"
 import show from "./lib/verbs/show.mjs"
+import stats from "./lib/verbs/stats.mjs"
 import newTicket from "./lib/verbs/new.mjs"
 import wait from "./lib/verbs/wait.mjs"
 
-const VERBS = [frontier, show, lint, chart, mapStatus, newTicket, claim, release, wait, resolve, block, bumpRuns, serial, migrate]
+const VERBS = [frontier, show, lint, chart, mapStatus, newTicket, claim, release, wait, resolve, block, bumpRuns, serial, migrate, stats]
 
 const { code, stdout, stderr } = main(process.argv.slice(2), {
   verbs: VERBS,

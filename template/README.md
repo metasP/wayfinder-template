@@ -233,6 +233,7 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
 | `wf lint` | — (อ่านอย่างเดียว) | findings ทั้ง vault หรือเฉพาะ effort ที่ระบุ · `--fix` สร้าง block ที่ derive ได้ใหม่ ไม่เปลี่ยนสถานะ |
 | `wf show <ref>` | — (อ่านอย่างเดียว) | ใบเดียว (frontmatter + body ตามไฟล์) + `## Destination` · `## Notes` ของ map ทั้งหัวข้อ + บรรทัดอื่นใน map ที่มี wikilink ถึงใบนี้ (`## Decisions so far` · `## Not yet specified` …) · ข้าม `## Tickets` · ใช้แทน `cat` map ทั้งไฟล์ — แต่ยังต้อง Read ไฟล์ก่อน Edit |
 | `wf migrate` | vault schema 1 → 2 | ค่าเริ่มต้นแค่พิมพ์ diff · `--yes` เขียนทั้งหมดเป็น commit เดียว |
+| `wf stats <repo/effort>` | — (อ่านอย่างเดียว) | ใช้ map ที่เสร็จแล้วเป็นตัวอ้างอิงตอนประเมินเวลา · span ตั้งแต่ claim แรกถึง resolve สุดท้าย · หักช่วงที่มีใบ `waiting` แต่ไม่มีใบ `claimed` เลย · หักช่องว่าง > 4 ชม. ที่ไม่มี commit ใน folder ของ map · เวลาต่อใบ (median · p75 · max) นับเวลา `claimed` ของใบที่ `waiting` หรือ `resolved` แล้ว ไม่นับใบที่ถือไม่ถึง 1 นาที · อ่านจาก commit `wf(…)` ใน git log ของ vault ⇒ ใบที่ย้ายสถานะก่อนมี `wf` หรือแก้มือจะไม่ถูกนับ |
 
 ### แนวคิด
 
