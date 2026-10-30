@@ -16,34 +16,21 @@ below 1.0.0 a breaking change (`feat!`) bumps the minor too.
 ### Features
 
 * **guard:** deny main-checkout edits from a desktop worktree with the recipe that works ([9533f59](https://github.com/metasP/wayfinder-template/commit/9533f5937e8672b48178482bd4a173fc0cd3bc81))
-* **guard:** deny main-checkout edits from a desktop worktree with the recipe that works ([b2981de](https://github.com/metasP/wayfinder-template/commit/b2981de0c48af08b5072f9d69454219778318618))
 * lint what a note's body says, and refuse done while the effort has lint errors ([2212a2b](https://github.com/metasP/wayfinder-template/commit/2212a2bf1f35308b05bc2656b0ce1879cb55f0f2))
-* lint what a note's body says, and refuse done while the effort has lint errors ([a5734f0](https://github.com/metasP/wayfinder-template/commit/a5734f076735b1dca36509701ccd71caaaaa39aa))
 * wf claim records the session in its commit; wayfinder-next checks where sessions landed ([84980c9](https://github.com/metasP/wayfinder-template/commit/84980c929716ebb6856183859e4bcec527911f60))
-* wf claim records the session in its commit; wayfinder-next checks where sessions landed ([4033d72](https://github.com/metasP/wayfinder-template/commit/4033d72a754fa617c4d96ed6c2d499948700884d))
 * **wf:** add wf show — a ticket plus the map lines that bear on it ([841ccb3](https://github.com/metasP/wayfinder-template/commit/841ccb3985045c64487be06b418dbc8573f84425))
-* **wf:** add wf show — a ticket plus the map lines that bear on it ([e2ed448](https://github.com/metasP/wayfinder-template/commit/e2ed448c9b78f3ffd54577b09bba70542cc4cc79))
 * **wf:** add wf stats — a map's span minus waiting and long gaps ([b2b3ed4](https://github.com/metasP/wayfinder-template/commit/b2b3ed48e407c91d95946ca597bf114845c07ca6))
-* **wf:** add wf stats — a map's span minus waiting and long gaps ([5452534](https://github.com/metasP/wayfinder-template/commit/5452534e67967bc245ded9d9558ae1ec87e93888))
-* **wf:** multi-session planning hygiene ([0525751](https://github.com/metasP/wayfinder-template/commit/05257513d24fd0688eee991d7a70bbd0a276393f))
 * **wf:** release and wait refuse a claim someone else holds ([217576f](https://github.com/metasP/wayfinder-template/commit/217576fab2bb14748e345157037857f61e9e4ab9))
-* **wf:** release and wait refuse a claim someone else holds ([bcf2fcb](https://github.com/metasP/wayfinder-template/commit/bcf2fcb5982c5384d9fb8ccb4295b6a94627a0e1))
 * **wf:** resolve --answer-file, and warn when a worktree's ticket differs from main ([a909f40](https://github.com/metasP/wayfinder-template/commit/a909f40e46c6388bc2d8d811d26fc156a6755b4f))
-* **wf:** resolve --answer-file, and warn when a worktree's ticket differs from main ([ee7c69a](https://github.com/metasP/wayfinder-template/commit/ee7c69a1a7f3ce3e268bcacfd893cebbb489fcfb))
 * **wf:** serial maps — claim refuses a second claimed ticket unless --force ([198c95e](https://github.com/metasP/wayfinder-template/commit/198c95e58ef3fbc0e9c53865d1ae8f886470e0d5))
-* **wf:** serial maps — claim refuses a second claimed ticket unless --force ([d247a96](https://github.com/metasP/wayfinder-template/commit/d247a9698f62e232a2586e7e806ed80219423a4a))
 * **wf:** take type letters, repo/effort/NN refs, and say --from only sorts ([042d674](https://github.com/metasP/wayfinder-template/commit/042d6741494ef8433ad668504fc5c49fdce7567d))
-* **wf:** take type letters, repo/effort/NN refs, and say --from only sorts ([552f6c3](https://github.com/metasP/wayfinder-template/commit/552f6c3490137a3150a217ec3be1659667bbfa9f))
 
 
 ### Bug Fixes
 
 * fold a flood of lint warnings and print errors last ([a0febc0](https://github.com/metasP/wayfinder-template/commit/a0febc0c30c7ca7ab6ca0c44847115784c7c72be))
-* fold a flood of lint warnings and print errors last ([7499233](https://github.com/metasP/wayfinder-template/commit/74992336d20ad41b9071c133fcdc68301d6bbd7a))
 * give tickets claimed before wf a placeholder claimed_by on migrate ([262dd88](https://github.com/metasP/wayfinder-template/commit/262dd88ebbe22da2b842edd90f3c0981dbc6467d))
-* give tickets claimed before wf a placeholder claimed_by on migrate ([8d17015](https://github.com/metasP/wayfinder-template/commit/8d17015c4760ad3505a24570cc6ee9faaa70f5e7))
 * read wf:tickets markers only on their own line, and lint unindexed issue files ([06cf3f5](https://github.com/metasP/wayfinder-template/commit/06cf3f58298628a9e9c878327309c1f50a852ecd))
-* read wf:tickets markers only on their own line, and lint unindexed issue files ([da3713b](https://github.com/metasP/wayfinder-template/commit/da3713b8970a5f286963ba9357ff2357f056872c))
 * wayfinder-next starts sessions with start_session, named after the ticket ([56061fb](https://github.com/metasP/wayfinder-template/commit/56061fbfdd16121c98b5657a4d45bd550b1bcdd8))
 
 
