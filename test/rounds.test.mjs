@@ -22,6 +22,15 @@ describe("globsOverlap", () => {
     ["two globs on separate trees", "template/**", "skills/**", false],
     ["two globs where one tree holds the other", "template/**", "template/_tools/*.mjs", true],
     ["a glob with no literal base overlaps any glob", "*.md", "skills/**", true],
+    ["braces may hold a /", "src/{a,b/c}.md", "src/b/c.md", true],
+    ["braces may nest", "src/{a,{b,c}}.md", "src/c.md", true],
+    ["nested braces still miss the others", "src/{a,{b,c}}.md", "src/d.md", false],
+    ["an unbalanced brace is read conservatively", "src/{a.md", "src/x.md", true],
+    ["an unterminated class is read conservatively, not a crash", "src/a[.md", "src/a.md", true],
+    ["a glob naming a directory covers its files", "src/*", "src/a/b.md", true],
+    ["a braced directory covers its files", "src/{a,b}", "src/a/c.md", true],
+    ["case differs, same file on macOS", "SRC/a.md", "src/a.md", true],
+    ["regex characters in a name are literal", "a+b.md", "aab.md", false],
   ]
   for (const [name, a, b, expected] of cases) {
     test(`${name}: ${a} ~ ${b}`, () => {

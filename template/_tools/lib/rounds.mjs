@@ -9,57 +9,107 @@ const ANSWER_ONLY_TYPES = new Set(["research", "grilling"])
 const WHOLE_REPO = Symbol("whole repo")
 const WILD_RE = /[*?[{]/
 
+// Paths compare case-insensitively: the default macOS file system says `SRC/a` and `src/a` are one file.
 const segmentsOf = (pattern) =>
   String(pattern)
     .trim()
+    .toLowerCase()
     .replace(/^(\.\/)+/, "")
     .split("/")
     .filter((s) => s !== "" && s !== ".")
 
 const isWild = (segments) => segments.some((s) => WILD_RE.test(s))
-const literalBase = (segments) => segments.slice(0, Math.max(0, segments.findIndex((s) => WILD_RE.test(s))))
+const literalBase = (segments) => {
+  const wild = segments.findIndex((s) => WILD_RE.test(s))
+  return wild === -1 ? segments : segments.slice(0, wild)
+}
 const startsWith = (whole, prefix) => prefix.length <= whole.length && prefix.every((s, i) => whole[i] === s)
 
-const escapeRe = (text) => text.replace(/[.+^$()|\\]/g, "\\$&")
+const MAX_ALTERNATIVES = 64
 
-// One glob segment as a regex: `*` and `?` stay inside the segment, `{a,b}` is a choice, `[…]` a class.
+// `{a,b}` groups expanded into plain alternatives, nested and across `/` too; null when the braces don't
+// balance or expand past MAX_ALTERNATIVES — the caller then compares conservatively.
+const expandBraces = (pattern) => {
+  const open = pattern.indexOf("{")
+  if (open === -1) return pattern.includes("}") ? null : [pattern]
+  let depth = 0
+  const commas = []
+  for (let i = open; i < pattern.length; i++) {
+    const c = pattern[i]
+    if (c === "{") depth += 1
+    else if (c === "}") depth -= 1
+    else if (c === "," && depth === 1) commas.push(i)
+    if (depth > 0) continue
+    const cuts = [open, ...commas, i]
+    const head = pattern.slice(0, open)
+    const tail = pattern.slice(i + 1)
+    const out = []
+    for (let k = 0; k + 1 < cuts.length; k++) {
+      const expanded = expandBraces(head + pattern.slice(cuts[k] + 1, cuts[k + 1]) + tail)
+      if (!expanded) return null
+      out.push(...expanded)
+      if (out.length > MAX_ALTERNATIVES) return null
+    }
+    return out
+  }
+  return null
+}
+
+const escapeRe = (text) => text.replace(/[.+^$()|\\{}]/g, "\\$&")
+
+// One glob segment as a regex source: `*` and `?` stay inside the segment, `[…]` is a class.
 const segmentRe = (segment) =>
   segment
-    .split(/(\{[^}]*\}|\[[^\]]*\])/)
-    .map((part) => {
-      if (part.startsWith("{")) return `(?:${part.slice(1, -1).split(",").map(segmentRe).join("|")})`
-      if (part.startsWith("[")) return part.replace(/^\[!/, "[^")
-      return escapeRe(part).replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]")
-    })
+    .split(/(\[[^\]]*\])/)
+    .map((part) => (part.startsWith("[") ? part.replace(/^\[!/, "[^") : escapeRe(part).replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]")))
     .join("")
 
+// The segments as an anchored regex, or null when a class doesn't parse (an unterminated `[`).
 const globRe = (segments) => {
   const body = segments.map((s, i) => {
     const last = i === segments.length - 1
     if (s === "**") return last ? ".*" : "(?:.*/)?"
     return segmentRe(s) + (last ? "" : "/")
   })
-  return new RegExp(`^${body.join("")}$`)
+  try {
+    return new RegExp(`^${body.join("")}$`)
+  } catch {
+    return null
+  }
+}
+
+// Two brace-free entries. A plain path is a file or a directory, so a directory overlaps everything
+// under it; a glob may name a directory too. Between two globs this is conservative: they overlap when
+// the literal base of one holds the other's.
+const overlapOne = (sa, sb) => {
+  const [wa, wb] = [isWild(sa), isWild(sb)]
+  if (!wa && !wb) return startsWith(sa, sb) || startsWith(sb, sa)
+  const [ba, bb] = [literalBase(sa), literalBase(sb)]
+  const basesNest = startsWith(ba, bb) || startsWith(bb, ba)
+  if (wa && wb) return basesNest
+  const [glob, path] = wa ? [sa, sb] : [sb, sa]
+  const re = globRe(glob)
+  if (!re) return basesNest
+  const base = literalBase(glob)
+  // The glob names the path or a directory above it; the path is a directory above the glob's base;
+  // or a `**` reaches under the path.
+  const namesPathOrParent = path.some((_, k) => re.test(path.slice(0, k + 1).join("/")))
+  const reachesUnder = glob.includes("**") && startsWith(path, base)
+  return namesPathOrParent || startsWith(base, path) || reachesUnder
 }
 
 /**
- * Whether two `touches:` entries can name the same file. A plain path is a file or a directory, so a
- * directory overlaps everything under it. Between two globs this is conservative: they overlap when
- * the literal base of one holds the other's.
+ * Whether two `touches:` entries can name the same file. False only when they surely can't: a pattern
+ * this can't read (unbalanced braces, a broken class) overlaps whatever its literal base could hold.
  */
 export function globsOverlap(a, b) {
-  const [sa, sb] = [segmentsOf(a), segmentsOf(b)]
-  const [wa, wb] = [isWild(sa), isWild(sb)]
-  if (!wa && !wb) return startsWith(sa, sb) || startsWith(sb, sa)
-  if (wa && wb) {
-    const [ba, bb] = [literalBase(sa), literalBase(sb)]
+  const [ea, eb] = [expandBraces(String(a)), expandBraces(String(b))]
+  if (!ea || !eb) {
+    const base = (p) => literalBase(segmentsOf(String(p).replace(/[{}].*$/, "*")))
+    const [ba, bb] = [base(a), base(b)]
     return startsWith(ba, bb) || startsWith(bb, ba)
   }
-  const [glob, path] = wa ? [sa, sb] : [sb, sa]
-  const base = literalBase(glob)
-  // The glob names the path; the path is a directory above the glob's base; or a `**` reaches under it.
-  const reachesUnder = glob.includes("**") && startsWith(path, base)
-  return globRe(glob).test(path.join("/")) || startsWith(base, path) || reachesUnder
+  return ea.some((x) => eb.some((y) => overlapOne(segmentsOf(x), segmentsOf(y))))
 }
 
 const footprintOf = (t) => {

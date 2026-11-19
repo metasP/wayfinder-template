@@ -264,8 +264,8 @@ const ticketRecord = (id, note) => {
     waitUntil: isoDate(fm.wait_until),
     claimedBy: optionalString(fm.claimed_by),
     targetRepo: optionalString(fm.target_repo),
-    // The paths or globs the ticket writes; null when it has no `touches:` key (lib/rounds.mjs).
-    touches: hasOwn(fm, "touches") ? asList(fm.touches).map((p) => String(p).trim()).filter(Boolean) : null,
+    // The paths or globs the ticket writes; null when `touches:` is missing or empty-valued (lib/rounds.mjs).
+    touches: fm.touches != null ? asList(fm.touches).map((p) => String(p).trim()).filter(Boolean) : null,
     // The `## Answer` text when the caller read the body: null = no such section, undefined = not read.
     answer: note.answer,
     links: note.links ?? [],
