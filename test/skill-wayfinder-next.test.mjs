@@ -84,6 +84,8 @@ describe("wayfinder-next skill", () => {
       assert.match(block, /B=\$\(git branch --show-current\) && git switch --detach -q && git worktree add -q "\.\.\/\$\{B##\*\/\}" "\$B"/, "the prompt has no move command")
       assert.match(block, /EnterWorktree/, "the prompt does not enter the new worktree")
       assert.ok(block.indexOf("EnterWorktree") < block.indexOf("wf.mjs claim"), "the move comes after the claim")
+      // An EnterWorktree session is refused `git -C <main checkout>`; ticket 05 itself hit it at the merge.
+      assert.match(block, /ExitWorktree[^\n]*keep/, "the prompt does not leave the worktree before the merge")
     }
   })
 
