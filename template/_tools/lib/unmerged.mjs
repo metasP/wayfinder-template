@@ -185,7 +185,8 @@ export const mergeCommand = (u) => {
   // and the rebase isn't onto a stale main. `--base`: the main checkout's branch, not the host's default.
   const dir = shellWord(u.worktree ?? u.mainPath)
   const base = shellWord(u.main.slice(REMOTE.length + 1))
-  return `git -C ${dir} fetch ${REMOTE} && ${rebase}git -C ${dir} push --force-with-lease -u ${REMOTE} ${branch} && cd ${dir} && gh pr create --base ${base} --head ${branch} --fill`
+  // A plain push, never forced: a branch already on origin that the rebase rewrote is refused, not overwritten.
+  return `git -C ${dir} fetch ${REMOTE} && ${rebase}git -C ${dir} push -u ${REMOTE} ${branch} && cd ${dir} && gh pr create --base ${base} --head ${branch} --fill`
 }
 
 const mergeAdvice = (u) => (u.remote ? "open a PR and merge it" : "merge it into main")

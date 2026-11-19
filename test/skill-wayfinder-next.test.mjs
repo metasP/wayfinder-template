@@ -35,6 +35,7 @@ describe("wayfinder-next skill", () => {
       assert.doesNotMatch(line, /if the work has a PR|ถ้างานมี PR/, "the PR is still optional")
       assert.match(line, /reset/, "the prompt does not forbid resetting main")
       assert.match(line, /origin\/main/, "unmerged-branch is not said to measure against origin/main")
+      assert.match(line, /no origin|ไม่มี origin/, "a repo with no remote has no route")
     }
   })
 
