@@ -301,8 +301,10 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
   ลำดับคือ ผู้ใช้ผ่านงาน → rebase branch บน main → fast-forward main ไปที่ branch (`git -C <main checkout> merge <branch>`) → resolve ·
   `wf` จำ branch ไว้ใน trailer `Branch:` ของ claim commit — ใบที่ resolve แล้วแต่ branch นั้นยังไม่อยู่ใน branch ของ main checkout
   ได้ `unmerged-branch` (warn) ตอน resolve / `wf lint` และ `wf map-status <repo/effort> done` ไม่ยอมจนกว่าจะ merge ·
+  claim ที่ไม่มี `Branch:` (ทำก่อนมี trailer นี้ หรือ detached) ⇒ `wf` หา branch เองจากชื่อ: branch ใน repo ของ `Cwd:` ที่มี
+  `<effort>-<NN>` เป็นท่อนหนึ่งของชื่อ ต่อท้ายด้วย hash ได้ (`claude/<effort>-<NN>-7c4ab6`) — ข้อความบอก `found by name` ·
   ไม่โดน: ใบที่ไม่มี commit (research, grilling) · branch ที่ลบแล้ว · Answer ที่ลิงก์ PR (`/pull/N` — PR เป็นเจ้าของ merge) ·
-  claim ก่อนมี trailer นี้
+  claim ที่ไม่มี `Branch:` และไม่มี branch ชื่อตรงกับใบ
 - **Resolve** — เขียนคำตอบใต้ `## Answer` (สิ่งที่ตัดสิน · ข้อเท็จจริงที่ใบอื่นต้องใช้ · ลิงก์ PR · ลิงก์ asset)
   แล้ว `wf resolve <ref> --gist "…"`
   · **session ที่ทำงานใน worktree**: เขียน Answer ลงใบใน worktree (หรือไฟล์ไหนก็ได้) → `wf resolve <ref> --gist "…" --answer-file <ไฟล์นั้น>`

@@ -444,7 +444,9 @@ What every write verb does, in order:
 - `resolved` ticket whose latest claim commit's `Branch:` (in the repository at or above its `Cwd:`) is not contained
   in the branch the main checkout has out (`unmerged-branch`): approved work that never reached main. It reads git
   outside the vault, so it is not part of core `lint()` — `wf lint`, the post-write lint and `map-status done` add it
-  (`_tools/lib/unmerged.mjs`). No finding for a claim without `Branch:`, main's own branch, a deleted branch, a branch whose commits main already has (`git cherry`: a local squash), no
+  (`_tools/lib/unmerged.mjs`). A claim without `Branch:` (older, or detached) is checked by name instead: every
+  local branch of the `Cwd:` repository with `<effort>-<NN>` as a path segment, optionally a hex `-<suffix>`
+  (`claude/<effort>-<NN>-7c4ab6`) — the message says `found by name`. No finding for a claim with neither `Branch:` nor a branch named for the ticket, main's own branch, a deleted branch, a branch whose commits main already has (`git cherry`: a local squash), no
   repository, or an `## Answer` linking a pull request (`/pull/N` — the PR owns the merge).
 - An asset with `superseded_by:` that a live note still links (`superseded-asset-linked`) — live: a map outside its
   `## Decisions so far`/`## Retro`, an unresolved ticket, an asset not itself superseded; the successor is exempt.

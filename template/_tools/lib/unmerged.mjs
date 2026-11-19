@@ -4,8 +4,13 @@
 // outside the vault, so it lives here and not in core's pure `lint()`: `wf lint`, the post-write lint and
 // `wf map-status done` add it.
 //
-// No finding when there is nothing to check or the merge isn't ours: a claim without `Branch:` (made
-// before the trailer, or detached), a claim in the main checkout's own branch, a branch since deleted,
+// A claim without `Branch:` (made before the trailer, or detached) names no branch, so the branch is found
+// by its name instead: every local branch of the Cwd's repository named `<effort>-<NN>` — a whole path
+// segment, optionally followed by a hex suffix (`claude/<effort>-<NN>-7c4ab6`). The Cwd can't tell: a
+// worktree reused for another ticket has some other branch checked out by now.
+//
+// No finding when there is nothing to check or the merge isn't ours: a claim with neither `Branch:` nor a
+// branch named for the ticket, a claim in the main checkout's own branch, a branch since deleted,
 // a Cwd with no git repository left above it, or an `## Answer` that links a pull request (the PR owns
 // the merge — a squash merge never makes the branch an ancestor of main).
 import { existsSync, realpathSync } from "node:fs"
@@ -64,7 +69,7 @@ const mainCheckoutOf = (dir) => {
 }
 
 // Per-run caches, so a vault with hundreds of claims costs a few git calls per repository, not per claim.
-const caches = () => ({ mains: new Map(), merged: new Map() })
+const caches = () => ({ mains: new Map(), merged: new Map(), branches: new Map() })
 
 const memo = (map, key, compute) => {
   if (!map.has(key)) map.set(key, compute())
@@ -75,6 +80,23 @@ const memo = (map, key, compute) => {
 const mergedInto = (main) => {
   const list = out(main.path, ["for-each-ref", "--merged", `refs/heads/${main.branch}`, "--format=%(refname:short)", "refs/heads"])
   return list === null ? null : new Set(list.split("\n").filter(Boolean))
+}
+
+// The local branches of main's repository, from one `for-each-ref` per main checkout.
+// `%(refname)`, not `:short` — a tag of the same name would make it `heads/<name>`.
+const branchesOf = (main) =>
+  (out(main.path, ["for-each-ref", "--format=%(refname)", "refs/heads"]) ?? "")
+    .split("\n")
+    .filter(Boolean)
+    .map((ref) => ref.slice("refs/heads/".length))
+
+const escapeRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
+// `repo/effort#NN` → a matcher for the branch names that carry the ticket: `<effort>-<NN>` as a path segment,
+// optionally with the app's hex suffix. Only hex: `a-01-02` is effort `a-01`'s ticket 02, not `a`'s 01.
+const ticketBranchRe = (ref) => {
+  const m = ref.match(/\/([^/#]+)#(\d+)$/)
+  return m && new RegExp(`(?:^|/)${escapeRe(m[1])}-${m[2]}(?:-[0-9a-f]{4,})?$`)
 }
 
 // Every commit of the branch already in main by content (`git cherry` marks it `-`): a local squash or
@@ -115,9 +137,21 @@ export function unmergedTickets(vault, index, keep = () => true) {
   return resolved.flatMap((t) => {
     const claim = claims.get(t.ref)
     if (!claim) return []
-    const u = memo(seen, `${claim.cwd}\n${claim.branch}`, () => unmergedBranch(claim, cache))
-    return u ? [{ ref: t.ref, ...u }] : []
+    const branches = claim.branch ? [claim.branch] : branchesNamedFor(t.ref, claim.cwd, cache)
+    return branches.flatMap((branch) => {
+      const u = memo(seen, `${claim.cwd}\n${branch}`, () => unmergedBranch({ cwd: claim.cwd, branch }, cache))
+      return u ? [{ ref: t.ref, ...u, byName: !claim.branch }] : []
+    })
   })
+}
+
+// The branches of the claim's repository named for the ticket — for a claim without `Branch:`.
+const branchesNamedFor = (ref, cwd, cache) => {
+  const re = ticketBranchRe(ref)
+  const dir = cwd && re && existingDirOf(cwd)
+  const main = dir && memo(cache.mains, dir, () => mainCheckoutOf(dir))
+  if (!main) return []
+  return memo(cache.branches, main.path, () => branchesOf(main)).filter((b) => re.test(b))
 }
 
 // A shell word as itself when it is safe bare, else single-quoted — the fix line is pasted into a shell.
@@ -136,6 +170,6 @@ export const unmergedFindings = (vault, index, keep) =>
     severity: "warn",
     rule: UNMERGED_RULE,
     ref: u.ref,
-    message: `claimed in ${u.cwd} on branch ${u.branch}, not merged into ${u.main} — merge it into main`,
+    message: `claimed in ${u.cwd} on branch ${u.branch}${u.byName ? " (found by name — the claim has no Branch:)" : ""}, not merged into ${u.main} — merge it into main`,
     fix: mergeCommand(u),
   }))
