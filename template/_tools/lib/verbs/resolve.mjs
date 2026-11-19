@@ -5,17 +5,19 @@
 // line is never overwritten. The claim, wait note and wait date are cleared. `--answer-file` writes the
 // ticket's `## Answer` in the main checkout from a file first, in the same commit — the way a session in a
 // vault worktree resolves, since wf reads only the main checkout (the file may be the worktree's copy of
-// the ticket: its `## Answer` section is taken).
+// the ticket: its `## Answer` section is taken). The map's `## Build board` lines bound to the ticket
+// (`↔ NN`) are ticked in the same edit (lib/build-board.mjs) — not for --out-of-scope.
 import { readFileSync } from "node:fs"
 import { resolve as resolvePath } from "node:path"
 import { ticketArg } from "../args.mjs"
 import { NOTE_TEXT } from "../core.mjs"
-import { appendToSection, editFrontmatter, replaceSection, sectionText } from "../edit.mjs"
+import { appendToSection, editFrontmatter, replaceSection, sectionText, tickBuildBoard } from "../edit.mjs"
 import { invariantError, usageError } from "../errors.mjs"
 import { report } from "../pipeline.mjs"
 import { assertTransition, noMap } from "./ticket.mjs"
 
 const OUT_OF_SCOPE = "--out-of-scope"
+const tickedNote = (n) => (n ? ` · ticked ${n} Build board line${n === 1 ? "" : "s"}` : "")
 const PLACEHOLDERS = new Set(Object.values(NOTE_TEXT.answerPlaceholder))
 
 const gistArg = (gist) => {
@@ -69,12 +71,24 @@ export default {
     const m = ctx.index.maps.get(t.effortKey)
     if (!m) throw noMap(t.effortKey, "the decision goes in the map")
     const section = outOfScope ? "Out of scope" : "Decisions so far"
+    const decided = appendToSection(ctx.textOf(m.path), section, `- [[${t.name}]]: ${flags.gist}`)
+    // An out-of-scope ticket's card was never done: its board line stays open for a person to settle.
+    const board = outOfScope ? { text: decided, ticked: [] } : tickBuildBoard(decided, Number(t.nn))
     const edits = [
       { path: t.path, text: editFrontmatter(text, changes) },
-      { path: m.path, text: appendToSection(ctx.textOf(m.path), section, `- [[${t.name}]]: ${flags.gist}`) },
+      { path: m.path, text: board.text },
     ]
-    const data = { ref: t.ref, status: "resolved", status_since: ctx.today, out_of_scope: outOfScope, gist: flags.gist, section, answer_written: answer !== undefined }
+    const data = {
+      ref: t.ref,
+      status: "resolved",
+      status_since: ctx.today,
+      out_of_scope: outOfScope,
+      gist: flags.gist,
+      section,
+      answer_written: answer !== undefined,
+      board_ticked: board.ticked,
+    }
     return { ref: t.ref, edits, data }
   },
-  report: (outcome) => report(outcome, `resolved ${outcome.ref} → ${outcome.data.section}`),
+  report: (outcome) => report(outcome, `resolved ${outcome.ref} → ${outcome.data.section}${tickedNote(outcome.data.board_ticked.length)}`),
 }

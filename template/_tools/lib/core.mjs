@@ -242,6 +242,8 @@ const mapRecord = (id, note) => {
     // Wikilinks in the body outside its history sections, and those under `## Out of scope` (store-read).
     links: note.links ?? [],
     outOfScope: note.outOfScope ?? [],
+    // The `## Build board` checkbox lines `{ line, checked, nn }` (lib/build-board.mjs): undefined = not read.
+    buildBoard: note.buildBoard,
     frontmatter: fm,
   }
 }
@@ -1150,6 +1152,23 @@ const unansweredResolved = (index) =>
     return [finding("error", "resolved-without-answer", t.ref, `resolved, but ## Answer is ${what} — write it in ${t.path}`)]
   })
 
+// `wf resolve` ticks a ticket's `## Build board` lines (`↔ NN`); a board edited by hand, or a ticket
+// resolved before that, may leave one open — and a done map says every card on its board is closed.
+const openBoardLines = (index) =>
+  [...index.maps.values()].flatMap((m) => {
+    const open = (m.buildBoard ?? []).filter((item) => !item.checked)
+    const where = `## Build board line in ${m.path}`
+    const resolved = open.flatMap((item) => {
+      const t = [...index.tickets.values()].find((x) => x.effortKey === m.key && x.nn === item.nn)
+      if (t?.status !== "resolved") return []
+      return [finding("warn", "build-board-unticked", t.ref, `resolved, but its ${where} is unticked: ${item.line.trim()}`)]
+    })
+    if (m.status !== "done" || !open.length) return resolved
+    const lines = open.map((item) => item.line.trim()).join(" · ")
+    const message = `done, but ## Build board has ${plural(open.length, "unticked line")}: ${lines} — tick it once its card is closed`
+    return [...resolved, finding("warn", "build-board-open", m.key, message, `wf map-status ${m.key} active`)]
+  })
+
 // A work branch as code: `feat/x`, `claude/name`… — not a file path (`docs/a.md`). The bare word
 // "branch" says too little.
 const BRANCH_RE = /`(?:feat|fix|chore|docs|refactor|test|perf|claude)\/[^`\s]+(?<!\.[a-z]{1,5})`/
@@ -1280,6 +1299,7 @@ export function lint(index, { today, config, sort } = {}) {
     ...[...index.efforts.values()].filter((e) => e.map).flatMap(mapStatusFindings),
     ...[...index.maps.values()].flatMap((m) => blockDrift(index, m, config?.language)),
     ...unansweredResolved(index),
+    ...openBoardLines(index),
     ...branchWithoutPr(index),
     ...issueAssetClashes(index),
     ...effortInTwoRepos(index),
