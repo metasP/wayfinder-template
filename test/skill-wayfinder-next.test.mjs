@@ -24,9 +24,18 @@ describe("wayfinder-next skill", () => {
 
   // stylized-set-kit retro: chips resolved without merging, and the user had to say "merge into main" each time.
   // parallel-run-fixes#03: then "ผ่าน merge" was followed by a second "merge PR เลย" — one go-ahead covers it all.
-  test("every chip prompt makes the session own the merge, on one go-ahead that covers ff main, the PR and resolve", () => {
-    assert.match(SKILL, /^The merge is yours, on one go-ahead:[^\n]*fast-forward main[^\n]*merge --ff-only[^\n]*CI is green[^\n]*gh pr merge[^\n]*then resolve/m)
-    assert.match(SKILL, /^การ merge เป็นหน้าที่ของ session นี้ และใช้ go-ahead ครั้งเดียว:[^\n]*merge --ff-only[^\n]*CI เขียว[^\n]*gh pr merge[^\n]*resolve/m)
+  // merge-route-fixes#01: chips 04–07 fast-forwarded main in the main checkout while 01–03 merged PRs, so local
+  // main went ahead 5 / behind 2 of origin, and a later `reset --hard origin/main` dropped a ticket's test.
+  test("every chip prompt makes the session own the merge, on one go-ahead, by one route: a PR, then pull --ff-only", () => {
+    const en = SKILL.match(/^The merge is yours, on one go-ahead:[^\n]*/m)?.[0] ?? ""
+    const th = SKILL.match(/^การ merge เป็นหน้าที่ของ session นี้ และใช้ go-ahead ครั้งเดียว:[^\n]*/m)?.[0] ?? ""
+    assert.match(en, /one route, a PR[^\n]*rebase origin\/main[^\n]*gh pr create[^\n]*CI is green[^\n]*gh pr merge[^\n]*pull --ff-only[^\n]*then resolve/)
+    assert.match(th, /ทางเดียวคือ PR[^\n]*rebase origin\/main[^\n]*gh pr create[^\n]*CI เขียว[^\n]*gh pr merge[^\n]*pull --ff-only[^\n]*resolve/)
+    for (const line of [en, th]) {
+      assert.doesNotMatch(line, /if the work has a PR|ถ้างานมี PR/, "the PR is still optional")
+      assert.match(line, /reset/, "the prompt does not forbid resetting main")
+      assert.match(line, /origin\/main/, "unmerged-branch is not said to measure against origin/main")
+    }
   })
 
   // parallel-run-fixes#03: every set-kit session spent 4–20 commands re-reading the map, the ticket and the README,

@@ -567,6 +567,7 @@ await section('§5 dashboard', async () => {
 // vault schema เก่ากว่าก็ยังลินต์ (เหมือน `wf lint`) เพื่อให้ finding ของฟิลด์ legacy ยังโผล่
 let lintReport = null
 let foldFindings = null
+let vaultIndex = null
 await section('§6 เนื้อ vault', async () => {
   const label = 'เนื้อ vault ผ่าน wf lint (ไม่มี error)'
   try {
@@ -575,7 +576,8 @@ await section('§6 เนื้อ vault', async () => {
     foldFindings = core.foldFindings
     const { readVault } = await import('./lib/store.mjs')
     const { notes, config, sort } = readVault(VAULT)
-    const findings = lint(buildIndex(notes), { today: isoDate(new Date()), config, sort })
+    vaultIndex = buildIndex(notes)
+    const findings = lint(vaultIndex, { today: isoDate(new Date()), config, sort })
     const errors = findings.filter((f) => f.severity === 'error').length
     lintReport = { findings, errors, warnings: findings.length - errors }
     const tickets = notes.filter((n) => !n.path.endsWith('/map.md')).length
@@ -584,6 +586,19 @@ await section('§6 เนื้อ vault', async () => {
   } catch (e) {
     check(false, label, `อ่าน vault ไม่ได้: ${[e.message, ...(e.details ?? [])].join(' · ')}`)
   }
+})
+
+// ── 6b. main ของ repo งานเทียบกับ origin ─────────────────────────────────────
+// merge ทางเดียวคือ PR (merge-route-fixes#01) ⇒ main ในเครื่องของ repo ที่ map active ไป claim ไว้
+// ต้องไม่นำ origin/main (commit ที่ ff เข้าเครื่องแต่ไม่ขึ้น origin) และไม่ตามหลังค้าง (ลืม pull --ff-only)
+// repo ที่ไม่มี origin/<main> ไม่อยู่ในขอบเขต · อ่าน vault ไม่ได้ ⇒ §6 รายงานแล้ว ข้ามหมวดนี้
+await section('§6b main เทียบ origin', async () => {
+  if (!vaultIndex) return
+  const { claimedMainCheckouts, mainDrift, driftLine } = await import('./lib/main-drift.mjs')
+  const drifted = claimedMainCheckouts(VAULT, vaultIndex)
+    .map(mainDrift)
+    .filter((d) => d && (d.ahead > 0 || d.behind > 0))
+  warn(drifted.length === 0, 'main ในเครื่องตรงกับ origin (repo ที่ map active claim ไว้)', drifted.map(driftLine).join(' · '))
 })
 
 // ── 7. hook ─────────────────────────────────────────────────────────────────

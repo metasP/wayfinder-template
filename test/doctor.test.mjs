@@ -474,3 +474,48 @@ describe("doctor: the pages' code lives in _tools/views/, the notes hold stubs",
     assert.match(c.detail, /Enable Inline JavaScript Queries/)
   })
 })
+
+// merge-route-fixes#01: chips fast-forwarded main in the main checkout beside `gh pr merge`, and local main
+// of the work repo ended up ahead 5 / behind 2 of origin — nothing said so until a chip `reset --hard
+// origin/main` and silently dropped a ticket's test. doctor warns for each repository an active map's
+// claims ran in whose main has left origin/main.
+describe("doctor: local main against origin", () => {
+  // A work repo with a bare origin at main, and a vault whose active map has a ticket claimed in it.
+  const setup = () => {
+    const repo = realpathSync(seed(makeVault({ manifest: null })))
+    const main = git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    const bare = `${repo}-origin.git`
+    git(repo, "clone", "-q", "--bare", repo, bare)
+    git(repo, "remote", "add", "origin", bare)
+    git(repo, "fetch", "-q", "origin")
+    const vault = seed(vaultWithDoctor({ notes: [map("r/e/map.md"), ticket("r/e/issues/01-a.md", { status: "claimed", claimed_by: "me" })] }))
+    git(vault, "commit", "-q", "--allow-empty", "-m", `wf(claim): r/e#01\n\nCwd: ${repo}\nBranch: e-01`)
+    return { repo, main, vault }
+  }
+  const LABEL = "main ในเครื่องตรงกับ origin"
+
+  test("passes while main matches origin/main", () => {
+    const s = setup()
+    const c = checkNamed(doctor(s.vault).json, LABEL)
+    assert.equal(c.ok, true, c.detail)
+  })
+
+  test("warns when local main is ahead of origin, naming the repository and the commits to move to a PR", () => {
+    const s = setup()
+    git(s.repo, "commit", "-q", "--allow-empty", "-m", "ff'd locally")
+    const c = checkNamed(doctor(s.vault).json, LABEL)
+    assert.deepEqual([c.ok, c.soft], [false, true])
+    assert.match(c.detail, new RegExp(`${s.repo}: ${s.main} ahead 1 / behind 0 of origin/${s.main}`))
+    assert.match(c.detail, new RegExp(`git -C ${s.repo} log origin/${s.main}\\.\\.${s.main}`))
+  })
+
+  test("warns when local main is behind origin, with the pull that catches it up", () => {
+    const s = setup()
+    git(s.repo, "commit", "-q", "--allow-empty", "-m", "merged on GitHub")
+    git(s.repo, "push", "-q", "origin", `HEAD:${s.main}`)
+    git(s.repo, "reset", "-q", "--hard", "HEAD~1")
+    const c = checkNamed(doctor(s.vault).json, LABEL)
+    assert.deepEqual([c.ok, c.soft], [false, true])
+    assert.match(c.detail, new RegExp(`${s.main} ahead 0 / behind 1 of origin/${s.main} — git -C ${s.repo} pull --ff-only`))
+  })
+})
