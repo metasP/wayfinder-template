@@ -5,7 +5,7 @@
 // `--json` prints `{ ok, data, error }`: `ok` is true exactly when wf exits 0. A verb that ran but
 // exits 1 (lint with error findings) keeps its `data` and says why in `error`.
 import { buildIndex, isoDate } from "./core.mjs"
-import { parseArgs } from "./args.mjs"
+import { REF_FORMS, joinSplitRefs, parseArgs } from "./args.mjs"
 import { EXIT, WfError, usageError } from "./errors.mjs"
 import { runWrite } from "./pipeline.mjs"
 import { checkSchema, locateVault, readText, readVault } from "./store.mjs"
@@ -16,6 +16,8 @@ const usageText = (verbs) =>
     "",
     "verbs:",
     ...verbs.map((v) => `  ${v.usage.padEnd(52)}  ${v.summary}`),
+    "",
+    `<ref> names a ticket: ${REF_FORMS.join(" · ")} (e.g. wf claim my-repo/my-effort#04)`,
     "",
     "exit codes: 0 ok · 1 invariant violated · 2 usage or environment error",
   ].join("\n")
@@ -41,7 +43,8 @@ const failure = (json, error) => {
 }
 
 const runVerb = (verb, rest, { toolsDir }) => {
-  const args = parseArgs(rest, verb.flags)
+  const parsed = parseArgs(rest, verb.flags)
+  const args = { ...parsed, positionals: joinSplitRefs(parsed.positionals) }
   if (args.flags.help) return { data: { usage: verb.usage }, text: `usage: ${verb.usage}\n  ${verb.summary}` }
   if (args.positionals.length > verb.maxPositionals)
     throw usageError(`unexpected argument ${JSON.stringify(args.positionals[verb.maxPositionals])} — usage: ${verb.usage}`)
@@ -53,6 +56,7 @@ const runVerb = (verb, rest, { toolsDir }) => {
   // `roots`: where an absolute path in a ref may point — the main checkout, or the one wf runs from.
   const ctx = {
     vault,
+    verb: verb.name,
     roots: [vault, checkout],
     notes,
     index: buildIndex(notes),

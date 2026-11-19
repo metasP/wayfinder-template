@@ -230,7 +230,7 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
 - เรียกด้วย **absolute path** เสมอ (`<vault>` = โฟลเดอร์ของ README นี้ — ย่อหน้า wayfinder ใน `~/.claude/CLAUDE.md`
   จดไว้ให้) · `wf` เขียนและ commit ลง main checkout ของ vault เสมอ ไม่ว่าจะเรียกจาก repo หรือ worktree ไหน
   — ใบที่เนื้อความใน worktree ต่างจาก main ⇒ `wf` เตือนพร้อมบอก path ของ main (ไม่ปฏิเสธ)
-- อ้างใบด้วย `repo/effort#NN` · `repo/effort/NN` · path ใน vault · หรือ wikilink ก็ได้ — `wf` พิมพ์กลับเป็น `repo/effort#NN` เสมอ
+- อ้างใบด้วย `repo/effort#NN` · `repo/effort NN` (สอง argument) · `repo/effort/NN` · path ใน vault (หรือ path เต็ม) · หรือ wikilink ก็ได้ — `wf` พิมพ์กลับเป็น `repo/effort#NN` เสมอ · `wf help` บอกรูปเหล่านี้ · ref ผิดได้ข้อความบอกรูปที่ถูกพร้อมตัวอย่าง
 - exit `0` สำเร็จ · `1` ผิด invariant (ข้อความบอกกฎ + คำสั่งที่แก้) · `2` ใช้ผิดหรือสภาพแวดล้อมไม่พร้อม
   (vault schema เก่า ⇒ `wf migrate` แล้ว `wf migrate --yes` · เขียนไม่ได้เพราะ `EPERM` ⇒ vault อยู่นอก path ที่ sandbox ให้เขียน)
 - verb ที่เขียนทำตามลำดับเดียวกันหมด: lock → อ่านโน้ตใหม่ → เช็ค invariant → เขียนแบบ atomic → สร้าง

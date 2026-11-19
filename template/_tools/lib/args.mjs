@@ -1,5 +1,5 @@
-// Argument parsing for `wf` verbs, and reading the refs they take (spec *Verbs*: `repo/effort#NN`, a
-// vault path or a wikilink; output always uses `repo/effort#NN`).
+// Argument parsing for `wf` verbs, and reading the refs they take (spec *Verbs*: `repo/effort#NN`,
+// `repo/effort NN`, `repo/effort/NN`, a vault path or a wikilink; output always uses `repo/effort#NN`).
 import { formatRef, parseRef } from "./core.mjs"
 import { usageError } from "./errors.mjs"
 import { vaultRelative } from "./store.mjs"
@@ -78,16 +78,42 @@ export function effortArg(input, { roots, index }) {
   return key
 }
 
+// Every form a ticket `<ref>` takes on the command line — `wf help` and a bad ref both list them.
+export const REF_FORMS = Object.freeze(["repo/effort#NN", "repo/effort NN", "repo/effort/NN", "a vault path"])
+const SPLIT_NN_RE = /^\d+$/
+
 /**
- * The ticket ref an argument names — `repo/effort#NN`, a vault path, a full-path wikilink, or a bare
+ * Join a ref a shell split in two — `repo/effort` then `NN` — into one `repo/effort#NN` positional.
+ * Only a bare `repo/effort` (no `#NN`, not a path) followed by digits alone is joined.
+ */
+export function joinSplitRefs(positionals) {
+  return positionals.reduce((out, arg) => {
+    const prev = out.at(-1)
+    const id = prev === undefined ? null : parseRef(prev)
+    const joins = SPLIT_NN_RE.test(arg) && id != null && id.nn == null && formatRef(id) === prev.trim()
+    return joins ? [...out.slice(0, -1), `${prev.trim()}#${arg}`] : [...out, arg]
+  }, [])
+}
+
+// The usage error for an argument that isn't a ticket ref: the forms that work, and an example built
+// from what was typed (its effort, or its digits) so the fix is one edit away.
+const badTicketRef = (input, verb, { home } = {}) => {
+  const id = parseRef(input)
+  const effort = id && id.nn == null ? formatRef(id) : null
+  const forms = [...REF_FORMS, ...(home ? ["[[NN-slug]]"] : [])].join(" · ")
+  const nn = (String(input).match(/\d+/)?.[0] ?? "01").padStart(2, "0")
+  const example = `wf ${verb ?? "show"} ${effort ?? "my-repo/my-effort"}#${effort ? "01" : nn}`
+  const lead = effort ? `name the ticket: ${effort}#NN (or ${effort} NN)` : `use ${forms}`
+  return usageError(`cannot read ${JSON.stringify(input)} as a ticket ref — ${lead}; e.g. ${example}`)
+}
+
+/**
+ * The ticket ref an argument names — any of `REF_FORMS`, a full-path wikilink, or a bare
  * `[[NN-slug]]` when `home` (`{ repo, effort }`) gives it an effort. The ticket may not exist.
  */
-export function ticketRefArg(input, { roots }, { home } = {}) {
+export function ticketRefArg(input, { roots, verb }, { home } = {}) {
   const id = parseRef(vaultRelative(input, roots), { home })
-  if (!id || id.nn == null) {
-    const forms = home ? "repo/effort#NN, a vault path or a wikilink" : "repo/effort#NN, a vault path or a full-path wikilink"
-    throw usageError(`cannot read ${JSON.stringify(input)} as a ticket ref — use ${forms}`)
-  }
+  if (!id || id.nn == null) throw badTicketRef(input, verb, { home })
   return formatRef(id)
 }
 

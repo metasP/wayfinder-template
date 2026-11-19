@@ -108,7 +108,7 @@ const transact = (verb, args, { vault, checkout, gitDir, trees, warnings }) => {
   const { notes, config, sort } = readVault(vault)
   const today = isoDate(new Date())
   const before = buildIndex(notes)
-  const ctx = { vault, roots: [vault, checkout, ...trees], notes, index: before, config, sort, today, textOf: (path) => readText(vault, path) }
+  const ctx = { vault, verb: verb.name, roots: [vault, checkout, ...trees], notes, index: before, config, sort, today, textOf: (path) => readText(vault, path) }
   warnings.push(...worktreeDrift(ctx, args, trees))
   const plan = verb.plan(ctx, args)
   const planned = plan.edits.map(parsedEdit)
