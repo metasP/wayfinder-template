@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // ตรวจสุขภาพ wayfinder-vault — ทุกข้อที่ตรวจด้วยเครื่องได้
 //
-// ใช้:  node _tools/doctor.mjs [--json]
-// exit 0 = ผ่านหมด, exit 1 = มีอย่างน้อยหนึ่งข้อพัง, exit 2 = argument ผิด (รับแค่ --json)
+// ใช้:  node _tools/doctor.mjs [--json] [--template <ราก repo wayfinder-template>]
+// exit 0 = ผ่านหมด, exit 1 = มีอย่างน้อยหนึ่งข้อพัง, exit 2 = argument ผิด (รับแค่ --json · --template)
+// --template ชี้ repo ที่ใช้เทียบ §10 (ไฟล์ที่ template เป็นเจ้าของ) — ไม่ใส่ ⇒ ใช้ `source_repo` ของ manifest
 // --json พิมพ์ `{ ok, checks: [{ ok, soft, label, detail }], lint: { findings, errors, warnings } | null }`
 // แทนรายงาน — `lint.findings` คือชุดเดียวกับ `wf lint --json`
 //
@@ -22,13 +23,21 @@ const VAULT = join(dirname(fileURLToPath(import.meta.url)), '..')
 // ฟ้อง exit 2 แทนการเงียบแล้วตรวจ vault ข้างตัวสคริปต์ ซึ่งคนสั่งจะอ่านผิดว่าเป็นผลของ vault ที่ตั้งใจ
 const argv = process.argv.slice(2)
 if (argv.includes('--help') || argv.includes('-h')) {
-  console.log('ใช้:  node <vault>/_tools/doctor.mjs [--json]   (ตรวจ vault ที่สคริปต์นี้อยู่)\nexit 0 = ผ่านหมด, exit 1 = มีอย่างน้อยหนึ่งข้อพัง, exit 2 = argument ผิด')
+  console.log('ใช้:  node <vault>/_tools/doctor.mjs [--json] [--template <repo>]   (ตรวจ vault ที่สคริปต์นี้อยู่)\n'
+    + '--template = ราก repo wayfinder-template ที่ใช้เทียบไฟล์ที่ template เป็นเจ้าของ (ไม่ใส่ ⇒ source_repo ของ manifest)\n'
+    + 'exit 0 = ผ่านหมด, exit 1 = มีอย่างน้อยหนึ่งข้อพัง, exit 2 = argument ผิด')
   process.exit(0)
 }
 const JSON_OUT = argv.includes('--json')
-const unknownArgs = argv.filter((a) => a !== '--json')
+const templateAt = argv.indexOf('--template')
+const TEMPLATE_ARG = templateAt < 0 ? null : argv[templateAt + 1] ?? ''
+if (TEMPLATE_ARG === '' || TEMPLATE_ARG?.startsWith('--')) {
+  console.error('❌ --template ต้องตามด้วย path ของราก repo wayfinder-template')
+  process.exit(2)
+}
+const unknownArgs = argv.filter((a, i) => a !== '--json' && !(templateAt >= 0 && (i === templateAt || i === templateAt + 1)))
 if (unknownArgs.length) {
-  console.error(`❌ doctor รับแค่ --json (เจอ ${unknownArgs.map((a) => `"${a}"`).join(' ')}) — รัน doctor.mjs ของ vault ที่จะตรวจตรง ๆ`)
+  console.error(`❌ doctor รับแค่ --json · --template <repo> (เจอ ${unknownArgs.map((a) => `"${a}"`).join(' ')}) — รัน doctor.mjs ของ vault ที่จะตรวจตรง ๆ`)
   process.exit(2)
 }
 
@@ -856,6 +865,36 @@ await section('§9 manifest', async () => {
   }
   check(lost.length === 0, `ตัวเรนเดอร์ยังถือโทเคน ${VAULT_TOKEN} ไว้เอง`,
     lost.length ? `ถูกเรนเดอร์ทับ/หายไปแล้ว: ${lost.join(' · ')}` : holders.join(' · '))
+})
+
+// ── 10. ไฟล์ที่ template เป็นเจ้าของ ยังตรงกับ template ไหม (lib/template-drift.mjs) ──────────
+// `README.md` · `_tools/**` · สกิลที่ติดตั้ง ถูก update ของ template ทับทั้งไฟล์ ⇒ ของที่แก้ตรง ๆ ใน vault
+// หรือใน `~/.claude/skills/` หายรอบหน้า (ใบ parallel-run-fixes#02 — สกิลที่แก้ตรง ๆ ไม่มี git ให้กู้)
+// ⇒ ฟ้องทุกไฟล์ที่ต่าง แล้วชี้ทางที่ถูก (README § ไฟล์ที่ template เป็นเจ้าของ)
+// หา repo ไม่เจอ ⇒ ⚠️ บอกวิธีชี้ ไม่ใช่ ❌ — vault ที่ติดตั้งผ่าน npx ไม่มี repo ให้เทียบ
+await section('§10 template', async () => {
+  const { isRepoRoot } = await import('./lib/bootstrap/find-repo.mjs')
+  const { templateDrift } = await import('./lib/template-drift.mjs')
+  const man = await readJson(join(VAULT, '.wayfinder-template.json')).catch(() => null)
+  const repo = TEMPLATE_ARG !== null ? resolve(TEMPLATE_ARG) : man?.source_repo ?? null
+  const label = 'ไฟล์ที่ template เป็นเจ้าของ ตรงกับ template'
+  if (repo === null || !(await isRepoRoot(repo))) {
+    if (TEMPLATE_ARG !== null) return check(false, label, `--template ${repo} ไม่ใช่ราก repo (ต้องมี template/ · skills/ · LICENSE)`)
+    return warn(false, `${label} (ยังไม่ได้เทียบ)`,
+      `ไม่รู้ว่า template อยู่ไหน — node _tools/doctor.mjs --template <ราก repo wayfinder-template>`)
+  }
+  const skillsDir = man?.skills_dir ?? join(homedir(), '.claude/skills')
+  const skillDir = (name) => man?.skills_targets?.[name] ?? join(skillsDir, name)
+  const branch = await run('git', ['-C', repo, 'rev-parse', '--abbrev-ref', 'HEAD']).then((r) => r.stdout.trim(), () => '?')
+  // ติดตั้งโดยไม่เอาสกิล (`parts` ไม่มี skills) ⇒ ไม่มีสกิลให้เทียบ ไม่ใช่ "หาย"
+  const withSkills = !Array.isArray(man?.parts) || man.parts.includes('skills')
+  const { compared, differs, missing } = await templateDrift({ repo, vault: MAIN_VAULT, skillDir, withSkills })
+  const bad = [...differs.map((f) => `≠ ${f}`), ...missing.map((f) => `ไม่มี ${f}`)]
+  check(bad.length === 0, label,
+    bad.length
+      ? `${bad.length}/${compared} ต่างจาก ${repo} (${branch}): ${bad.slice(0, 8).join(' · ')}${bad.length > 8 ? ' · …' : ''}`
+        + ' — แก้ที่ template แล้ว copy ลงมา (README § ไฟล์ที่ template เป็นเจ้าของ)'
+      : `${compared} ไฟล์ · ${repo} (${branch})`)
 })
 
 // ── รายงาน ──────────────────────────────────────────────────────────────────
