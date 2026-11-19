@@ -1,29 +1,36 @@
-// `unmerged-branch`: a resolved ticket whose latest claim ran in a git worktree (the claim commit's `Cwd:`
-// trailer) whose HEAD the main checkout's branch doesn't contain yet. The work was approved and the
-// ticket closed, but the branch never reached main — nobody owned the merge. It reads git outside the
-// vault, so it lives here and not in core's pure `lint()`: `wf lint`, the post-write lint and
-// `wf map-status done` add it. A Cwd that is gone (worktree removed), the main checkout itself, or not a
-// git repository gives no finding — there is nothing left to check.
+// `unmerged-branch`: a resolved ticket whose latest claim commit names a branch (`Branch:` trailer, with
+// the directory in `Cwd:`) that the main checkout's branch doesn't contain yet. The work was approved
+// and the ticket closed, but the branch never reached main — nobody owned the merge. It reads git
+// outside the vault, so it lives here and not in core's pure `lint()`: `wf lint`, the post-write lint and
+// `wf map-status done` add it.
+//
+// No finding when there is nothing to check or the merge isn't ours: a claim without `Branch:` (made
+// before the trailer, or detached), a claim in the main checkout's own branch, a branch since deleted,
+// a Cwd with no git repository left above it, or an `## Answer` that links a pull request (the PR owns
+// the merge — a squash merge never makes the branch an ancestor of main).
 import { existsSync, realpathSync } from "node:fs"
+import { dirname } from "node:path"
 import { runGit } from "./git.mjs"
 
 export const UNMERGED_RULE = "unmerged-branch"
 const CLAIM_SUBJECT = "wf(claim): "
+const PULL_REQUEST_RE = /\/pull\/\d+/
 
-/** ref → the `Cwd:` of its latest claim commit, from one `git log` over the vault. */
-export function claimCwds(vault) {
-  const format = `%x1e%s%x1f%(trailers:key=Cwd,valueonly)`
-  const r = runGit(vault, ["log", "--fixed-strings", `--grep=${CLAIM_SUBJECT}`, `--format=${format}`])
-  const cwds = new Map()
-  if (!r.ok) return cwds
+const trailerOf = (block, key) => block.match(new RegExp(`^${key}: (.+)$`, "m"))?.[1].trim() ?? null
+
+/** ref → `{ cwd, branch }` of its latest claim commit, from one `git log` over the vault. */
+export function latestClaims(vault) {
+  const r = runGit(vault, ["log", "--fixed-strings", `--grep=${CLAIM_SUBJECT}`, "--format=%x1e%s%x1f%(trailers:only,unfold)"])
+  const claims = new Map()
+  if (!r.ok) return claims
   for (const record of r.stdout.split("\x1e").slice(1)) {
-    const [subject, trailer = ""] = record.split("\x1f")
+    const [subject, trailers = ""] = record.split("\x1f")
     if (!subject.startsWith(CLAIM_SUBJECT)) continue
     const ref = subject.slice(CLAIM_SUBJECT.length).trim()
-    const cwd = trailer.trim().split("\n")[0]
-    if (cwd && !cwds.has(ref)) cwds.set(ref, cwd) // newest first: the first seen is the latest claim
+    // newest first: the first seen is the latest claim
+    if (!claims.has(ref)) claims.set(ref, { cwd: trailerOf(trailers, "Cwd"), branch: trailerOf(trailers, "Branch") })
   }
-  return cwds
+  return claims
 }
 
 const out = (cwd, args) => {
@@ -39,9 +46,16 @@ const realOf = (path) => {
   }
 }
 
+// The nearest directory at or above `path` that still exists — a removed worktree's repository is above it.
+const existingDirOf = (path) => {
+  let dir = path
+  while (!existsSync(dir) && dirname(dir) !== dir) dir = dirname(dir)
+  return existsSync(dir) ? dir : null
+}
+
 // The main worktree (first in `git worktree list`) and the branch it has checked out.
-const mainCheckoutOf = (cwd) => {
-  const list = out(cwd, ["worktree", "list", "--porcelain"])
+const mainCheckoutOf = (dir) => {
+  const list = out(dir, ["worktree", "list", "--porcelain"])
   if (!list) return null
   const [first] = list.split("\n\n")
   const path = first.match(/^worktree (.+)$/m)?.[1]
@@ -49,36 +63,72 @@ const mainCheckoutOf = (cwd) => {
   return path && branch ? { path, branch } : null
 }
 
-/** `{ cwd, branch, main, mainPath }` when `cwd` is a linked worktree whose HEAD main lacks; else null. */
-export function unmergedBranchAt(cwd) {
-  if (!existsSync(cwd)) return null
-  const top = out(cwd, ["rev-parse", "--show-toplevel"])
-  const main = top && mainCheckoutOf(cwd)
-  if (!main || realOf(top) === realOf(main.path)) return null
-  const merged = runGit(cwd, ["merge-base", "--is-ancestor", "HEAD", `refs/heads/${main.branch}`])
-  if (merged.ok || merged.why) return null // merged, or git couldn't tell (an exit 1 has no stderr)
-  const branch = out(cwd, ["rev-parse", "--abbrev-ref", "HEAD"])
-  const name = branch && branch !== "HEAD" ? branch : out(cwd, ["rev-parse", "--short", "HEAD"])
-  return { cwd, branch: name, main: main.branch, mainPath: main.path }
+// Per-run caches, so a vault with hundreds of claims costs a few git calls per repository, not per claim.
+const caches = () => ({ mains: new Map(), merged: new Map() })
+
+const memo = (map, key, compute) => {
+  if (!map.has(key)) map.set(key, compute())
+  return map.get(key)
 }
 
-/** `[{ ref, cwd, branch, main, mainPath }]`: the resolved tickets `keep(ticket)` selects whose branch is unmerged. */
+// The local branches main contains, from one `for-each-ref` per main checkout.
+const mergedInto = (main) => {
+  const list = out(main.path, ["for-each-ref", "--merged", `refs/heads/${main.branch}`, "--format=%(refname:short)", "refs/heads"])
+  return list === null ? null : new Set(list.split("\n").filter(Boolean))
+}
+
+// Every commit of the branch already in main by content (`git cherry` marks it `-`): a local squash or
+// cherry-pick merged it without making it an ancestor.
+const appliedToMain = (main, branch) => {
+  const cherry = out(main.path, ["cherry", main.branch, branch])
+  return cherry !== null && cherry.split("\n").every((line) => !line.startsWith("+"))
+}
+
+/**
+ * `{ cwd, branch, main, mainPath, worktree }` when `branch` (claimed in `cwd`) is not in main; else null.
+ * `worktree` is `cwd` while it still has `branch` checked out, else null.
+ */
+export function unmergedBranch({ cwd, branch }, { mains, merged } = caches()) {
+  if (!cwd || !branch) return null
+  const dir = existingDirOf(cwd)
+  const main = dir && memo(mains, dir, () => mainCheckoutOf(dir))
+  if (!main || branch === main.branch) return null
+  const contained = memo(merged, main.path, () => mergedInto(main))
+  if (!contained || contained.has(branch)) return null // merged, or git couldn't tell
+  if (out(main.path, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]) === null) return null // deleted
+  if (appliedToMain(main, branch)) return null
+  // Rebase in the claim's worktree only while it still has this branch checked out (a reused one doesn't).
+  const onBranch = existsSync(cwd) && out(cwd, ["symbolic-ref", "--quiet", "--short", "HEAD"]) === branch
+  const worktree = onBranch && realOf(cwd) !== realOf(main.path) ? cwd : null
+  return { cwd, branch, main: main.branch, mainPath: main.path, worktree }
+}
+
+/** `[{ ref, cwd, branch, main, mainPath, worktree }]`: the resolved tickets `keep(ticket)` selects whose branch is unmerged. */
 export function unmergedTickets(vault, index, keep = () => true) {
-  const resolved = [...index.tickets.values()].filter((t) => t.status === "resolved" && keep(t))
+  const resolved = [...index.tickets.values()].filter(
+    (t) => t.status === "resolved" && keep(t) && !PULL_REQUEST_RE.test(t.answer ?? ""),
+  )
   if (!resolved.length) return []
-  const cwds = claimCwds(vault)
-  const byCwd = new Map()
+  const claims = latestClaims(vault)
+  const cache = caches()
+  const seen = new Map()
   return resolved.flatMap((t) => {
-    const cwd = cwds.get(t.ref)
-    if (!cwd) return []
-    if (!byCwd.has(cwd)) byCwd.set(cwd, unmergedBranchAt(cwd))
-    const u = byCwd.get(cwd)
+    const claim = claims.get(t.ref)
+    if (!claim) return []
+    const u = memo(seen, `${claim.cwd}\n${claim.branch}`, () => unmergedBranch(claim, cache))
     return u ? [{ ref: t.ref, ...u }] : []
   })
 }
 
-/** The command that merges an unmerged ticket's branch, run from anywhere: rebase onto main, then fast-forward. */
-export const mergeCommand = (u) => `git -C ${u.cwd} rebase ${u.main} && git -C ${u.mainPath} merge --ff-only ${u.branch}`
+// A shell word as itself when it is safe bare, else single-quoted — the fix line is pasted into a shell.
+const shellWord = (word) => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`)
+
+/** The command that merges an unmerged ticket's branch: rebase it onto main in its worktree, then fast-forward. */
+export const mergeCommand = (u) => {
+  const [main, branch, mainPath] = [u.main, u.branch, u.mainPath].map(shellWord)
+  const rebase = u.worktree ? `git -C ${shellWord(u.worktree)} rebase ${main} && ` : ""
+  return `${rebase}git -C ${mainPath} merge --ff-only ${branch}`
+}
 
 /** `unmerged-branch` warnings, finding-shaped like core's `lint()`. */
 export const unmergedFindings = (vault, index, keep) =>
@@ -86,6 +136,6 @@ export const unmergedFindings = (vault, index, keep) =>
     severity: "warn",
     rule: UNMERGED_RULE,
     ref: u.ref,
-    message: `claimed in ${u.cwd} on branch ${u.branch}, not merged into ${u.main} — merge it, then remove the worktree`,
+    message: `claimed in ${u.cwd} on branch ${u.branch}, not merged into ${u.main} — merge it into main`,
     fix: mergeCommand(u),
   }))

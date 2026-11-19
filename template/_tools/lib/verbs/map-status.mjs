@@ -71,7 +71,7 @@ const assertMerged = (ctx, m) => {
   const count = `${unmerged.length} unmerged branch${unmerged.length === 1 ? "" : "es"}`
   const list = unmerged.map((u) => `${u.ref} (${u.branch})`).join(", ")
   throw invariantError(`${m.key} has ${count}: ${list} — merge it into main before the map is done`, {
-    fix: [mergeCommand(unmerged[0]), `wf map-status ${m.key} done --force (close it anyway)`],
+    fix: [...unmerged.map(mergeCommand), `wf map-status ${m.key} done --force (close it anyway)`],
   })
 }
 

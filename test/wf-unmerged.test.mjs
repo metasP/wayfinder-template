@@ -1,4 +1,4 @@
-// A resolved ticket whose claim ran in a worktree (the claim commit's `Cwd:` trailer) on a branch that
+// A resolved ticket whose claim ran on a branch (the claim commit's `Branch:` and `Cwd:` trailers) that
 // main doesn't contain yet: `wf lint` and `wf resolve` warn `unmerged-branch`, and `wf map-status done`
 // refuses until the branch is merged (`--force` closes it anyway). Through the CLI against fixture vaults.
 import { test, describe } from "node:test"
@@ -63,14 +63,60 @@ describe("unmerged-branch", () => {
     assert.deepEqual(unmergedOf(s.run(["lint", "r/e", "--json"])), [])
   })
 
-  test("no warning for a claim made in the main checkout, or a worktree since removed", () => {
-    const inMain = setup()
-    claimAndResolve(inMain, inMain.repo)
-    assert.deepEqual(unmergedOf(inMain.run(["lint", "--json"], inMain.repo)), [])
-    const removed = setup()
-    claimAndResolve(removed)
-    git(removed.repo, "worktree", "remove", "--force", removed.worktree)
-    assert.deepEqual(unmergedOf(removed.run(["lint", "--json"], removed.repo)), [])
+  test("no warning for a claim made on main's own branch", () => {
+    const s = setup()
+    claimAndResolve(s, s.repo)
+    assert.deepEqual(unmergedOf(s.run(["lint", "--json"], s.repo)), [])
+  })
+
+  test("a removed worktree whose branch is kept still warns, with no rebase; deleting the branch clears it", () => {
+    const s = setup()
+    claimAndResolve(s)
+    git(s.repo, "worktree", "remove", "--force", s.worktree)
+    const [f] = unmergedOf(s.run(["lint", "--json"], s.repo))
+    assert.equal(f.fix, `git -C ${s.repo} merge --ff-only e-01`)
+    git(s.repo, "branch", "-D", "e-01")
+    assert.deepEqual(unmergedOf(s.run(["lint", "--json"], s.repo)), [])
+  })
+
+  test("a worktree reused for another branch: still the claimed branch, and no rebase in the wrong one", () => {
+    const s = setup()
+    claimAndResolve(s)
+    git(s.worktree, "switch", "-q", "-c", "other")
+    const [f] = unmergedOf(s.run(["lint", "--json"], s.repo))
+    assert.match(f.message, /on branch e-01,/)
+    assert.equal(f.fix, `git -C ${s.repo} merge --ff-only e-01`)
+  })
+
+  test("a branch squash-merged into main by hand counts as merged", () => {
+    const s = setup()
+    claimAndResolve(s)
+    git(s.repo, "merge", "-q", "--squash", "e-01")
+    git(s.repo, "commit", "-qm", "squash e-01")
+    assert.deepEqual(unmergedOf(s.run(["lint", "--json"], s.repo)), [])
+  })
+
+  test("the fix quotes a branch name the shell would read", () => {
+    const s = setup()
+    git(s.worktree, "branch", "-m", "e-01", "e-01$x")
+    claimAndResolve(s)
+    const [f] = unmergedOf(s.run(["lint", "--json"], s.repo))
+    assert.equal(f.fix, `git -C ${s.worktree} rebase ${s.main} && git -C ${s.repo} merge --ff-only 'e-01$x'`)
+  })
+
+  test("an answer that links a pull request: the PR owns the merge", () => {
+    const s = setup()
+    writeFileSync(s.answerFile, "Did it: https://github.com/o/r/pull/12\n")
+    claimAndResolve(s)
+    assert.deepEqual(unmergedOf(s.run(["lint", "--json"], s.repo)), [])
+  })
+
+  test("a claim without a Branch trailer (made before it existed) is not checked", () => {
+    const s = setup()
+    claimAndResolve(s, s.repo)
+    // As an older wf left it: the worktree's claim, with only Cwd.
+    git(s.vault, "commit", "-q", "--allow-empty", "-m", `wf(claim): r/e#01\n\nCwd: ${s.worktree}`)
+    assert.deepEqual(unmergedOf(s.run(["lint", "--json"], s.repo)), [])
   })
 
   test("the latest claim wins: released and reclaimed from main, no warning", () => {

@@ -44,7 +44,7 @@ describe("wayfinder-next skill", () => {
   test("checks each started session's folder and branch for <effort>-<NN>, and warns", () => {
     assert.match(SKILL, /\*\*Check where each session landed\.\*\*[^\n]*mcp__ccd_session_mgmt__list_sessions` `\{"linked": true\}`/)
     assert.match(SKILL, /Both should contain `<effort>-<NN>`[^\n]*\*\*warn\*\*/)
-    assert.match(SKILL, /`Session:` \/ `Cwd:` trailers/)
+    assert.match(SKILL, /`Session:` \/ `Cwd:` \/ `Branch:` trailers/)
   })
 
   test("leaves runs to bump-runs and ranking to frontier", () => {

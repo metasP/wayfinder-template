@@ -3,7 +3,8 @@
 // (exit 1 with the fixing command), and who a claim is stamped with.
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
-import { realpathSync } from "node:fs"
+import { mkdtempSync, realpathSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { git, makeVault, map, onOneDay, read, seed, ticket, wf } from "./vault.mjs"
 
@@ -278,14 +279,15 @@ describe("claim commit trailers", () => {
     assert.equal(r.code, 0, r.stderr)
     assert.equal(r.json.data.claimed_by, "claude/other-effort-07-abc123")
     assert.equal(git(vault, "log", "-1", "--format=%s", "HEAD"), "wf(claim): r/e#01")
-    assert.equal(body(vault), `Session: 0123456789abcdef\nCwd: ${realpathSync(worktree)}`)
+    assert.equal(body(vault), `Session: 0123456789abcdef\nCwd: ${realpathSync(worktree)}\nBranch: claude/other-effort-07-abc123`)
     assert.equal(git(vault, "log", "-1", "--format=%(trailers:key=Session,valueonly)", "HEAD").trim(), "0123456789abcdef")
   })
 
-  test("without a session id there is no Session trailer, only Cwd", () => {
+  test("without a session id there is no Session trailer; outside git no Branch", () => {
     const vault = oneTicket()
-    run(vault, ["claim", "r/e#01", "--by", "alice"], { cwd: vault })
-    assert.equal(body(vault), `Cwd: ${realpathSync(vault)}`)
+    const outside = mkdtempSync(join(tmpdir(), "wf-no-git-"))
+    run(vault, ["claim", "r/e#01", "--by", "alice"], { cwd: outside })
+    assert.equal(body(vault), `Cwd: ${realpathSync(outside)}`)
   })
 
   test("other verbs commit the bare subject", () => {

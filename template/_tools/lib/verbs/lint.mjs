@@ -8,7 +8,7 @@ import { effortArg } from "../args.mjs"
 import { withTicketsBlock } from "../edit.mjs"
 import { EXIT } from "../errors.mjs"
 import { effortKeyOf } from "../pipeline.mjs"
-import { unmergedFindings } from "../unmerged.mjs"
+import { UNMERGED_RULE, unmergedFindings } from "../unmerged.mjs"
 
 const DRIFT_RULE = "tickets-block-drift"
 
@@ -37,7 +37,7 @@ const textOf = (findings, errors, warnings, rule) => {
 // `unmerged-branch`, which reads git outside the vault.
 const findingsOf = (index, { vault, today, config, sort }, named, rule) => {
   const inNamed = (ref) => !named.size || named.has(effortKeyOf(ref))
-  const unmerged = unmergedFindings(vault, index, (t) => inNamed(t.ref))
+  const unmerged = !rule || rule === UNMERGED_RULE ? unmergedFindings(vault, index, (t) => inNamed(t.ref)) : []
   const all = [...lint(index, { today, config, sort }), ...unmerged].sort(byFinding)
   return all.filter((f) => inNamed(f.ref) && (!rule || f.rule === rule))
 }

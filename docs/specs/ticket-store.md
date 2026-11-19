@@ -280,6 +280,7 @@ an old worktree, or a directory the app reused). So the `wf(claim)` commit also 
 
 - `Session: <full CLAUDE_CODE_SESSION_ID>`, when the variable is set.
 - `Cwd: <the directory wf ran in>` — Claude Code keeps a session's transcript under a folder named after it.
+- `Branch: <the branch checked out there>` — omitted when detached or outside git; `unmerged-branch` checks it.
 
 A retro finds every ticket's session from the vault alone:
 `git -C <vault> log --grep '^wf(claim): <repo>/<effort>#' --format='%s %(trailers:key=Session,valueonly,separator=)'`.
@@ -440,10 +441,11 @@ What every write verb does, in order:
 - A file in an effort's `issues/` and a `.md` under its `assets/` with the same name (`issue-asset-name-clash`): a bare
   `[[name]]` is ambiguous.
 - The same effort slug under two repo folders (`effort-in-two-repos`).
-- `resolved` ticket whose latest claim commit's `Cwd:` is a linked git worktree whose HEAD the main checkout's branch
-  doesn't contain (`unmerged-branch`): approved work that never reached main. It reads git outside the vault, so it
-  is not part of core `lint()` — `wf lint`, the post-write lint and `map-status done` add it (`_tools/lib/unmerged.mjs`).
-  A Cwd that is gone, the main checkout itself, or no repository gives no finding.
+- `resolved` ticket whose latest claim commit's `Branch:` (in the repository at or above its `Cwd:`) is not contained
+  in the branch the main checkout has out (`unmerged-branch`): approved work that never reached main. It reads git
+  outside the vault, so it is not part of core `lint()` — `wf lint`, the post-write lint and `map-status done` add it
+  (`_tools/lib/unmerged.mjs`). No finding for a claim without `Branch:`, main's own branch, a deleted branch, a branch whose commits main already has (`git cherry`: a local squash), no
+  repository, or an `## Answer` linking a pull request (`/pull/N` — the PR owns the merge).
 - An asset with `superseded_by:` that a live note still links (`superseded-asset-linked`) — live: a map outside its
   `## Decisions so far`/`## Retro`, an unresolved ticket, an asset not itself superseded; the successor is exempt.
 

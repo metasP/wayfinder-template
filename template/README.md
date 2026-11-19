@@ -222,7 +222,7 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
 | `wf map-status <repo/effort> dropped --note "…"` | map: อื่น ๆ → `dropped` | `--note` บังคับ · `--superseded-by <repo/effort>` ได้ |
 | `wf map-status <repo/effort> done` | map: อื่น ๆ → `done` | ไม่มีใบ `open`/`claimed`/`waiting` ค้าง · lint ของ effort ไม่มี error (`--force` ข้าม) · เตือนให้รัน `/retro` |
 | `wf new <repo/effort> --type research\|prototype\|grilling\|task --title "…"` | ticket: — → `open` | map ต้องไม่ `done`/`dropped` (`draft`/`active`/`paused` รับใบใหม่ได้) · `NN` = เลขสูงสุด + 1 จองใต้ lock ด้วย exclusive create ⇒ สอง session ไม่มีทางได้เลขเดียวกัน · เขียนโครง Question/Answer (`--question "…"` หรือ stdin) · `--blocker ref` ต้องชี้ใบที่มีจริง · `--target-repo R` ได้ · `--type` รับตัวอักษร `R`/`P`/`G`/`T` แบบชื่อ chip ด้วย |
-| `wf claim <ref>` | `open` → `claimed` | อ่านใบใหม่ใต้ lock ⇒ สอง session claim ใบเดียวกันไม่ได้ · ใบต้องไม่ติด blocker และ map ต้อง `active` · ประทับ `claimed_by` (`--by name` · ไม่งั้นชื่อ branch ของ worktree ที่เรียก · ไม่งั้น session id) · map `serial: true` ⇒ ไม่ยอมเมื่อใบอื่นใน map `claimed` อยู่ (`--force` ข้ามได้) · commit มี trailer `Session:` (session id เต็ม) และ `Cwd:` ⇒ retro หา session ของทุกใบได้ด้วย `git log --grep '^wf(claim): <repo>/<effort>#' --format='%s %(trailers:key=Session,valueonly,separator=)'` |
+| `wf claim <ref>` | `open` → `claimed` | อ่านใบใหม่ใต้ lock ⇒ สอง session claim ใบเดียวกันไม่ได้ · ใบต้องไม่ติด blocker และ map ต้อง `active` · ประทับ `claimed_by` (`--by name` · ไม่งั้นชื่อ branch ของ worktree ที่เรียก · ไม่งั้น session id) · map `serial: true` ⇒ ไม่ยอมเมื่อใบอื่นใน map `claimed` อยู่ (`--force` ข้ามได้) · commit มี trailer `Session:` (session id เต็ม) · `Cwd:` · `Branch:` (branch ที่ checkout อยู่ — `unmerged-branch` ใช้) ⇒ retro หา session ของทุกใบได้ด้วย `git log --grep '^wf(claim): <repo>/<effort>#' --format='%s %(trailers:key=Session,valueonly,separator=)'` |
 | `wf release <ref>` | `claimed`/`waiting` → `open` | ล้าง `claimed_by` · `status_note` · `wait_until` · ปล่อยได้เฉพาะใบที่ `claimed_by` ตรงกับผู้เรียก (หาชื่อแบบเดียวกับ `claim` หรือ `--by`) · ใบของคนอื่นต้อง `--force` · ใบ `waiting` ที่จะทำต่อ ⇒ `wf release` แล้ว `wf claim` (`claim` รับแค่ `open`) |
 | `wf wait <ref> --note "…"` | `open`/`claimed` → `waiting` | ต้องบอกว่ารออะไร · `--until YYYY-MM-DD` ⇒ lint เตือนเมื่อเลยวัน · `claimed_by` คงอยู่ — คนเดิมยังถือใบ · ใบ `claimed` ของคนอื่นต้อง `--force` |
 | `wf resolve <ref> --gist "…"` | `claimed`/`waiting` → `resolved` | `## Answer` ต้องไม่ว่างและไม่ใช่ placeholder · ต่อท้าย `## Decisions so far` หนึ่งบรรทัด `- [[NN-slug]]: ‹gist›` โดยอ่าน map ใหม่ใต้ lock ⇒ session ที่ resolve พร้อมกันไม่เขียนทับกัน · `--answer-file <file>` เขียน `## Answer` ของใบใน main checkout จากไฟล์ก่อน ในคอมมิตเดียวกัน (ไฟล์ที่มี `## Answer` ⇒ เอาแค่ section นั้น) |
@@ -299,9 +299,10 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
 - **Claim** — `wf claim <ref>` ก่อนทำอะไรทั้งนั้น — มันอ่านใบใหม่ใต้ lock เอง ใบที่ session อื่นเพิ่งจับจะถูกปฏิเสธ
 - **Merge ก่อน resolve** — งานที่แก้ไฟล์ใน branch ของ worktree: **session ที่ทำใบเป็นเจ้าของการ merge** ไม่ต้องรอผู้ใช้สั่ง ·
   ลำดับคือ ผู้ใช้ผ่านงาน → rebase branch บน main → fast-forward main ไปที่ branch (`git -C <main checkout> merge <branch>`) → resolve ·
-  `wf` หา branch จาก `Cwd:` ของ claim commit — ใบที่ resolve แล้วแต่ HEAD ของ worktree นั้นยังไม่อยู่ใน branch ของ main checkout
+  `wf` จำ branch ไว้ใน trailer `Branch:` ของ claim commit — ใบที่ resolve แล้วแต่ branch นั้นยังไม่อยู่ใน branch ของ main checkout
   ได้ `unmerged-branch` (warn) ตอน resolve / `wf lint` และ `wf map-status <repo/effort> done` ไม่ยอมจนกว่าจะ merge ·
-  ใบที่ไม่มี commit (research, grilling) ไม่โดน · worktree ที่ลบไปแล้วเช็คไม่ได้ ⇒ merge ก่อนลบ worktree เสมอ
+  ไม่โดน: ใบที่ไม่มี commit (research, grilling) · branch ที่ลบแล้ว · Answer ที่ลิงก์ PR (`/pull/N` — PR เป็นเจ้าของ merge) ·
+  claim ก่อนมี trailer นี้
 - **Resolve** — เขียนคำตอบใต้ `## Answer` (สิ่งที่ตัดสิน · ข้อเท็จจริงที่ใบอื่นต้องใช้ · ลิงก์ PR · ลิงก์ asset)
   แล้ว `wf resolve <ref> --gist "…"`
   · **session ที่ทำงานใน worktree**: เขียน Answer ลงใบใน worktree (หรือไฟล์ไหนก็ได้) → `wf resolve <ref> --gist "…" --answer-file <ไฟล์นั้น>`
