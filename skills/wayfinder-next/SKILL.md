@@ -34,6 +34,7 @@ It prints `{ ok, data, error }`. Exit `1` is a refused invariant (`error.details
 | nothing | take the map's frontier **in `wf frontier` order** and spawn **1–3 chips** — the top ticket, plus up to two that don't collide with it (see [Picking tickets](#picking-tickets)) |
 | `02` | that ticket — one chip |
 | `01, 02, 04` · `01 02 04` · `1,2,4` | those tickets — **one chip each**, in ascending order |
+| `after <NN>` | run by **ticket NN's own session** right after its `wf resolve` — offer the next chips in its wrap_up, or close the map; starts nothing on its own (see [After a ticket resolves](#after-a-ticket-resolves-after-nn)) |
 
 Accept comma- and/or space-separated numbers, with or without zero-padding. Anything that isn't a number (a slug, a phrase) → treat it as naming the ticket and resolve it against `issues/` yourself; ask if it's ambiguous.
 
@@ -131,6 +132,16 @@ A colliding row is skipped and the walk goes on to the next row. **1 is a fine b
 
 ⇒ Spawn without asking; [step 7](#workflow) reports the walk so the user can override in one word.
 
+### After a ticket resolves (`after <NN>`)
+
+Every chip prompt ends its merge line with this step, so the user never types `/wayfinder-next` or "close the map" between tickets. It runs in **ticket NN's own session**, in the turn that merged and ran `wf resolve` — the user's go-ahead covers it, so don't ask before running it. It reads; it starts no ticket session by itself.
+
+1. **Get the frontier** for this map (the call in [No argument](#no-argument--frontier-order-then-skip-collisions)) and read the map's `## Tickets` block for `claimed` lines — tickets other sessions are working right now.
+2. **Frontier has rows** → walk them as in No argument, but a row is also skipped when it collides with a **claimed** ticket (same files, or the same repo when the map has no file-level split), and a serial map gets nothing while a ticket is claimed. Don't call `start_session` and don't `bump-runs`: put the batch in this turn's `wrap_up` — `ask` "Start the next ticket(s)?" / "เริ่มใบถัดไปเลยไหม?", `actions[0]` a reply naming them (`Start 08, 09` / `เริ่ม 08, 09`), `actions[1]` `Not now` / `ยังก่อน`, and the recap names each one in a clause. When the user clicks, run this skill with those numbers — the normal path, `"user_asked"` (the click is their request), validated again, so a ticket another session took meanwhile is flagged rather than doubled.
+3. **No row, but lines are still `claimed` / `waiting` / blocked** → nothing to offer: say in one clause of the recap which tickets hold the map. The session that resolves the last of them closes it.
+4. **No row, every line `resolved`, scope or `## Not yet specified` still names work** → offer the fog ticket the same way (`Open ticket: <title>` / `เปิดใบ: <title>`); run `wf new` only after the click, so nothing is created on a "not now".
+5. **Map complete** → do [Complete map](#complete-map--close-it-and-leave-a-retro-card) now, without asking: `wf map-status … done`, then the `/retro` card. When `wf` refuses (another ticket's branch not yet on main, a lint error), put its `error.fix` in the recap and stop — the session that clears it closes the map.
+
 ## Validate before spawning — and confirm
 
 Check **every** requested ticket against the frontier from the call above (run it now if you skipped that section): a requested ticket is **clean** when its `ref` is a row of `data.tickets`. Every other one is flagged, and the map's generated `## Tickets` block — the lines between its `<!-- wf:tickets -->` markers, which `wf` rewrites on every state change — says which flag. Each line reads `- [[NN-slug]] · <type> · <status> · <title>`, with a trailing ⛔ when the ticket is blocked:
@@ -202,6 +213,7 @@ Mode: Work through the map. Do ticket <NN> (<title>) — issues/<NN>-<slug>.md
 First, before the claim, check where you are: git branch --show-current must contain <effort>-<NN> (if not, stop and report). If the folder name does not contain it too — the app picks or recycles worktree folders itself — move into a new worktree named after the branch: from the folder you start in, run B=$(git branch --show-current) && git switch --detach -q && git worktree add -q "../${B##*/}" "$B" (refused as too complex → run the three as separate commands), then EnterWorktree with path set to the new folder (load it with ToolSearch when deferred). The old folder stays, detached; work and claim only in the new one. A session inside an EnterWorktree folder is refused git -C <main checkout>: when you reach the merge, ExitWorktree with action keep first, then run it
 Follow the wayfinder steps: claim the ticket before starting, resolve, record (## Answer + status:resolved + add 1 line to the map's "Decisions so far"); resolve at most 1 ticket per session
 The merge is yours, on one go-ahead: when the user approves the work, that one approval covers every step below — don't wait to be told, and don't ask again between them: rebase this branch onto main and fast-forward main to it (git -C <main checkout> merge --ff-only <branch>); if the work has a PR, push the branch and, once CI is green, merge it (gh pr merge <N> --merge) and git -C <main checkout> pull --ff-only; then resolve. Until main has the branch, lint warns unmerged-branch
+Right after the resolve, in the same turn and without being asked: run the wayfinder-next skill with `after <NN>` — it offers the next ticket(s) as a button in your wrap_up, or, when no ticket is left, closes the map and leaves the /retro card
 
 The ticket (already read for you — no need to open it again before you start):
 <the ticket's `## Question` section, verbatim>
@@ -233,6 +245,7 @@ Map: <absolute map.md path>
 ก่อน claim ให้ตรวจที่อยู่ก่อน: git branch --show-current ต้องมี <effort>-<NN> (ถ้าไม่มี หยุดแล้วรายงาน) · ถ้าชื่อ folder ไม่มีด้วย — app เลือกหรือรีไซเคิล folder worktree เอง — ย้ายเข้า worktree ใหม่ที่ชื่อตาม branch: จาก folder ที่เริ่ม รัน B=$(git branch --show-current) && git switch --detach -q && git worktree add -q "../${B##*/}" "$B" (ถ้าโดนปฏิเสธว่าซับซ้อน ให้แยกเป็นสามคำสั่ง) แล้ว EnterWorktree ด้วย path ของ folder ใหม่ (โหลดด้วย ToolSearch ถ้ายัง deferred) · folder เก่าค้างไว้แบบ detached · ทำงานและ claim ใน folder ใหม่เท่านั้น · session ที่อยู่ใน folder ของ EnterWorktree จะโดนปฏิเสธ git -C <main checkout>: ถึงขั้น merge ให้ ExitWorktree action keep ก่อน แล้วค่อยรัน
 ทำตามขั้นตอน wayfinder: claim ticket ก่อนเริ่ม, resolve, record (## Answer + status:resolved + เติม 1 บรรทัดใน map "Decisions so far"), ห้าม resolve เกิน 1 ticket ต่อ session
 การ merge เป็นหน้าที่ของ session นี้ และใช้ go-ahead ครั้งเดียว: พอผู้ใช้ผ่านงาน คำเดียวนั้นครอบทุกขั้นข้างล่าง — ไม่ต้องรอให้สั่ง และไม่ต้องถามซ้ำระหว่างขั้น: rebase branch นี้บน main แล้ว fast-forward main (git -C <main checkout> merge --ff-only <branch>) · ถ้างานมี PR ให้ push branch แล้วพอ CI เขียวก็ merge (gh pr merge <N> --merge) แล้ว git -C <main checkout> pull --ff-only · จากนั้น resolve · ก่อน main จะมี branch นี้ lint จะเตือน unmerged-branch
+resolve แล้วให้ทำต่อในรอบเดียวกันเอง ไม่ต้องรอสั่ง: เรียก skill wayfinder-next ด้วย `after <NN>` — มันเสนอใบถัดไปเป็นปุ่มใน wrap_up ของเรา หรือถ้าไม่เหลือใบแล้ว ก็ปิด map และเปิดการ์ด /retro ให้
 
 เนื้อใบ (อ่านให้แล้ว — ไม่ต้องเปิดซ้ำก่อนเริ่ม):
 <the ticket's `## Question` section, verbatim>
@@ -278,6 +291,7 @@ compacted is the wrong place to build in, and a claim made here has to be releas
 - **Batching sessions is fine; batching tickets into one session is not.** Each prompt still says "resolve at most 1 ticket per session".
 - Prefer batching tickets that **don't block each other** — sessions for a chain (05 blocked by 04) start work that can't finish, which is why the confirm step exists.
 - If the map has no open ticket and nothing left in the fog, it is complete: close it and leave the `/retro` card ([Complete map](#complete-map--close-it-and-leave-a-retro-card)) instead of starting a ticket session.
+- **The session that started the chips reports changes only.** Each ticket session offers its own next chips and closes the map itself ([After a ticket resolves](#after-a-ticket-resolves-after-nn)), so when a chip's note wakes you: report only what changed since your last report — a ticket resolved, blocked, waiting, a card left, the map closed — in a line each. A note that changes nothing gets no report; never write "still waiting for N" twice. Don't offer or start next chips from a note either: the ticket session already did, and two offers double the sessions.
 - **Grouping comes from who starts the session.** A session from `start_session` is linked to the session
   that started it and nests under the top session in the sidebar (`mcp__ccd_session_mgmt__list_sessions`
   `{"linked": true}` lists the family). ⇒ Run `/wayfinder-next` from the session holding the map and the

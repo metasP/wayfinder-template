@@ -89,6 +89,21 @@ describe("wayfinder-next skill", () => {
     }
   })
 
+  // parallel-run-fixes#07: the user typed /wayfinder-next after every ticket, and "close the map, open the retro"
+  // after the last one, while the coordinating session reported "still waiting for 3" six times.
+  test("after resolving, the ticket session offers the next chips in its wrap_up or closes the map itself", () => {
+    const [start, end] = [SKILL.indexOf("## Chip prompt template"), SKILL.indexOf("## This session never works")]
+    for (const block of SKILL.slice(start, end).split(/^`th`:$/m))
+      assert.match(block, /wayfinder-next[^\n]*`after <NN>`/, "the chip prompt does not run the after-resolve step")
+    assert.match(SKILL, /^\| `after <NN>` \|/m, "the arguments table has no after <NN> row")
+    const after = SKILL.slice(SKILL.indexOf("### After a ticket resolves"), SKILL.indexOf("## Validate before spawning"))
+    assert.match(after, /`wrap_up`[^\n]*`actions\[0\]`/, "next chips are not offered as a wrap_up button")
+    assert.match(after, /Don't call `start_session`/, "the after step starts sessions without a click")
+    assert.match(after, /\*\*claimed\*\* ticket/, "the walk ignores tickets other sessions are working")
+    assert.match(after, /\*\*Map complete\*\*[^\n]*without asking[^\n]*map-status/, "the last ticket does not close the map")
+    assert.match(SKILL, /\*\*The session that started the chips reports changes only\.\*\*[^\n]*never write "still waiting/)
+  })
+
   test("leaves runs to bump-runs and ranking to frontier", () => {
     assert.doesNotMatch(SKILL, /\bruns:/, "the skill still edits runs: itself")
     assert.doesNotMatch(SKILL, /urgen|unblocks the most|lowest[- ]number|tie-break|parallel-safe/i, "the skill still ranks")
