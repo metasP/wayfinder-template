@@ -333,9 +333,14 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
   ⇒ สร้างทุกใบก่อน แล้วค่อยต่อเส้นด้วย `wf block`)
 - **Claim** — `wf claim <ref>` ก่อนทำอะไรทั้งนั้น — มันอ่านใบใหม่ใต้ lock เอง ใบที่ session อื่นเพิ่งจับจะถูกปฏิเสธ
 - **Merge ก่อน resolve** — งานที่แก้ไฟล์ใน branch ของ worktree: **session ที่ทำใบเป็นเจ้าของการ merge** ไม่ต้องรอผู้ใช้สั่ง ·
-  ลำดับคือ ผู้ใช้ผ่านงาน → rebase branch บน main → fast-forward main ไปที่ branch (`git -C <main checkout> merge <branch>`) → resolve ·
-  `wf` จำ branch ไว้ใน trailer `Branch:` ของ claim commit — ใบที่ resolve แล้วแต่ branch นั้นยังไม่อยู่ใน branch ของ main checkout
-  ได้ `unmerged-branch` (warn) ตอน resolve / `wf lint` และ `wf map-status <repo/effort> done` ไม่ยอมจนกว่าจะ merge ·
+  **merge ทางเดียวคือ PR**: ผู้ใช้ผ่านงาน → `git rebase origin/main` → push branch + `gh pr create` → CI เขียว →
+  `gh pr merge <N> --merge` → pull main ใน main checkout แบบ fast-forward เท่านั้น → resolve (ลิงก์ PR ใน `## Answer`) · ห้าม fast-forward /
+  commit / reset main ใน main checkout เอง — ปน ff ในเครื่องกับ PR แล้ว main แยกทางจาก origin (merge-route-fixes#01) ·
+  repo ที่ไม่มี `origin` เท่านั้นที่ใช้ rebase บน main → fast-forward main ใน main checkout ไปที่ branch ·
+  `wf` จำ branch ไว้ใน trailer `Branch:` ของ claim commit — ใบที่ resolve แล้วแต่ branch นั้นยังไม่อยู่ใน `origin/<main>`
+  (หรือ branch ของ main checkout ถ้าไม่มี origin) ได้ `unmerged-branch` (warn) ตอน resolve / `wf lint` — fix คือ push + เปิด PR —
+  และ `wf map-status <repo/effort> done` ไม่ยอมจนกว่าจะ merge · branch ที่ ff เข้า main ในเครื่องแต่ยังไม่ขึ้น origin ยังนับว่าไม่ merge ·
+  `doctor` (§6b) เตือนเมื่อ main ในเครื่องของ repo ที่ map active claim ไว้ นำหรือตามหลัง `origin/<main>` ·
   claim ที่ไม่มี `Branch:` (ทำก่อนมี trailer นี้ หรือ detached) ⇒ `wf` หา branch เองจากชื่อ: branch ใน repo ของ `Cwd:` ที่มี
   `<effort>-<NN>` เป็นท่อนหนึ่งของชื่อ ต่อท้ายด้วย hash ได้ (`claude/<effort>-<NN>-7c4ab6`) — ข้อความบอก `found by name` ·
   ไม่โดน: ใบที่ไม่มี commit (research, grilling) · branch ที่ลบแล้ว · Answer ที่ลิงก์ PR (`/pull/N` — PR เป็นเจ้าของ merge) ·

@@ -190,3 +190,61 @@ describe("unmerged-branch", () => {
     assert.equal(r.code, 0, r.stderr)
   })
 })
+
+// merge-route-fixes#01: chips fast-forwarded main in the main checkout (tickets 04–07) beside `gh pr merge`
+// (01–03), and local main ended up ahead 5 / behind 2 of origin. With an `origin`, merged means in
+// origin/main — a branch local main has but origin doesn't is not shipped — and the fix opens a PR.
+describe("unmerged-branch with an origin", () => {
+  // `setup()`'s work repo, with a bare `origin` holding main as it stood before the work.
+  const setupWithOrigin = () => {
+    const s = setup()
+    const bare = `${s.repo}-origin.git`
+    git(s.repo, "clone", "-q", "--bare", s.repo, bare)
+    git(s.repo, "remote", "add", "origin", bare)
+    git(s.repo, "fetch", "-q", "origin")
+    return s
+  }
+  const prFix = (s, dir = s.worktree, rebase = true) =>
+    `git -C ${dir} fetch origin && ${rebase ? `git -C ${dir} rebase origin/${s.main} && ` : ""}git -C ${dir} push -u origin e-01 && cd ${dir} && gh pr create --base ${s.main} --head e-01 --fill`
+
+  test("warns against origin/main and fixes it with a PR, not a fast-forward of local main", () => {
+    const s = setupWithOrigin()
+    claimAndResolve(s)
+    const [f] = unmergedOf(s.run(["lint", "--json"], s.repo))
+    assert.match(f.message, new RegExp(`on branch e-01, not merged into origin/${s.main} — open a PR`))
+    assert.equal(f.fix, prFix(s))
+  })
+
+  test("a branch fast-forwarded into local main only still warns: main in this checkout is not shipped", () => {
+    const s = setupWithOrigin()
+    claimAndResolve(s)
+    git(s.repo, "merge", "-q", "--ff-only", "e-01")
+    const [f] = unmergedOf(s.run(["lint", "--json"], s.repo))
+    assert.match(f.message, new RegExp(`not merged into origin/${s.main}`))
+  })
+
+  test("no warning once origin/main has the branch, even while local main is behind", () => {
+    const s = setupWithOrigin()
+    claimAndResolve(s)
+    git(s.repo, "push", "-q", "origin", `e-01:${s.main}`)
+    git(s.repo, "fetch", "-q", "origin")
+    assert.deepEqual(unmergedOf(s.run(["lint", "--json"], s.repo)), [])
+  })
+
+  test("a removed worktree: the PR fix pushes from the main checkout, with no rebase", () => {
+    const s = setupWithOrigin()
+    claimAndResolve(s)
+    git(s.repo, "worktree", "remove", "--force", s.worktree)
+    const [f] = unmergedOf(s.run(["lint", "--json"], s.repo))
+    assert.equal(f.fix, prFix(s, s.repo, false))
+  })
+
+  test("wf map-status done refuses while only local main has the branch", () => {
+    const s = setupWithOrigin()
+    claimAndResolve(s)
+    git(s.repo, "merge", "-q", "--ff-only", "e-01")
+    const r = s.run(["map-status", "r/e", "done"])
+    assert.equal(r.code, 1, r.stderr)
+    assert.ok(r.stderr.split("\n").includes(`  fix: ${prFix(s)}`), r.stderr)
+  })
+})

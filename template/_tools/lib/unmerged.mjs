@@ -1,5 +1,8 @@
 // `unmerged-branch`: a resolved ticket whose latest claim commit names a branch (`Branch:` trailer, with
-// the directory in `Cwd:`) that the main checkout's branch doesn't contain yet. The work was approved
+// the directory in `Cwd:`) that main doesn't contain yet — `origin/<main>` when the repository has an
+// `origin` carrying main's branch (as of the last fetch), else the main checkout's own branch. Merged means
+// shipped: a branch fast-forwarded into local main but never pushed is still unmerged, and its fix opens a
+// PR, the one merge route (merge-route-fixes#01). The work was approved
 // and the ticket closed, but the branch never reached main — nobody owned the merge. It reads git
 // outside the vault, so it lives here and not in core's pure `lint()`: `wf lint`, the post-write lint and
 // `wf map-status done` add it.
@@ -52,20 +55,31 @@ const realOf = (path) => {
 }
 
 // The nearest directory at or above `path` that still exists — a removed worktree's repository is above it.
-const existingDirOf = (path) => {
+export const existingDirOf = (path) => {
   let dir = path
   while (!existsSync(dir) && dirname(dir) !== dir) dir = dirname(dir)
   return existsSync(dir) ? dir : null
 }
 
-// The main worktree (first in `git worktree list`) and the branch it has checked out.
-const mainCheckoutOf = (dir) => {
+export const REMOTE = "origin"
+
+/**
+ * The main worktree (first in `git worktree list`), the branch it has checked out, and the ref merged is
+ * measured against: `{ path, branch, target, targetRef, remote }` — `target` is `origin/<branch>` when that
+ * remote-tracking ref exists, else `<branch>`.
+ */
+export const mainCheckoutOf = (dir) => {
   const list = out(dir, ["worktree", "list", "--porcelain"])
   if (!list) return null
   const [first] = list.split("\n\n")
   const path = first.match(/^worktree (.+)$/m)?.[1]
   const branch = first.match(/^branch refs\/heads\/(.+)$/m)?.[1]
-  return path && branch ? { path, branch } : null
+  if (!path || !branch) return null
+  const tracking = `refs/remotes/${REMOTE}/${branch}`
+  const remote = out(path, ["rev-parse", "--verify", "--quiet", tracking]) !== null
+  return remote
+    ? { path, branch, target: `${REMOTE}/${branch}`, targetRef: tracking, remote }
+    : { path, branch, target: branch, targetRef: `refs/heads/${branch}`, remote }
 }
 
 // Per-run caches, so a vault with hundreds of claims costs a few git calls per repository, not per claim.
@@ -76,9 +90,9 @@ const memo = (map, key, compute) => {
   return map.get(key)
 }
 
-// The local branches main contains, from one `for-each-ref` per main checkout.
+// The local branches main (its target) contains, from one `for-each-ref` per main checkout.
 const mergedInto = (main) => {
-  const list = out(main.path, ["for-each-ref", "--merged", `refs/heads/${main.branch}`, "--format=%(refname:short)", "refs/heads"])
+  const list = out(main.path, ["for-each-ref", "--merged", main.targetRef,"--format=%(refname:short)", "refs/heads"])
   return list === null ? null : new Set(list.split("\n").filter(Boolean))
 }
 
@@ -102,13 +116,14 @@ const ticketBranchRe = (ref) => {
 // Every commit of the branch already in main by content (`git cherry` marks it `-`): a local squash or
 // cherry-pick merged it without making it an ancestor.
 const appliedToMain = (main, branch) => {
-  const cherry = out(main.path, ["cherry", main.branch, branch])
+  const cherry = out(main.path, ["cherry", main.targetRef, `refs/heads/${branch}`])
   return cherry !== null && cherry.split("\n").every((line) => !line.startsWith("+"))
 }
 
 /**
- * `{ cwd, branch, main, mainPath, worktree }` when `branch` (claimed in `cwd`) is not in main; else null.
- * `worktree` is `cwd` while it still has `branch` checked out, else null.
+ * `{ cwd, branch, main, mainPath, remote, worktree }` when `branch` (claimed in `cwd`) is not in main;
+ * else null. `main` is the ref it was measured against (`origin/main` or `main`), `remote` whether that is
+ * origin's. `worktree` is `cwd` while it still has `branch` checked out, else null.
  */
 export function unmergedBranch({ cwd, branch }, { mains, merged } = caches()) {
   if (!cwd || !branch) return null
@@ -122,7 +137,7 @@ export function unmergedBranch({ cwd, branch }, { mains, merged } = caches()) {
   // Rebase in the claim's worktree only while it still has this branch checked out (a reused one doesn't).
   const onBranch = existsSync(cwd) && out(cwd, ["symbolic-ref", "--quiet", "--short", "HEAD"]) === branch
   const worktree = onBranch && realOf(cwd) !== realOf(main.path) ? cwd : null
-  return { cwd, branch, main: main.branch, mainPath: main.path, worktree }
+  return { cwd, branch, main: main.target, mainPath: main.path, remote: main.remote, worktree }
 }
 
 /** `[{ ref, cwd, branch, main, mainPath, worktree }]`: the resolved tickets `keep(ticket)` selects whose branch is unmerged. */
@@ -155,14 +170,26 @@ const branchesNamedFor = (ref, cwd, cache) => {
 }
 
 // A shell word as itself when it is safe bare, else single-quoted — the fix line is pasted into a shell.
-const shellWord = (word) => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`)
+export const shellWord = (word) => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`)
 
-/** The command that merges an unmerged ticket's branch: rebase it onto main in its worktree, then fast-forward. */
+/**
+ * The command that merges an unmerged ticket's branch. With an origin: rebase it onto origin/main in its
+ * worktree, push it and open a PR — merging that PR is the one route into main. Without one: rebase onto
+ * main, then fast-forward the main checkout.
+ */
 export const mergeCommand = (u) => {
   const [main, branch, mainPath] = [u.main, u.branch, u.mainPath].map(shellWord)
   const rebase = u.worktree ? `git -C ${shellWord(u.worktree)} rebase ${main} && ` : ""
-  return `${rebase}git -C ${mainPath} merge --ff-only ${branch}`
+  if (!u.remote) return `${rebase}git -C ${mainPath} merge --ff-only ${branch}`
+  // origin/main is as of the last fetch: fetch first, so a PR already merged on the host isn't opened twice
+  // and the rebase isn't onto a stale main. `--base`: the main checkout's branch, not the host's default.
+  const dir = shellWord(u.worktree ?? u.mainPath)
+  const base = shellWord(u.main.slice(REMOTE.length + 1))
+  // A plain push, never forced: a branch already on origin that the rebase rewrote is refused, not overwritten.
+  return `git -C ${dir} fetch ${REMOTE} && ${rebase}git -C ${dir} push -u ${REMOTE} ${branch} && cd ${dir} && gh pr create --base ${base} --head ${branch} --fill`
 }
+
+const mergeAdvice = (u) => (u.remote ? "open a PR and merge it" : "merge it into main")
 
 /** `unmerged-branch` warnings, finding-shaped like core's `lint()`. */
 export const unmergedFindings = (vault, index, keep) =>
@@ -170,6 +197,6 @@ export const unmergedFindings = (vault, index, keep) =>
     severity: "warn",
     rule: UNMERGED_RULE,
     ref: u.ref,
-    message: `claimed in ${u.cwd} on branch ${u.branch}${u.byName ? " (found by name — the claim has no Branch:)" : ""}, not merged into ${u.main} — merge it into main`,
+    message: `claimed in ${u.cwd} on branch ${u.branch}${u.byName ? " (found by name — the claim has no Branch:)" : ""}, not merged into ${u.main} — ${mergeAdvice(u)}`,
     fix: mergeCommand(u),
   }))
