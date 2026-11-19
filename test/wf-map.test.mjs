@@ -217,8 +217,10 @@ describe("wf map-status", () => {
     assert.match(r.json.data.reminder, /\/retro/)
     const text = run(vaultWith(effort({}, [ticket("r/e/issues/01-a.md", { status: "resolved" })])), ["map-status", "r/e", "done"])
     assert.match(text.stdout, /^map r\/e: active → done/)
-    assert.match(text.stdout, /run \/retro/)
-    assert.match(text.stdout, /start a side session with the prompt "\/retro every session that touched r\/e\/"/)
+    // set-kit-retro-fixes#09: the agent read "run /retro", couldn't, and left it for the user to type.
+    assert.match(r.json.data.retro_prompt, /^\/retro every session that touched \/\S+\/r\/e\/$/)
+    assert.match(text.stdout, /next: start a side session yourself \(start_session, own_initiative\) with the prompt: \/retro every session that touched \/\S+\/r\/e\//)
+    assert.match(text.stdout, /you can't invoke \/retro/)
     assert.match(frontmatterOf(vault, "r/e/map.md"), /^status: done$/m)
   })
 

@@ -39,6 +39,13 @@ describe("wayfinder-next skill", () => {
     assert.match(SKILL, /never runs `wf claim`/)
   })
 
+  // set-kit-retro-fixes#09: after the map closed, /retro waited for the user to type it.
+  test("closes a complete map with wf map-status done and leaves a /retro card from its retro_prompt", () => {
+    assert.match(SKILL, /node __VAULT__\/_tools\/wf\.mjs map-status \S+ done --json/)
+    assert.match(SKILL, /`data\.retro_prompt`/)
+    assert.match(SKILL, /\*\*Close a complete map\.\*\*[^\n]*`"own_initiative"`/)
+  })
+
   // A session can still land in a worktree named for another effort (the app reused a directory); the
   // skill checks after starting and warns, and the claim commit's trailers keep the session findable.
   test("checks each started session's folder and branch for <effort>-<NN>, and warns", () => {
