@@ -4,8 +4,10 @@
 //
 //   dv.view("_tools/views/wf-core", { render: (wf) => { … }, bodies: true })
 //
-// and `render` gets `wf = { core, index, notes, unread, config, sort, today, link, text }`:
+// and `render` gets `wf = { core, nav, folds, index, notes, unread, config, sort, today, link, text }`:
 //   core    the module `_tools/lib/core.mjs` — every query the page shows comes from here
+//   nav     the module `_tools/lib/page-nav.mjs` — fold rule and Dashboard summary counts, no vault rules
+//   folds   nav.folds bound to this vault's `localStorage`: `isOpen(page, id, …)` · `remember(page, id, open)`
 //   index   core.buildIndex over the vault's notes
 //   config  *Wayfinder Config* frontmatter ({} without the note); `sort` is *Wayfinder Picks* `sort:`
 //   today   YYYY-MM-DD, the local calendar day (the core never reads the clock); `input.today` overrides
@@ -31,6 +33,8 @@
 // keep the view's promise returned to Dataview, which waits on it. test/loader-view.test.mjs guards this.
 
 const CORE = "_tools/lib/core.mjs"
+const NAV = "_tools/lib/page-nav.mjs"
+const NAV_REQUIRED = ["folds", "bindFoldClicks", "summaryCounts"]
 const CONFIG_NOTE = "Wayfinder Config.md"
 const PICKS_NOTE = "Wayfinder Picks.md"
 const PICKS_REF = "Wayfinder Picks"
@@ -46,21 +50,25 @@ const say = (text) => dv.paragraph(text)
 
 const coreFailed = (err) =>
   say(
-    `⚠️ **Wayfinder: โหลด core ไม่ได้** — \`${CORE}\`: ${err?.message ?? err}\n` +
+    `⚠️ **Wayfinder: โหลด core ไม่ได้** — \`${CORE}\` · \`${NAV}\`: ${err?.message ?? err}\n` +
       "รัน `node _tools/doctor.mjs` ใน vault เพื่อหาสาเหตุ (ไฟล์หาย · ไฟล์พัง · รุ่นไม่ตรงกับหน้า)",
   )
 
 const blockFailed = (err) =>
   say(`⚠️ **Wayfinder: บล็อกนี้วาดไม่สำเร็จ** (core โหลดได้แล้ว) — ${err?.message ?? err}`)
 
-const loadCore = () =>
+// One module the pages need, checked for the exports they call; the error names the file that failed.
+const loadModule = (path, required) =>
   Promise.resolve()
-    .then(() => import(app.vault.adapter.getResourcePath(CORE)))
-    .then((core) => {
-      const missing = REQUIRED.filter((name) => typeof core[name] !== "function")
-      if (missing.length) throw new Error(`ไม่มี export ${missing.join(", ")} — core รุ่นเก่ากว่าหน้านี้`)
-      return core
+    .then(() => import(app.vault.adapter.getResourcePath(path)))
+    .then((mod) => {
+      const missing = required.filter((name) => typeof mod[name] !== "function")
+      if (missing.length) throw new Error(`\`${path}\` ไม่มี export ${missing.join(", ")} — รุ่นเก่ากว่าหน้านี้`)
+      return mod
     })
+
+const loadCore = () =>
+  Promise.all([loadModule(CORE, REQUIRED), loadModule(NAV, NAV_REQUIRED)]).then(([core, nav]) => ({ core, nav }))
 
 // Same scope as the store: no dot folders at any depth, no `_` entries at the vault root.
 const isVaultNote = (path) => !path.split("/").some((part) => part.startsWith(".")) && !path.startsWith("_")
@@ -96,10 +104,12 @@ const linker = (index) => (ref) => {
   return ref === PICKS_REF ? dv.fileLink(PICKS_NOTE) : ref
 }
 
-const context = (core, notes, bodies) => {
+const context = ({ core, nav }, notes, bodies) => {
   const index = core.buildIndex(notes)
   return {
     core,
+    nav,
+    folds: nav.folds({ storage: localStorage, vault: app.vault.getName() }),
     index,
     notes,
     unread: bodies ? notes.filter((n) => n.path.endsWith("/map.md") && !("ticketsBlock" in n)).map((n) => n.path) : [],
@@ -121,10 +131,10 @@ const bodies = input.bodies === true
 // Everything after the import runs inside the chain, so a synchronous throw (in `dv.pages()` or
 // the page's `render`) reaches `blockFailed` instead of escaping as an unhandled rejection.
 return loadCore().then(
-  (core) =>
+  (mods) =>
     Promise.resolve()
-      .then(() => readNotes(core, bodies))
-      .then((notes) => input.render(context(core, notes, bodies)))
+      .then(() => readNotes(mods.core, bodies))
+      .then((notes) => input.render(context(mods, notes, bodies)))
       .catch(blockFailed),
   coreFailed,
 )

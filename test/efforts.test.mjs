@@ -70,7 +70,7 @@ const section = (html, title) => {
   const at = html.indexOf(title)
   assert.ok(at >= 0, `no "${title}" group`)
   const rest = html.slice(at + title.length)
-  const end = rest.search(/<div class="wfe-grp|<details>/)
+  const end = rest.search(/<div class="wfe-grp|<details[ >]/)
   return end < 0 ? rest : rest.slice(0, end)
 }
 const rows = (html, cls) => html.split(`<div class="${cls}">`).slice(1)
@@ -78,7 +78,7 @@ const mapPathOf = (row) => /data-href="([^"]+)"/.exec(row)?.[1]
 const textOf = (html) => html.replace(/<[^>]+>/g, "")
 const chipsOf = (row) => textOf(/<span>(<span class="wfe-chip[\s\S]*?)<\/span><span class="wfe-when">/.exec(row)?.[1] ?? "")
 const folded = (html) =>
-  [...html.matchAll(/<details><summary>([^<]*)<\/summary>([\s\S]*?)<\/details>/g)].map((m) => ({
+  [...html.matchAll(/<details[^>]*><summary>([^<]*)<\/summary>([\s\S]*?)<\/details>/g)].map((m) => ({
     summary: m[1],
     maps: rows(m[2], "wfe-frow").map(mapPathOf),
   }))
@@ -193,5 +193,20 @@ describe("ticket count → Effort Tickets", () => {
     assert.equal(dv.storage.get("wayfinder-effort-tickets:selected:test-vault"), "r/b")
     assert.deepEqual(dv.opened, ["Wayfinder Effort Tickets"])
     assert.deepEqual(dv.events, ["wayfinder-effort-select"])
+  })
+})
+
+describe("folded groups remember the owner's toggle", () => {
+  test("start closed, and a summary click is remembered across a redraw in this vault", async () => {
+    const storage = new Map()
+    const first = fakeDataview({ notes: NOTES, storage })
+    await first.run(BLOCKS[0])
+    assert.match(first.dv.container.innerHTML, /<details class="wf-fold" data-fold="paused"><summary>/)
+    const fold = { open: false, dataset: { fold: "paused" } }
+    await first.inPage(async () => first.dv.container.fire("click", { target: { closest: () => ({ parentElement: fold }) } }))
+    const again = fakeDataview({ notes: NOTES, storage })
+    await again.run(BLOCKS[0])
+    assert.match(again.dv.container.innerHTML, /<details class="wf-fold" data-fold="paused" open><summary>/)
+    assert.match(again.dv.container.innerHTML, /<details class="wf-fold" data-fold="done"><summary>/)
   })
 })

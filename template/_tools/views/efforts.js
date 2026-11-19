@@ -24,6 +24,7 @@ const LS_KEY = "wayfinder-effort-tickets:selected"
 const lsKey = () => `${LS_KEY}:${app.vault.getName()}`
 const SELECT_EVENT = "wayfinder-effort-select" // ยิงหลังเขียนคีย์ ให้ pane ที่เปิดค้างสลับ effort ตามทันที
 const TICKETS_NOTE = "Wayfinder Effort Tickets"
+const PAGE = "efforts" // namespace ของการพับกลุ่ม (`wf.folds`)
 
 const CSS = `
 .wfe { font-size: var(--font-ui-medium); }
@@ -141,7 +142,7 @@ const groupRows = (rows, warning) => {
 }
 
 // ── วาด ────────────────────────────────────────────────────────────────────
-const draw = ({ rows, warn, active, folded, cfg }) => {
+const draw = ({ rows, warn, active, folded, cfg, isOpen, foldCss }) => {
   const COLORS = { resolved: cfg.color_resolved, claimed: cfg.color_claimed, open: cfg.color_open, waiting: cfg.color_waiting }
   const MAP_LABEL = { paused: cfg.label_paused, draft: cfg.label_draft, done: cfg.label_done, dropped: cfg.label_dropped }
   const link = (r) =>
@@ -205,7 +206,8 @@ const draw = ({ rows, warn, active, folded, cfg }) => {
     if (!list.length) return ""
     const label = k === "paused" ? "พักมาแล้ว" : k === "done" ? "ปิดเมื่อ" : "แตะล่าสุด"
     return (
-      `<details><summary>${MAP_LABEL[k]} — ${list.length} effort · ${sum(list, (r) => r.total)} ใบ</summary>` +
+      `<details class="wf-fold" data-fold="${k}"${isOpen(k) ? " open" : ""}>` +
+      `<summary>${MAP_LABEL[k]} — ${list.length} effort · ${sum(list, (r) => r.total)} ใบ</summary>` +
       `<div class="wfe-fhdr"><span>effort</span><span>${k === "dropped" ? "ทำไมถึงทิ้ง" : "เงื่อนไขกลับมา"}</span>` +
       `<span>ใบ</span><span>${label}</span></div>` +
       list.map(foldRow).join("") +
@@ -215,7 +217,7 @@ const draw = ({ rows, warn, active, folded, cfg }) => {
 
   return !rows.length
     ? "<p>ยังไม่มี effort ใน vault</p>"
-    : `<style>${CSS}</style><div class="wfe">` +
+    : `<style>${CSS}${foldCss}</style><div class="wfe">` +
       grp("รวม",
         `${rows.length} effort · ${sum(rows, (r) => r.total)} ใบ · ` +
         `ปิดแล้ว ${sum(rows, (r) => r.resolved)} · เหลือ ${sum(rows, (r) => r.pending)}`) +
@@ -257,7 +259,10 @@ return dv.view("_tools/views/wf-core", {
     const cfg = wf.core.readConfig(wf.config)
     const rows = effortRows(wf)
     const groups = groupRows(rows, warningOf({ ...wf, cfg }))
-    dv.container.innerHTML = draw({ rows, ...groups, cfg })
+    // กลุ่มพับจำการพับ/กางของเจ้าของต่อ vault (`wf.folds`) · ✅ done เงียบพอ ๆ กับ paused/draft ⇒ เริ่มพับเหมือนกัน
+    const isOpen = (k) => wf.folds.isOpen(PAGE, k, { hasContent: groups.folded[k].length > 0, lowTraffic: true })
+    dv.container.innerHTML = draw({ rows, ...groups, cfg, isOpen, foldCss: wf.nav.FOLD_CSS })
+    wf.nav.bindFoldClicks(dv.container, PAGE, wf.folds)
     bindCounts()
   },
 })

@@ -213,3 +213,17 @@ describe("selection", () => {
     assert.deepEqual(keys, ["r/a", "r/b", "r/empty", "r/p"])
   })
 })
+
+describe("the ✅ group's fold", () => {
+  const resolvedTag = (body) => /<details class="wft-grp wf-fold" data-fold="resolved"( open)?>/.exec(body)
+  test("starts closed while tickets are pending, and remembers the owner's toggle on the next redraw", async () => {
+    const first = await render("r/a")
+    assert.ok(resolvedTag(first.body), "a ✅ fold")
+    assert.equal(resolvedTag(first.body)[1], undefined)
+    const fold = { open: false, dataset: { fold: "resolved" } }
+    await first.dv.inPage(async () => first.dv.dv.container.fire("click", { target: { closest: (sel) => (sel === "summary" ? { parentElement: fold } : null) } }))
+    const again = fakeDataview({ notes: NOTES, storage: first.dv.storage })
+    for (const src of BLOCKS) await again.run(src)
+    assert.equal(resolvedTag(again.dv.container.querySelector(".wft-body").innerHTML)[1], " open")
+  })
+})

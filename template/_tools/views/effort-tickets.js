@@ -18,6 +18,7 @@ const lsKey = () => `${LS_KEY}:${app.vault.getName()}`
 // event ที่ `Wayfinder Efforts` ยิงต่อจากการเขียนคีย์ — ทำให้หน้านี้ที่เปิดค้างอยู่ใน pane อื่น
 // สลับ effort ตามทันที แทนที่จะต้องรอ dataview วาดบล็อกใหม่ (หรือปิดเปิดหน้า)
 const SELECT_EVENT = "wayfinder-effort-select"
+const PAGE = "effort-tickets" // namespace ของการพับกลุ่ม ✅ (`wf.folds`)
 
 // หน้านี้ **ไม่มีกฎของตัวเอง** — กลุ่มใบ · "ปลดกี่ใบ" · เส้นกราฟ · blocker ที่ยังค้าง · ค่าจาก Config
 // มาจาก core (`_tools/lib/core.mjs`) ผ่าน loader กลาง ⇒ ตรงกับ Dashboard · Efforts · `wf` เสมอ
@@ -569,6 +570,8 @@ function page(wf) {
     for (const t of r.tickets) g[groupOf(t)].push(t)
 
     // ✅ พับไว้เพราะยาวได้หลายสิบแถว · **ยกเว้นไม่มีใบค้างเลย ให้กางเอง** ไม่งั้นเปิดมาเจอหน้าว่างเปล่า
+    // ถ้าเจ้าของเคยพับ/กางเอง `wf.folds` จำไว้ต่อ vault และชนะค่าเริ่มต้นนี้ (ใช้ร่วมกันทุก effort)
+    const resolvedOpen = (x) => wf.folds.isOpen(PAGE, "resolved", { hasContent: true, lowTraffic: x.pending > 0 })
     const head = (gr, n, tag) =>
       `<${tag} class="wft-gh"><b>${gr.title}</b><small>${gr.sub}</small>` +
       `<span class="wft-num">${n}</span></${tag}>`
@@ -590,7 +593,8 @@ function page(wf) {
         `</div>`
       parts.push(
         gr.id === "res"
-          ? `<details class="wft-grp"${r.pending ? "" : " open"}>${head(gr, items.length, "summary")}${table}</details>`
+          ? `<details class="wft-grp wf-fold" data-fold="resolved"${resolvedOpen(r) ? " open" : ""}>` +
+            `${head(gr, items.length, "summary")}${table}</details>`
           : `<section class="wft-grp">${head(gr, items.length, "div")}${table}</section>`
       )
     }
@@ -635,6 +639,7 @@ function page(wf) {
 
   // โหนดในกราฟเป็น `<a class="internal-link">` ที่อยู่ **ใน SVG** — ไม่มีหลักฐานว่า Obsidian delegate ให้
   // ⇒ จัดการเอง **เฉพาะในกรอบ `.wft-svg`** แล้ว `stopPropagation` · ลิงก์ HTML ที่เหลือปล่อยให้ Obsidian จัดการ
+  wf.nav.bindFoldClicks(dv.container, PAGE, wf.folds)
   dv.container.addEventListener("click", (ev) => {
     const a = ev.target?.closest?.("a.internal-link")
     if (!a || !a.closest(".wft-svg")) return

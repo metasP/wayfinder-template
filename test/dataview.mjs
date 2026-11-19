@@ -36,6 +36,18 @@ const fakeElement = () => {
   const found = new Map() // selector + innerHTML → elements, so a later call sees the listeners bound
   const listeners = []
   const el = {
+    // Obsidian's `createEl(tag, { cls, text, attr })`: the child is kept in `created`, its `data-*` attrs in `dataset`.
+    created: [],
+    createEl: (tag, { cls = "", text = "", attr = {} } = {}) => {
+      const child = fakeElement()
+      child.tagName = tag
+      child.className = cls
+      child.textContent = text
+      for (const [key, value] of Object.entries(attr))
+        if (key.startsWith("data-")) child.dataset[key.slice(5)] = String(value)
+      el.created.push(child)
+      return child
+    },
     innerHTML: "",
     className: "",
     value: "",
