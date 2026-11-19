@@ -39,6 +39,17 @@ describe("wayfinder-next skill", () => {
     }
   })
 
+  // merge-route-fixes#02: the conductor relayed "ผ่าน" to chips 01–07 by SendMessage, auto mode refused every
+  // push/merge on it, and Tong typed the approval again in each chip.
+  test("the go-ahead is the user's own words in the chip; a relayed approval doesn't count", () => {
+    const en = SKILL.match(/^The merge is yours, on one go-ahead:[^\n]*/m)?.[0] ?? ""
+    const th = SKILL.match(/^การ merge เป็นหน้าที่ของ session นี้ และใช้ go-ahead ครั้งเดียว:[^\n]*/m)?.[0] ?? ""
+    assert.match(en, /typed by the user in this session[^\n]*relayed[^\n]*doesn't count/)
+    assert.match(th, /ผู้ใช้พิมพ์เองในหน้านี้[^\n]*ส่งต่อ[^\n]*ไม่นับ/)
+    const notes = SKILL.slice(SKILL.indexOf("## Notes"))
+    assert.match(notes, /\*\*Approval happens in the chip\.\*\*[^\n]*never relay/, "the starting session may still relay approvals")
+  })
+
   // parallel-run-fixes#03: every set-kit session spent 4–20 commands re-reading the map, the ticket and the README,
   // guessed the claim ref wrong, and opened with `echo ======` that the zsh hook refused.
   test("the chip prompt carries the ticket, the map's decisions and a wf cheat sheet", () => {
