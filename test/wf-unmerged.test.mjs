@@ -205,7 +205,7 @@ describe("unmerged-branch with an origin", () => {
     return s
   }
   const prFix = (s, dir = s.worktree, rebase = true) =>
-    `${rebase ? `git -C ${dir} rebase origin/${s.main} && ` : ""}git -C ${dir} push --force-with-lease -u origin e-01 && cd ${dir} && gh pr create --head e-01 --fill`
+    `git -C ${dir} fetch origin && ${rebase ? `git -C ${dir} rebase origin/${s.main} && ` : ""}git -C ${dir} push --force-with-lease -u origin e-01 && cd ${dir} && gh pr create --base ${s.main} --head e-01 --fill`
 
   test("warns against origin/main and fixes it with a PR, not a fast-forward of local main", () => {
     const s = setupWithOrigin()

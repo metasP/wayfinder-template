@@ -170,7 +170,7 @@ const branchesNamedFor = (ref, cwd, cache) => {
 }
 
 // A shell word as itself when it is safe bare, else single-quoted — the fix line is pasted into a shell.
-const shellWord = (word) => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`)
+export const shellWord = (word) => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`)
 
 /**
  * The command that merges an unmerged ticket's branch. With an origin: rebase it onto origin/main in its
@@ -181,8 +181,11 @@ export const mergeCommand = (u) => {
   const [main, branch, mainPath] = [u.main, u.branch, u.mainPath].map(shellWord)
   const rebase = u.worktree ? `git -C ${shellWord(u.worktree)} rebase ${main} && ` : ""
   if (!u.remote) return `${rebase}git -C ${mainPath} merge --ff-only ${branch}`
+  // origin/main is as of the last fetch: fetch first, so a PR already merged on the host isn't opened twice
+  // and the rebase isn't onto a stale main. `--base`: the main checkout's branch, not the host's default.
   const dir = shellWord(u.worktree ?? u.mainPath)
-  return `${rebase}git -C ${dir} push --force-with-lease -u ${REMOTE} ${branch} && cd ${dir} && gh pr create --head ${branch} --fill`
+  const base = shellWord(u.main.slice(REMOTE.length + 1))
+  return `git -C ${dir} fetch ${REMOTE} && ${rebase}git -C ${dir} push --force-with-lease -u ${REMOTE} ${branch} && cd ${dir} && gh pr create --base ${base} --head ${branch} --fill`
 }
 
 const mergeAdvice = (u) => (u.remote ? "open a PR and merge it" : "merge it into main")

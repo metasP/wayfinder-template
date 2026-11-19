@@ -6,7 +6,7 @@
 // The repositories checked are the ones an active map's claims ran in (the claim commit's `Cwd:`), read
 // from the same `git log` as `unmerged-branch`. A repository with no `origin/<main>` is out of scope.
 import { runGit } from "./git.mjs"
-import { existingDirOf, latestClaims, mainCheckoutOf } from "./unmerged.mjs"
+import { existingDirOf, latestClaims, mainCheckoutOf, shellWord } from "./unmerged.mjs"
 
 /** `{ path, branch, target, ahead, behind }` for the main checkout holding `dir`, or null with no origin. */
 export function mainDrift(dir) {
@@ -22,20 +22,23 @@ export function mainDrift(dir) {
 export function claimedMainCheckouts(vault, index) {
   const active = (t) => index.maps.get(t.effortKey)?.status === "active"
   const refs = new Set([...index.tickets.values()].filter(active).map((t) => t.ref))
-  const paths = new Set()
+  // One `mainCheckoutOf` per directory: many claims share a worktree folder or the main checkout.
+  const dirs = new Set()
   for (const [ref, claim] of latestClaims(vault)) {
     const dir = refs.has(ref) && claim.cwd && existingDirOf(claim.cwd)
-    const main = dir && mainCheckoutOf(dir)
-    if (main) paths.add(main.path)
+    if (dir) dirs.add(dir)
   }
+  const paths = new Set([...dirs].map((dir) => mainCheckoutOf(dir)?.path).filter(Boolean))
   return [...paths].sort()
 }
 
 /** What to run for a drifted main: inspect the commits only it has (they belong in a PR), or catch up. */
-export const driftAdvice = (d) =>
-  d.ahead > 0
-    ? `commits only local ${d.branch} has belong on a branch and a PR: git -C ${d.path} log ${d.target}..${d.branch}`
-    : `git -C ${d.path} pull --ff-only`
+export const driftAdvice = (d) => {
+  const path = shellWord(d.path)
+  return d.ahead > 0
+    ? `commits only local ${d.branch} has belong on a branch and a PR: git -C ${path} log ${shellWord(`${d.target}..${d.branch}`)}`
+    : `git -C ${path} pull --ff-only`
+}
 
 /** One line per drifted repository. */
 export const driftLine = (d) => `${d.path}: ${d.branch} ahead ${d.ahead} / behind ${d.behind} of ${d.target} — ${driftAdvice(d)}`
