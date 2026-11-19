@@ -13,9 +13,9 @@ export const VIEWS_DIR = "_tools/views"
 export const LOADER_VIEW = "wf-core"
 
 // The sections of the Dashboard view, one stub each, in page order — test/dashboard.test.mjs holds the view's
-// own list to this one.
+// own list to this one. `summary` is the sticky bar of every other section's count.
 export const DASHBOARD_SECTIONS = Object.freeze([
-  "lint", "frontier", "blocked", "waiting", "claimed", "stranded", "paused", "draft", "dropped", "decisions",
+  "summary", "lint", "frontier", "blocked", "waiting", "claimed", "stranded", "paused", "draft", "dropped", "decisions",
 ])
 
 /** Each page note's stubs, as the `block` each names (null: the view takes no section), in page order. */

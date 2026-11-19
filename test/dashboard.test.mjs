@@ -121,8 +121,104 @@ describe("Dashboard structure", () => {
     assert.equal(/กับหนึ่งใน (.*)$/.exec(dv.out[0].text)?.[1], DASHBOARD_SECTIONS.join(" · "))
   })
 
-  test("the lint panel is the first block on the page", () => {
-    assert.match(sections[0].heading, /lint/i)
+  test("the summary bar is the first block on the page, and the lint panel the first section after it", () => {
+    assert.equal(stubOf(sections[0].src).block, "summary")
+    assert.match(sections[1].heading, /lint/i)
+  })
+
+  test("each section's explanation sits in a collapsed callout under its heading", () => {
+    for (const heading of PAGE.match(/^## .*$/gm).filter((h) => !/Decisions|หยิบอันไหนต่อ/.test(h))) {
+      const after = PAGE.slice(PAGE.indexOf(heading) + heading.length).replace(/^\s+/, "")
+      assert.match(after, /^> \[!info\]- /, heading)
+    }
+  })
+})
+
+// The fold a section block drew (`<details data-fold>`) and the bar a summary block drew.
+const foldOf = (dv) => dv.dv.container.created.find((el) => el.tagName === "details")
+const barCounts = (dv) =>
+  Object.fromEntries([...dv.dv.container.innerHTML.matchAll(/data-jump="([a-z]+)" data-count="(\d+)"/g)].map((m) => [m[1], Number(m[2])]))
+const stub = (block) => `await dv.view("_tools/views/dashboard", { block: "${block}" })`
+
+describe("summary bar and folds", () => {
+  test("has one entry per section whose count is the number of rows that section renders", async () => {
+    const { notes } = scenario({ sort: ["nn desc", "nnn asc"] })
+    const bar = fakeDataview({ notes })
+    await bar.run(stub("summary"))
+    const counts = barCounts(bar)
+    assert.deepEqual(Object.keys(counts), DASHBOARD_SECTIONS.filter((s) => s !== "summary"))
+    for (const block of Object.keys(counts)) {
+      const dv = fakeDataview({ notes })
+      await dv.run(stub(block))
+      const table = dv.out.find((o) => o.kind === "table")
+      assert.equal(counts[block], table?.rows.length ?? 0, block)
+    }
+    assert.ok(counts.frontier > 0 && counts.lint > 0)
+  })
+
+  test("splits lint into errors and warnings, errors marked red, zero counts dimmed", async () => {
+    const s = scenario({ sort: ["nn desc", "nnn asc"] })
+    const lint = fakeDataview({ notes: s.notes })
+    await lint.run(stub("lint"))
+    const [, errors, warnings] = /\*\*(\d+) error · (\d+) warn\*\*/.exec(lint.out.find((o) => o.kind === "paragraph").text)
+    assert.ok(Number(errors) > 0 && Number(warnings) > 0)
+    const dv = fakeDataview({ notes: s.notes })
+    await dv.run(stub("summary"))
+    const html = dv.dv.container.innerHTML
+    assert.match(html, new RegExp(`<span class="is-err">🔴 ${errors}</span> · 🟡 ${warnings}<`))
+    for (const [id, count] of Object.entries(barCounts(dv)))
+      assert.equal(new RegExp(`class="is-zero" data-jump="${id}"`).test(html), count === 0, id)
+    const quiet = fakeDataview({ notes: plain([map("r/a/map.md")]) })
+    await quiet.run(stub("summary"))
+    assert.match(quiet.dv.container.innerHTML, /class="is-zero" data-jump="frontier" data-count="0"/)
+    assert.doesNotMatch(quiet.dv.container.innerHTML, /class="is-err"/)
+  })
+
+  test("a click on an entry opens that section's fold and remembers it", async () => {
+    const { notes } = scenario()
+    const storage = new Map()
+    const dv = fakeDataview({ notes, storage })
+    await dv.run(stub("summary"))
+    const paused = dv.dv.container.querySelectorAll("[data-jump]").find((el) => el.dataset.jump === "paused")
+    await dv.inPage(async () => paused.fire("click"))
+    const again = fakeDataview({ notes, storage })
+    await again.run(stub("paused"))
+    assert.equal(foldOf(again).open, true)
+  })
+
+  test("before the owner touches anything: content opens, empty closes, paused and decisions stay closed", async () => {
+    const { notes } = scenario()
+    const opened = async (block) => {
+      const dv = fakeDataview({ notes })
+      await dv.run(stub(block))
+      return foldOf(dv).open
+    }
+    assert.equal(await opened("frontier"), true)
+    assert.equal(await opened("stranded"), true)
+    assert.equal(await opened("paused"), false)
+    assert.equal(await opened("decisions"), false)
+    const empty = fakeDataview({ notes: plain([map("r/a/map.md")]) })
+    await empty.run(stub("frontier"))
+    assert.equal(foldOf(empty).open, false)
+  })
+
+  test("a fold's summary line carries its count, and a toggle survives the next redraw in that vault only", async () => {
+    const { notes } = scenario()
+    const storage = new Map()
+    const first = fakeDataview({ notes, storage })
+    await first.run(stub("frontier"))
+    const fold = foldOf(first)
+    assert.equal(fold.dataset.fold, "frontier")
+    assert.equal(fold.created.find((el) => el.tagName === "summary").textContent, "2 รายการ")
+    await first.inPage(async () =>
+      first.dv.container.fire("click", { target: { closest: () => ({ parentElement: fold }) } }),
+    )
+    const redraw = fakeDataview({ notes, storage })
+    await redraw.run(stub("frontier"))
+    assert.equal(foldOf(redraw).open, false)
+    const otherVault = fakeDataview({ notes, storage, vaultName: "other" })
+    await otherVault.run(stub("frontier"))
+    assert.equal(foldOf(otherVault).open, true)
   })
 })
 
