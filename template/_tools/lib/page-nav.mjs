@@ -1,5 +1,6 @@
-// Navigation helpers the three Wayfinder pages share (spec docs/specs/dashboard-navigation.md, *Modules* §1–2):
-// which fold starts open, the override the owner leaves by toggling one, and the Dashboard summary counts.
+// Navigation helpers the three Wayfinder pages share (spec docs/specs/dashboard-navigation.md, *Modules* §1–2, §5–6):
+// which fold starts open, the override the owner leaves by toggling one, the Dashboard summary counts, and
+// which effort each *Effort Tickets* tab shows.
 // The loader view (`_tools/views/wf-core.js`) imports this file next to the core and hands it to every
 // page as `wf.nav`, with `wf.folds` already bound to the vault — a view never copies it.
 //
@@ -83,3 +84,37 @@ export function summaryCounts(items) {
     return { id, count, errors, warnings: count - errors }
   })
 }
+
+// ── Effort Tickets per tab (spec *Modules* §5–6) ──────────────────────────────────────────────────
+// A tab is a workspace leaf, named by its leaf id (Obsidian keeps it in the saved layout, so it survives
+// restarts). The views store `{ <leaf id>: "<repo>/<effort>" }` next to the "most recent" selection.
+
+/**
+ * The effort a tab shows: its own stored effort, else the most recently selected one, else none. A stored
+ * effort that isn't in `known` any more falls through to the next step; when nothing is left, `missing`
+ * names the first one that was gone, so the page can say so instead of opening blank.
+ */
+export function tabEffort({ tab = null, recent = null, known }) {
+  const candidates = [tab, recent].filter((key) => typeof key === "string" && key)
+  const key = candidates.find((k) => known.includes(k)) ?? null
+  return { key, missing: key ? null : candidates[0] ?? null }
+}
+
+/** The stored tab → effort object; anything unreadable reads as no tabs. */
+export function parseTabs(text) {
+  let value
+  try {
+    value = JSON.parse(text ?? "")
+  } catch {
+    return {}
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {}
+  return Object.fromEntries(Object.entries(value).filter(([, key]) => typeof key === "string"))
+}
+
+/** The entries of tabs that are still open (`liveIds`); closed tabs are dropped so storage doesn't grow. */
+export const pruneTabs = (tabs, liveIds) => Object.fromEntries(Object.entries(tabs).filter(([id]) => liveIds.includes(id)))
+
+/** The id of an open tab already showing `key`, or null. */
+export const tabShowing = (tabs, key, liveIds) =>
+  Object.entries(pruneTabs(tabs, liveIds)).find(([, shown]) => shown === key)?.[0] ?? null

@@ -273,8 +273,8 @@ await section('§5 dashboard', async () => {
   check(eff.includes('[[Wayfinder Effort Tickets]]'), 'Wayfinder Efforts ลิงก์มาหน้า Effort Tickets')
 
   // ค่าคงที่ที่ **สองไฟล์ต้องตรงกัน** — coupling ที่พังเงียบ: แก้ชื่อข้างเดียวแล้วคลิก `44/47`
-  // จะได้หน้าใบที่ไม่เลือกอะไร (LS_KEY) หรือ pane ที่เปิดค้างไม่สลับตาม (SELECT_EVENT)
-  // ทั้งคู่ดูเหมือน "โหลดช้า" ไม่ใช่ "ของพัง" ⇒ ไม่มีใครรู้ว่ามันเสีย
+  // จะได้ tab หน้าใบใหม่ที่ไม่เลือกอะไร (LS_KEY) — ดูเหมือน "โหลดช้า" ไม่ใช่ "ของพัง" ⇒ ไม่มีใครรู้ว่ามันเสีย
+  // (SELECT_EVENT เลิกใช้แล้ว: แต่ละ tab จำ effort ของตัวเอง ไม่มีการกระจายข้าม pane — สเปก dashboard-navigation §5)
   //
   // ⚠️ ต้องยึด **หัวบรรทัด** เสมอ — ในบล็อกมีคอมเมนต์ที่ *พูดถึง* รูปประกาศ (`const LS_KEY = "..."`)
   // อยู่เหนือตัวประกาศจริง · regex ที่ไม่ยึดหัวบรรทัดจะคว้าคอมเมนต์นั้นแล้วได้ค่า `...` ซึ่งเทียบแล้ว
@@ -283,13 +283,27 @@ await section('§5 dashboard', async () => {
   const sharedConst = (body, name) =>
     body.match(new RegExp(`^const\\s+${name}\\s*=\\s*["']([^"']+)["']`, 'm'))?.[1] ?? null
   // (ชื่อโน้ต Config ไม่อยู่ในลูปนี้แล้ว — ทุกหน้าอ่าน Config ผ่าน loader กลางตัวเดียว ไม่มีสองที่ให้ไม่ตรงกัน)
-  for (const name of ['LS_KEY', 'SELECT_EVENT']) {
-    const a = sharedConst(effJs, name)
-    const b = sharedConst(tixJs, name)
+  const show = (v) => (v === null ? 'ไม่พบ' : `"${v}"`)
+  {
+    const a = sharedConst(effJs, 'LS_KEY')
+    const b = sharedConst(tixJs, 'LS_KEY')
     const same = a !== null && b !== null && a === b
-    const show = (v) => (v === null ? 'ไม่พบ' : `"${v}"`)
-    check(same, `${name} ตรงกันทั้ง Efforts และ Effort Tickets`,
+    check(same, 'LS_KEY ตรงกันทั้ง Efforts และ Effort Tickets',
       same ? `"${a}"` : `Efforts=${show(a)} · Effort Tickets=${show(b)}`)
+  }
+
+  // คีย์ effort **ต่อ tab** — หน้าใบเขียน · Efforts อ่านเพื่อหา tab ที่เปิด effort นั้นอยู่แล้ว
+  // ไม่ตรงกัน = คลิก 44/47 เปิด tab ใหม่ซ้ำทุกครั้งแทนการโฟกัส tab เดิม (พังเงียบอีกแบบ)
+  // ต้องคิดจาก `lsKey()` (ซึ่งผูกชื่อ vault แล้ว) **และมีท้าย `:tabs`** — ไม่มีท้าย = JSON ของ tab ทับคีย์ "ล่าสุด"
+  // ⇒ เทียบค่าทั้งบรรทัดกับรูปเดียวที่ถูก ไม่ใช่แค่ "สองฝั่งเหมือนกัน"
+  const TABS_KEY_EXPR = '`${lsKey()}:tabs`'
+  const tabsDecl = (body) => body.match(/^const tabsKey = \(\) => (.+)$/m)?.[1].trim() ?? null
+  {
+    const a = tabsDecl(effJs)
+    const b = tabsDecl(tixJs)
+    const same = a === TABS_KEY_EXPR && b === TABS_KEY_EXPR
+    check(same, 'คีย์ต่อ tab (tabsKey) ตรงกันทั้ง Efforts และ Effort Tickets และคิดจาก lsKey()',
+      same ? a : `Efforts=${a ?? 'ไม่พบ'} · Effort Tickets=${b ?? 'ไม่พบ'}`)
   }
 
   // localStorage ของ Obsidian เป็นของ **ทั้งแอป** ไม่ใช่ของ vault ⇒ คีย์ที่ไม่ผูกชื่อ vault ทำให้

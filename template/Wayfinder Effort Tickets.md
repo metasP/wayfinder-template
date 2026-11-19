@@ -37,3 +37,4 @@ await dv.view("_tools/views/effort-tickets")
 > **คีย์ `localStorage` เป็น coupling ข้ามไฟล์** — `const LS_KEY` ใน `_tools/views/effort-tickets.js` ต้องตรงกับตัวที่
 > `_tools/views/efforts.js` เขียนตอนคลิกตัวเลขใบ **เป๊ะ** ไม่งั้นคลิกแล้วจะได้หน้าที่ไม่เลือกอะไร
 > ซึ่งดูเหมือนโหลดช้ามากกว่าดูเหมือนของพัง ⇒ `node _tools/doctor.mjs` มี check จับข้อนี้ไว้แล้ว
+> (รวมคีย์ต่อ tab `tabsKey` — **แต่ละ tab จำ effort ของตัวเอง** ชื่อ tab บอกว่าดู effort ไหน · tab ที่เปิดเองเริ่มจาก effort ที่เลือกล่าสุด)
