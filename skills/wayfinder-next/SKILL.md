@@ -80,7 +80,7 @@ node __VAULT__/_tools/wf.mjs bump-runs <repo/effort> --count <k> --json
 - **Explicit numbers given** → those are the tickets. Validate them (next section); don't silently substitute others.
 - **No argument** → take candidates **in `wf frontier` order** and spawn **1–3 chips** (see below).
 - **No argument, and the frontier has no row for this map** → read the map's `## Tickets` block (see [Validate](#validate-before-spawning--and-confirm)). If any line is not `resolved`, report what holds each one (blocked, claimed, waiting, or the map isn't `active`) and stop.
-  **Every line `resolved`, and the map's `status:` is `active`** → if its `## Not yet specified` or scope still names work, the next ticket is in the fog: commission **one** with `wf new` (see [Fog ticket](#fog-ticket--wf-new)) and spawn its chip like any other — the batch is that one chip. Nothing left to name → the map is complete; say so and stop. A map that is not `active` gets no new ticket — report its status and stop.
+  **Every line `resolved`, and the map's `status:` is `active`** → if its `## Not yet specified` or scope still names work, the next ticket is in the fog: commission **one** with `wf new` (see [Fog ticket](#fog-ticket--wf-new)) and spawn its chip like any other — the batch is that one chip. Nothing left to name → the map is complete: [close it and leave a `/retro` card](#complete-map--close-it-and-leave-a-retro-card), then stop. A map that is not `active` gets no new ticket — report its status and stop.
 
 ### Fog ticket → `wf new`
 
@@ -96,6 +96,19 @@ node __VAULT__/_tools/wf.mjs new <repo/effort> --type <type> --title "<title>" -
 - From here it is an ordinary ticket: `L` from `--type`, the short title from its bold line, the normal `Mode:` line. You checked its map is `active`, and it has no blockers, so it skips [validation](#validate-before-spawning--and-confirm).
 - `wf new` exits non-zero → report its `error.message` and `error.details`, and spawn nothing for it. If it succeeded but `bump-runs` or the spawn fails, report the ticket it created — it waits on the frontier for the next run.
 - `wf new` commits its own write. Never Write a file under `issues/` yourself — the frontmatter guard refuses it.
+
+### Complete map → close it, and leave a `/retro` card
+
+**Close a complete map.** Run `wf map-status … done`, then start the retro as a side session with `"own_initiative"` — the user clicks the card, and never has to type `/retro` (the skill is `disable-model-invocation: true`, so you can't run it here):
+
+```
+node __VAULT__/_tools/wf.mjs map-status <repo/effort> done --json
+→ { "ok": true, "data": { "ref": "acme-web/checkout-redesign", "status": "done", "retro_prompt": "/retro every session that touched /…/vault/acme-web/checkout-redesign/", … } }
+```
+
+- `wf` refuses when the map is not really done — a pending ticket, a lint error, or a resolved ticket whose branch never reached main. Report its `error.message` and `error.fix` and stop; never add `--force` on your own.
+- On success, call `mcp__ccd_session__start_session` once: `initiation` `"own_initiative"`, `context` `"fresh"`, `use_worktree` `false` (the retro reads transcripts and writes the vault through `wf`), `title` `Retro: <repo>/<effort>`, `prompt` **exactly** `data.retro_prompt` — the `/retro` command must be the first thing in the prompt. Never `"user_asked"`: a retro reads every session of the effort, so the user decides when it runs.
+- Report the closed map and the card. Start no ticket chip.
 
 ### No argument → frontier order, then skip collisions
 
@@ -219,7 +232,7 @@ compacted is the wrong place to build in, and a claim made here has to be releas
 
 - **Batching sessions is fine; batching tickets into one session is not.** Each prompt still says "resolve at most 1 ticket per session".
 - Prefer batching tickets that **don't block each other** — sessions for a chain (05 blocked by 04) start work that can't finish, which is why the confirm step exists.
-- If the map has no open ticket and nothing left in the fog, say the map is complete instead of starting a session.
+- If the map has no open ticket and nothing left in the fog, it is complete: close it and leave the `/retro` card ([Complete map](#complete-map--close-it-and-leave-a-retro-card)) instead of starting a ticket session.
 - **Grouping comes from who starts the session.** A session from `start_session` is linked to the session
   that started it and nests under the top session in the sidebar (`mcp__ccd_session_mgmt__list_sessions`
   `{"linked": true}` lists the family). ⇒ Run `/wayfinder-next` from the session holding the map and the

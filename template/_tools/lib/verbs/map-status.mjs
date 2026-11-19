@@ -1,7 +1,7 @@
 // `wf map-status <repo/effort> active|paused|dropped|done [--note "…"] [--superseded-by <repo/effort>] [--force]`
 // (spec *Verbs*: map transitions; Q25). `active` needs a real `## Destination` (not empty, not chart's
 // placeholder); `paused` and `dropped` need `--note`; `done` needs no open, claimed or waiting ticket
-// and no lint error nor unmerged branch (`unmerged.mjs`) in the effort (`--force` closes it anyway), and reminds to run `/retro`. Every transition restamps `status_since` and replaces `status_note`
+// and no lint error nor unmerged branch (`unmerged.mjs`) in the effort (`--force` closes it anyway), and hands back the `/retro` prompt for a side session (`data.retro_prompt`). Every transition restamps `status_since` and replaces `status_note`
 // with `--note` or clears it. `--superseded-by` (paused or dropped only) writes `superseded_by` as a
 // wikilink to the replacing map; any transition without it clears the key.
 import { effortRefArg, oneLineFlag } from "../args.mjs"
@@ -16,9 +16,13 @@ import { mergeCommand, unmergedTickets } from "../unmerged.mjs"
 const TARGETS = [...new Set(MAP_TRANSITIONS.filter((row) => row.verb === "map-status").map((row) => row.to))]
 const NEEDS_NOTE = MAP_FIELDS.status_note.required
 const PLACEHOLDERS = new Set(Object.values(NOTE_TEXT.destinationPlaceholder))
-// The agent can't invoke /retro itself; a side session whose prompt is the command can.
-const retroOf = (key) =>
-  `run /retro — it writes the map's ## Retro; or start a side session with the prompt "/retro every session that touched ${key}/"`
+// The agent can't invoke /retro (disable-model-invocation); a side session whose prompt is the command
+// can, so the reminder tells the agent to start one rather than wait for the user to type it.
+// The path is absolute: the side session may start in a work repo, not the vault.
+const retroPromptOf = (vault, key) => `/retro every session that touched ${vault}/${key}/`
+const retroOf = (prompt) =>
+  `start a side session yourself (start_session, own_initiative) with the prompt: ${prompt} — ` +
+  `you can't invoke /retro, and it writes the map's ## Retro`
 const SUPERSEDABLE = ["paused", "dropped"]
 
 const targetArg = (to) => {
@@ -121,7 +125,8 @@ export default {
     const supersededBy = successorArg(flags["superseded-by"], ctx, m, to)
     const fields = { status: to, status_since: ctx.today, status_note: flags.note, superseded_by: supersededBy }
     const text = editFrontmatter(ctx.textOf(m.path), Object.entries(fields))
-    const data = { ref: m.key, from: m.status, ...fields, reminder: to === "done" ? retroOf(m.key) : null }
+    const retroPrompt = to === "done" ? retroPromptOf(ctx.vault, m.key) : null
+    const data = { ref: m.key, from: m.status, ...fields, retro_prompt: retroPrompt, reminder: retroPrompt && retroOf(retroPrompt) }
     return { ref: m.key, edits: [{ path: m.path, text }], data }
   },
   report(outcome) {
