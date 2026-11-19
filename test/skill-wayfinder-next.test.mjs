@@ -64,12 +64,27 @@ describe("wayfinder-next skill", () => {
     assert.match(SKILL, /\*\*Close a complete map\.\*\*[^\n]*`"own_initiative"`/)
   })
 
-  // A session can still land in a worktree named for another effort (the app reused a directory); the
-  // skill checks after starting and warns, and the claim commit's trailers keep the session findable.
-  test("checks each started session's folder and branch for <effort>-<NN>, and warns", () => {
+  // The app names the branch from branch_name but picks or recycles the folder itself; the skill checks
+  // the branch after starting and warns, and the claim commit's trailers keep the session findable.
+  test("checks each started session's branch for <effort>-<NN>, and warns", () => {
     assert.match(SKILL, /\*\*Check where each session landed\.\*\*[^\n]*mcp__ccd_session_mgmt__list_sessions` `\{"linked": true\}`/)
-    assert.match(SKILL, /Both should contain `<effort>-<NN>`[^\n]*\*\*warn\*\*/)
+    assert.match(SKILL, /branch should contain `<effort>-<NN>`[^\n]*\*\*warn\*\*/)
     assert.match(SKILL, /`Session:` \/ `Cwd:` \/ `Branch:` trailers/)
+  })
+
+  // parallel-run-fixes#05: start_session has no folder name — the app recycled `ticket-store-02f3c0` for
+  // ticket 01 and gave 03 and 05 `suspicious-chaplygin-a86059`. The chip moves itself before it claims.
+  test("every chip prompt checks branch and folder first and moves into a <effort>-<NN> worktree before the claim", () => {
+    assert.match(SKILL, /`branch_name`[^\n]*names the branch only[^\n]*folder/, "step 6 still says branch_name names the folder")
+    const [start, end] = [SKILL.indexOf("## Chip prompt template"), SKILL.indexOf("## This session never works")]
+    const blocks = SKILL.slice(start, end).split(/^`th`:$/m)
+    assert.equal(blocks.length, 2)
+    for (const block of blocks) {
+      assert.match(block, /git branch --show-current/, "the prompt does not check the branch")
+      assert.match(block, /B=\$\(git branch --show-current\) && git switch --detach -q && git worktree add -q "\.\.\/\$\{B##\*\/\}" "\$B"/, "the prompt has no move command")
+      assert.match(block, /EnterWorktree/, "the prompt does not enter the new worktree")
+      assert.ok(block.indexOf("EnterWorktree") < block.indexOf("wf.mjs claim"), "the move comes after the claim")
+    }
   })
 
   test("leaves runs to bump-runs and ranking to frontier", () => {
