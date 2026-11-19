@@ -11,7 +11,7 @@
 // writes a vault older than the supported schema. An edit with `create: true` makes a new file and
 // refuses to overwrite one that appeared meanwhile.
 import { join } from "node:path"
-import { buildIndex, formatRef, isoDate, lint, parseRef, renderTicketsBlock } from "./core.mjs"
+import { buildIndex, byFinding, formatRef, isoDate, lint, parseRef, renderTicketsBlock } from "./core.mjs"
 import { ticketRefArg } from "./args.mjs"
 import { withTicketsBlock } from "./edit.mjs"
 import { WfError } from "./errors.mjs"
@@ -20,6 +20,7 @@ import { writeFiles } from "./io.mjs"
 import { takeLock } from "./lock.mjs"
 import { assertCommittable, commitFiles, gitDirs, indexEntries, restoreIndex } from "./repo.mjs"
 import { checkSchema, isTrackerNote, locateVault, noteOf, readText, readVault, worktreeVaultOf } from "./store.mjs"
+import { unmergedFindings } from "./unmerged.mjs"
 
 /** The `repo/effort` a ref or vault path belongs to, or null (`Wayfinder Picks`). */
 export const effortKeyOf = (ref) => {
@@ -120,13 +121,15 @@ const transact = (verb, args, { vault, checkout, gitDir, trees, warnings }) => {
   const files = edits.map((e) => e.path)
   const creates = new Set(plan.edits.filter((e) => e.create).map((e) => e.path))
   const commit = edits.length ? writeAndCommit(vault, edits, commitMessage(verb, plan), creates) : null
-  return { ...plan, files, commit, index: after, config, sort, today }
+  return { ...plan, files, commit, index: after, vault, config, sort, today }
 }
 
 // Step 8, after the lock is released: the touched efforts' findings, as warnings.
 const lintTouched = (outcome) => {
   const efforts = touchedEfforts(outcome.files, outcome.ref)
-  return lint(outcome.index, outcome).filter((f) => efforts.has(effortKeyOf(f.ref)))
+  const touched = (ref) => efforts.has(effortKeyOf(ref))
+  const unmerged = unmergedFindings(outcome.vault, outcome.index, (t) => outcome.files.includes(t.path))
+  return [...lint(outcome.index, outcome).filter((f) => touched(f.ref)), ...unmerged].sort(byFinding)
 }
 
 const findingLine = (f) => `lint ${f.severity} ${f.rule} ${f.ref}: ${f.message}${f.fix ? ` (fix: ${f.fix})` : ""}`

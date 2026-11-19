@@ -180,6 +180,7 @@ Map: <absolute map.md path>
 
 Mode: Work through the map. Do ticket <NN> (<title>) — issues/<NN>-<slug>.md
 Follow the wayfinder steps: claim the ticket before starting, resolve, record (## Answer + status:resolved + add 1 line to the map's "Decisions so far"); resolve at most 1 ticket per session
+The merge is yours: once the user approves the work, rebase this branch onto main and fast-forward main to it (git -C <main checkout> merge --ff-only <branch>) before you resolve — don't wait to be told; until then lint warns unmerged-branch
 ```
 
 `th`:
@@ -191,6 +192,7 @@ Map: <absolute map.md path>
 
 โหมด: Work through the map. ทำ ticket <NN> (<title>) — issues/<NN>-<slug>.md
 ทำตามขั้นตอน wayfinder: claim ticket ก่อนเริ่ม, resolve, record (## Answer + status:resolved + เติม 1 บรรทัดใน map "Decisions so far"), ห้าม resolve เกิน 1 ticket ต่อ session
+การ merge เป็นหน้าที่ของ session นี้: พอผู้ใช้ผ่านงานแล้ว rebase branch นี้บน main แล้ว fast-forward main (git -C <main checkout> merge --ff-only <branch>) ก่อน resolve — ไม่ต้องรอให้สั่ง · ก่อนหน้านั้น lint จะเตือน unmerged-branch
 ```
 
 **When you spawn more than one chip for the same map**, append this line to every prompt in the batch — concurrent sessions will both edit `map.md`:

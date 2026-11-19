@@ -103,7 +103,7 @@ blocked_by: "[[example-repo/schema-cleanup/issues/12-freeze-legacy-columns]]"
 | `active` | เดินอยู่ — ค่าปกติ · `wf map-status` ไม่ยอมถ้า `## Destination` ยังว่าง | ไม่ต้องมี |
 | `draft` | ยังไม่ผ่าน grill หา Destination · **ห้ามต่อยอด** · `wf chart` เริ่มที่ค่านี้ | — |
 | `paused` | ตั้งใจพัก เพราะ priority ไปอยู่ที่อื่น | **อะไรจะทำให้กลับมา** (บังคับ) |
-| `done` | ถึง Destination แล้ว · `wf map-status` ไม่ยอมถ้ายังมีใบ `open`/`claimed`/`waiting` | ไม่ต้องมี |
+| `done` | ถึง Destination แล้ว · `wf map-status` ไม่ยอมถ้ายังมีใบ `open`/`claimed`/`waiting` หรือ branch ของใบที่ resolve แล้วยังไม่เข้า main | ไม่ต้องมี |
 | `dropped` | ไม่ทำแล้ว — ยกเลิกเอง หรือถูก map อื่นแทนที่ (`--superseded-by`) | ทำไมถึงทิ้ง (บังคับ) |
 
 **`status_note` คือ "เงื่อนไขกลับมา" ไม่ใช่ "เหตุผลที่หยุด"** — เงื่อนไขที่เช็คได้ (*"กลับมาเมื่อ
@@ -120,7 +120,8 @@ blocked_by: "[[example-repo/schema-cleanup/issues/12-freeze-legacy-columns]]"
 
 ตอนปิด map คือจังหวะเดียวที่เห็นทั้ง effort ครบ ⇒ เก็บบทเรียนเข้า harness ไว้ก่อนจะลืม
 
-1. `wf map-status <repo/effort> done` — ไม่ยอมถ้ายังมีใบค้าง หรือ `wf lint` ของ effort มี error (`--force` ปิดทั้งที่มี) ·
+1. `wf map-status <repo/effort> done` — ไม่ยอมถ้ายังมีใบค้าง · `wf lint` ของ effort มี error · หรือมีใบ resolve แล้วที่
+   branch ยังไม่เข้า main (`unmerged-branch` — ดู § ลำดับงาน) (`--force` ปิดทั้งที่มี) ·
    สำเร็จแล้วพิมพ์เตือนให้รัน `/retro` · map ที่มี
    `## Build board` ต้องรอให้การ์ดทุกใบในนั้นปิดก่อน (`wf` มองไม่เห็นการ์ด — เช็คเอง)
 2. **บอกผู้ใช้ให้พิมพ์ `/retro` เอง** — skill นี้ตั้ง `disable-model-invocation: true` ⇒ agent เรียกผ่าน
@@ -296,6 +297,11 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
   `## Destination` → `wf map-status <repo/effort> active` → แตกใบด้วย `wf new` (ใบที่ blocker ยังไม่มีไฟล์
   ⇒ สร้างทุกใบก่อน แล้วค่อยต่อเส้นด้วย `wf block`)
 - **Claim** — `wf claim <ref>` ก่อนทำอะไรทั้งนั้น — มันอ่านใบใหม่ใต้ lock เอง ใบที่ session อื่นเพิ่งจับจะถูกปฏิเสธ
+- **Merge ก่อน resolve** — งานที่แก้ไฟล์ใน branch ของ worktree: **session ที่ทำใบเป็นเจ้าของการ merge** ไม่ต้องรอผู้ใช้สั่ง ·
+  ลำดับคือ ผู้ใช้ผ่านงาน → rebase branch บน main → fast-forward main ไปที่ branch (`git -C <main checkout> merge <branch>`) → resolve ·
+  `wf` หา branch จาก `Cwd:` ของ claim commit — ใบที่ resolve แล้วแต่ HEAD ของ worktree นั้นยังไม่อยู่ใน branch ของ main checkout
+  ได้ `unmerged-branch` (warn) ตอน resolve / `wf lint` และ `wf map-status <repo/effort> done` ไม่ยอมจนกว่าจะ merge ·
+  ใบที่ไม่มี commit (research, grilling) ไม่โดน · worktree ที่ลบไปแล้วเช็คไม่ได้ ⇒ merge ก่อนลบ worktree เสมอ
 - **Resolve** — เขียนคำตอบใต้ `## Answer` (สิ่งที่ตัดสิน · ข้อเท็จจริงที่ใบอื่นต้องใช้ · ลิงก์ PR · ลิงก์ asset)
   แล้ว `wf resolve <ref> --gist "…"`
   · **session ที่ทำงานใน worktree**: เขียน Answer ลงใบใน worktree (หรือไฟล์ไหนก็ได้) → `wf resolve <ref> --gist "…" --answer-file <ไฟล์นั้น>`

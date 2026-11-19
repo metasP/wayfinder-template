@@ -3,11 +3,12 @@
 // their legacy-field findings stay visible. Error findings exit 1. The text report folds a flood of one
 // rule's warnings into one line and prints errors last; `--json` and `--rule` list every finding. `--fix` regenerates drifted `## Tickets` blocks through
 // the write pipeline and never changes state; it then reports the findings that remain.
-import { foldFindings, lint, renderTicketsBlock } from "../core.mjs"
+import { byFinding, foldFindings, lint, renderTicketsBlock } from "../core.mjs"
 import { effortArg } from "../args.mjs"
 import { withTicketsBlock } from "../edit.mjs"
 import { EXIT } from "../errors.mjs"
 import { effortKeyOf } from "../pipeline.mjs"
+import { unmergedFindings } from "../unmerged.mjs"
 
 const DRIFT_RULE = "tickets-block-drift"
 
@@ -32,10 +33,13 @@ const textOf = (findings, errors, warnings, rule) => {
   return [...lines, `${plural(errors, "error")}, ${plural(warnings, "warning")}`].join("\n")
 }
 
-// The findings for the named efforts (all when none are named), of one rule with --rule.
-const findingsOf = (index, { today, config, sort }, named, rule) => {
-  const all = lint(index, { today, config, sort })
-  return all.filter((f) => (!named.size || named.has(effortKeyOf(f.ref))) && (!rule || f.rule === rule))
+// The findings for the named efforts (all when none are named), of one rule with --rule: core's, plus
+// `unmerged-branch`, which reads git outside the vault.
+const findingsOf = (index, { vault, today, config, sort }, named, rule) => {
+  const inNamed = (ref) => !named.size || named.has(effortKeyOf(ref))
+  const unmerged = unmergedFindings(vault, index, (t) => inNamed(t.ref))
+  const all = [...lint(index, { today, config, sort }), ...unmerged].sort(byFinding)
+  return all.filter((f) => inNamed(f.ref) && (!rule || f.rule === rule))
 }
 
 const result = (findings, { rule, ...extra } = {}, prefix = "") => {
