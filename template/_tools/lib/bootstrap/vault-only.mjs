@@ -42,6 +42,7 @@ export function vaultOnlyMessage({ files, lineage, headLabel, onTrial, heading }
     const where = lineage.branches.length ? ` (อยู่ใน ${lineage.branches.join(' · ')})` : ''
     lines.push(`   template รอบก่อนมาจาก ${lineage.installed.slice(0, 8)}${where} ซึ่ง checkout นี้ (${headLabel}) ไม่มี`)
     lines.push('   ⇒ merge PR ของ branch นั้นเข้า main ก่อน แล้ว pull --ff-only · หรือรัน bootstrap จาก checkout ที่มี commit นั้น')
+    lines.push('   (PR นั้น squash/rebase เข้า main แล้ว — commit เดิมจึงไม่อยู่ในประวัติ — และไม่มีอะไรหาย: --discard-vault-changes)')
   } else {
     lines.push('   ไฟล์พวกนี้ถูกแก้ใน vault/สกิลหลัง install รอบก่อน ⇒ ย้ายของที่แก้เข้า template (PR) แล้ว merge ก่อน')
   }

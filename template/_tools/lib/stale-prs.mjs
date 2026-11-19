@@ -10,15 +10,15 @@
 // out of main's history.
 import { spawnSync } from "node:child_process"
 import { runGit } from "./git.mjs"
-import { existingDirOf, latestClaims, mainCheckoutOf, REMOTE, shellWord } from "./unmerged.mjs"
+import { existingDirOf, latestClaims, mainCheckoutOf, shellWord } from "./unmerged.mjs"
 
 export const STALE_PR_RULE = "stale-pr"
 const GH_TIMEOUT_MS = 20_000
 const PR_LIMIT = "100"
 
-/** The open PRs of the repository at `path` as `[{ number, headRefName, url }]`, or null when `gh` can't tell. */
+/** The open PRs of the repository at `path` as `[{ number, headRefName, headRefOid, isCrossRepository, url }]`, or null when `gh` can't tell. */
 export function openPullRequests(path) {
-  const r = spawnSync("gh", ["pr", "list", "--state", "open", "--limit", PR_LIMIT, "--json", "number,headRefName,url"], {
+  const r = spawnSync("gh", ["pr", "list", "--state", "open", "--limit", PR_LIMIT, "--json", "number,headRefName,headRefOid,isCrossRepository,url"], {
     cwd: path,
     encoding: "utf8",
     timeout: GH_TIMEOUT_MS,
@@ -34,9 +34,12 @@ export function openPullRequests(path) {
 
 const verified = (path, ref) => runGit(path, ["rev-parse", "--verify", "--quiet", ref]).ok
 
-// The ref holding the PR's head here: origin's copy as of the last fetch, else a local branch of that name.
-const headRefOf = (main, branch) =>
-  [`refs/remotes/${REMOTE}/${branch}`, `refs/heads/${branch}`].find((ref) => verified(main.path, ref)) ?? null
+// The PR's head commit, when this clone has it: a fork's branch, or a head never fetched, can't be judged
+// here — and a same-named local branch or a stale origin/<branch> is no stand-in for it.
+const headOf = (main, pr) =>
+  !pr.isCrossRepository && /^[0-9a-f]{40}$/.test(pr.headRefOid ?? "") && verified(main.path, `${pr.headRefOid}^{commit}`)
+    ? pr.headRefOid
+    : null
 
 // Every commit of `ref` already in main by content — or none to merge at all.
 const patchInMain = (main, ref) => {
@@ -51,8 +54,8 @@ export function stalePullRequests(main) {
   return prs.flatMap((pr) => {
     const branch = pr.headRefName
     if (!branch || branch === main.branch) return []
-    const ref = headRefOf(main, branch)
-    if (!ref || !patchInMain(main, ref)) return []
+    const head = headOf(main, pr)
+    if (!head || !patchInMain(main, head)) return []
     return [{ number: pr.number, branch, url: pr.url, main: main.target, path: main.path }]
   })
 }

@@ -7,6 +7,8 @@ import assert from "node:assert/strict"
 import { chmodSync, mkdirSync, realpathSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { git, makeVault, map, seed, ticket, wf, write } from "./vault.mjs"
+import { stalePullRequests } from "../template/_tools/lib/stale-prs.mjs"
+import { mainCheckoutOf } from "../template/_tools/lib/unmerged.mjs"
 
 const DESTINATION = "# The map\n\n## Destination\n\nSomewhere real.\n"
 const ANSWER = "## Question\n\nq\n\n## Answer\n\n(filled in at resolve)\n"
@@ -40,7 +42,7 @@ const setup = () => {
   git(repo, "fetch", "-q", "origin")
   const answerFile = join(repo, "answer.md")
   writeFileSync(answerFile, "Did it.\n")
-  const pr73 = { number: 73, headRefName: "old-73", url: "https://github.com/o/r/pull/73" }
+  const pr73 = { number: 73, headRefName: "old-73", headRefOid: git(repo, "rev-parse", "old-73"), isCrossRepository: false, url: "https://github.com/o/r/pull/73" }
   const run = (args, gh = {}) =>
     wf(vault, args, { cwd: repo, env: { CLAUDE_CODE_SESSION_ID: undefined, PATH: `${ghStub(repo, gh)}:${process.env.PATH}` } })
   return { vault, repo, main, answerFile, pr73, run }
@@ -56,6 +58,17 @@ const landByCherryPick = (s) => {
 const claimAndResolve = (s, gh) => {
   assert.equal(s.run(["claim", "r/e#01", "--by", "me"], gh).code, 0)
   return s.run(["resolve", "r/e#01", "--gist", "did it", "--answer-file", s.answerFile, "--json"], gh)
+}
+
+// `stalePullRequests` in-process, with the stub `gh` answering `pr` on PATH.
+const stalePullRequestsOf = (s, pr) => {
+  const path = process.env.PATH
+  process.env.PATH = `${ghStub(s.repo, { prs: [pr] })}:${path}`
+  try {
+    return stalePullRequests(mainCheckoutOf(s.repo))
+  } finally {
+    process.env.PATH = path
+  }
 }
 
 const staleOf = (r) => r.json.data.lint.filter((f) => f.rule === "stale-pr")
@@ -77,6 +90,15 @@ describe("stale-pr", () => {
     const r = claimAndResolve(s, { prs: [s.pr73] })
     assert.equal(r.code, 0, r.stderr)
     assert.deepEqual(staleOf(r), [])
+  })
+
+  test("no warning when the PR's head isn't the commit this clone has under that name, or is a fork's", () => {
+    const s = setup()
+    landByCherryPick(s)
+    const moved = { ...s.pr73, headRefOid: "f".repeat(40) }
+    assert.deepEqual(staleOf(claimAndResolve(s, { prs: [moved] })), [])
+    const fork = { ...s.pr73, isCrossRepository: true }
+    assert.deepEqual(stalePullRequestsOf(s, fork), [])
   })
 
   test("a gh that fails adds no finding and never fails the verb", () => {

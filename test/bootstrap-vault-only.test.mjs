@@ -81,6 +81,18 @@ describe("bootstrap update: a change only the vault has", () => {
     assert.ok(!readFileSync(join(m.vault, "README.md"), "utf8").endsWith(EDIT))
   })
 
+  test("a dropped skill file the user changed is kept by the prune, so it is no reason to stop", () => {
+    const m = installed()
+    const manifestPath = join(m.vault, ".wayfinder-template.json")
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"))
+    manifest.skills["wayfinder-next/OLD.md"] = "0".repeat(64)
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n")
+    writeFileSync(join(m.skills, "wayfinder-next/OLD.md"), "the user's own file\n")
+    const r = update(m, "--yes")
+    assert.equal(r.code, 0, r.out)
+    assert.equal(readFileSync(join(m.skills, "wayfinder-next/OLD.md"), "utf8"), "the user's own file\n")
+  })
+
   test("an installed copy that already matches the template is no reason to stop", () => {
     const m = installed()
     const r = update(m, "--yes")

@@ -496,8 +496,14 @@ const updateTouches = async () => {
     const { buf } = await renderedBuf(join(SKILLS_SRC, rel), rel, true)
     entries.push({ shown: `skills/${rel}`, now: await shaOf(skillDest(rel)), next: sha(buf), prev: oldManifest.skills?.[rel] })
   }
-  for (const [rel, prev] of Object.entries(oldManifest.skills ?? {}))
-    if (!skillFiles.includes(rel)) entries.push({ shown: `skills/${rel}`, now: await shaOf(skillDest(rel)), next: null, prev })
+  // สกิลที่เลิก ship: 4d ลบเฉพาะไฟล์ที่ยังเป็นไบต์ที่ installer วาง (sha ตรง manifest) และที่รู้ปลายทาง
+  // ⇒ นับเฉพาะตัวนั้น (มันเสียเมื่อ install รอบก่อนมาจาก commit ที่ checkout นี้ไม่มี) · ตัวที่เขาแก้ 4d เก็บไว้เอง
+  const knownTarget = (name) => oldManifest.skills_targets?.[name] || skillFiles.some((f) => f.startsWith(`${name}/`))
+  for (const [rel, prev] of Object.entries(oldManifest.skills ?? {})) {
+    if (skillFiles.includes(rel) || !knownTarget(rel.split('/')[0])) continue
+    const now = await shaOf(skillDest(rel))
+    if (now === prev) entries.push({ shown: `skills/${rel}`, now, next: null, prev })
+  }
   return entries
 }
 if (MODE === 'update') {
