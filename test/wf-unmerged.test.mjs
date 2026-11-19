@@ -111,11 +111,53 @@ describe("unmerged-branch", () => {
     assert.deepEqual(unmergedOf(s.run(["lint", "--json"], s.repo)), [])
   })
 
-  test("a claim without a Branch trailer (made before it existed) is not checked", () => {
+  // As an older wf left it: the worktree's claim, with only Cwd — and this time from a worktree reused for
+  // another ticket, so its checked-out branch says nothing.
+  const oldClaim = (s, cwd = s.worktree) =>
+    git(s.vault, "commit", "-q", "--allow-empty", "-m", `wf(claim): r/e#01\n\nCwd: ${cwd}`)
+
+  test("a claim without a Branch trailer: the branch is found by its <effort>-<NN> name", () => {
+    const s = setup()
+    git(s.worktree, "branch", "-m", "e-01", "claude/e-01-7c4ab6")
+    claimAndResolve(s, s.repo)
+    oldClaim(s)
+    git(s.worktree, "switch", "-q", "-c", "reused-for-e-06")
+    const [f] = unmergedOf(s.run(["lint", "--json"], s.repo))
+    assert.equal(f.ref, "r/e#01")
+    assert.match(f.message, /on branch claude\/e-01-7c4ab6 \(found by name — the claim has no Branch:\), not merged into /)
+    assert.equal(f.fix, `git -C ${s.repo} merge --ff-only claude/e-01-7c4ab6`)
+  })
+
+  test("a claim without a Branch trailer: wf map-status done refuses while the named branch is unmerged", () => {
     const s = setup()
     claimAndResolve(s, s.repo)
-    // As an older wf left it: the worktree's claim, with only Cwd.
-    git(s.vault, "commit", "-q", "--allow-empty", "-m", `wf(claim): r/e#01\n\nCwd: ${s.worktree}`)
+    oldClaim(s)
+    const r = s.run(["map-status", "r/e", "done"], s.repo)
+    assert.equal(r.code, 1, r.stderr)
+    assert.match(r.stderr, /r\/e has 1 unmerged branch: r\/e#01 \(e-01\)/)
+  })
+
+  test("a claim without a Branch trailer: a name that only contains <effort>-<NN> is not the ticket's", () => {
+    const s = setup()
+    git(s.worktree, "branch", "-m", "e-01", "other-e-012")
+    claimAndResolve(s, s.repo)
+    oldClaim(s)
+    assert.deepEqual(unmergedOf(s.run(["lint", "--json"], s.repo)), [])
+  })
+
+  test("a claim without a Branch trailer: another effort's ticket (<effort>-<NN>-<NN>) is not the ticket's", () => {
+    const s = setup()
+    git(s.worktree, "branch", "-m", "e-01", "claude/e-01-02")
+    claimAndResolve(s, s.repo)
+    oldClaim(s)
+    assert.deepEqual(unmergedOf(s.run(["lint", "--json"], s.repo)), [])
+  })
+
+  test("a claim without a Branch trailer: no warning once the named branch is merged", () => {
+    const s = setup()
+    claimAndResolve(s, s.repo)
+    oldClaim(s)
+    git(s.repo, "merge", "-q", "--ff-only", "e-01")
     assert.deepEqual(unmergedOf(s.run(["lint", "--json"], s.repo)), [])
   })
 
