@@ -99,12 +99,25 @@ const withGlobals = async (globals, run) => {
  * calls in order. `run(src)` evaluates a `dataviewjs` block (an async function body, as Dataview runs
  * it) with `app`, `localStorage` and `window` installed as globals; `inPage(fn)` runs `fn` — an event
  * a test fires after the block returned — with the same globals. `storage` is the `localStorage` contents (pass it
- * in to share it between pages), `opened` the notes `app.workspace.openLinkText` opened, `events` the
- * names `window.dispatchEvent` saw. `dv.container` is a fresh `fakeElement`.
+ * in to share it between pages), `opened` the notes `app.workspace.openLinkText` opened (`{ link, newLeaf }`
+ * when it was asked for a new leaf), `events` the names `window.dispatchEvent` saw. `dv.container` is a
+ * fresh `fakeElement`. With `leaves` (`[{ id, path }]`) the workspace has those markdown tabs: `tabs` are
+ * their leaf objects, `here` names the one this block renders in, `revealed` the ids `revealLeaf` got.
+ * `currentFilePath` is Dataview's `dv.currentFilePath`: the note the block is written in.
  */
-export function fakeDataview({ notes = [], vault = TEMPLATE, failLoad = () => false, storage = new Map(), vaultName = "test-vault" } = {}) {
+export function fakeDataview({
+  notes = [],
+  vault = TEMPLATE,
+  failLoad = () => false,
+  storage = new Map(),
+  vaultName = "test-vault",
+  leaves = null,
+  here = null,
+  currentFilePath = undefined,
+} = {}) {
   const out = []
   const opened = []
+  const revealed = []
   const events = []
   const byPath = new Map(notes.map((n) => [n.path, n]))
   const page = (n) => ({ file: { path: n.path, name: n.path.split("/").pop().replace(/\.md$/, ""), frontmatter: n.frontmatter } })
@@ -123,6 +136,26 @@ export function fakeDataview({ notes = [], vault = TEMPLATE, failLoad = () => fa
     paragraph: (text) => out.push({ kind: "paragraph", text }),
     view: (name, input) => evalView(readFileSync(join(vault, `${name}.js`), "utf8"), dv, input),
     container: fakeElement(),
+    currentFilePath,
+  }
+  // Workspace leaves (tabs): `{ id, path }` each, `here` the id of the one this block renders in.
+  // A `deferred` leaf is a background tab Obsidian hasn't loaded since the restart: its view has no file yet,
+  // only its saved view state names one.
+  const tabs = (leaves ?? []).map(({ id, path, deferred = false }) => ({
+    id,
+    view: {
+      ...(!deferred && { file: { path, basename: path.split("/").pop().replace(/\.md$/, "") } }),
+      containerEl: { contains: (el) => id === here && el === dv.container },
+    },
+    getViewState: () => ({ type: "markdown", state: { file: path } }),
+    tabHeaderInnerTitleEl: { textContent: path.replace(/\.md$/, "") },
+  }))
+  const workspace = {
+    openLinkText: (link, source, newLeaf) => opened.push(newLeaf === undefined ? link : { link, newLeaf }),
+    ...(leaves && {
+      getLeavesOfType: (type) => (type === "markdown" ? tabs : []),
+      revealLeaf: (leaf) => revealed.push(leaf.id),
+    }),
   }
   const app = {
     vault: {
@@ -131,7 +164,7 @@ export function fakeDataview({ notes = [], vault = TEMPLATE, failLoad = () => fa
         getResourcePath: (path) => `${pathToFileURL(join(vault, path)).href}?${statSync(join(vault, path)).mtimeMs}`,
       },
     },
-    workspace: { openLinkText: (link) => opened.push(link) },
+    workspace,
   }
   const localStorage = {
     getItem: (key) => (storage.has(key) ? storage.get(key) : null),
@@ -145,7 +178,7 @@ export function fakeDataview({ notes = [], vault = TEMPLATE, failLoad = () => fa
   }
   const inPage = (fn) => withGlobals({ app, localStorage, window, CustomEvent }, fn)
   const run = (src) => inPage(() => new AsyncFunction("dv", src)(dv))
-  return { dv, out, run, inPage, storage, opened, events }
+  return { dv, out, run, inPage, storage, opened, events, tabs, revealed }
 }
 
 /** The `dataviewjs` blocks of a note, in order. */

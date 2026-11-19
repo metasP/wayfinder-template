@@ -361,6 +361,47 @@ describe("doctor: the pages' code lives in _tools/views/, the notes hold stubs",
     assert.equal(checkNamed(json, "ไม่มีบล็อก inline รุ่นก่อน").ok, true)
   })
 
+  describe("the Efforts ↔ Effort Tickets selection keys", () => {
+    const EFF = "_tools/views/efforts.js"
+    const TIX = "_tools/views/effort-tickets.js"
+    const view = (rel) => readFileSync(join(TEMPLATE, rel), "utf8")
+    const TABS_LINE = "const tabsKey = () => `${lsKey()}:tabs`"
+    const verdicts = (edits) => {
+      const { json } = doctor(vaultWithPages(edits))
+      return ["LS_KEY ตรงกัน", "คีย์ต่อ tab", "ผูกกับชื่อ vault"].map((label) => checkNamed(json, label).ok)
+    }
+
+    test("the template's per-tab declarations pass, and the old cross-pane event is no longer required", () => {
+      assert.deepEqual(verdicts({}), [true, true, true])
+      const { json } = doctor(vaultWithPages())
+      assert.equal(json.checks.some((c) => /SELECT_EVENT/.test(c.label)), false)
+    })
+
+    test("a selection key changed on one side fails", () => {
+      const tix = view(TIX).replace('const LS_KEY = "wayfinder-effort-tickets:selected"', 'const LS_KEY = "wayfinder-tickets:selected"')
+      assert.deepEqual(verdicts({ [TIX]: tix })[0], false)
+    })
+
+    test("a per-tab key that differs between the views, or doesn't derive from lsKey(), fails", () => {
+      assert.ok(view(EFF).includes(TABS_LINE) && view(TIX).includes(TABS_LINE))
+      const renamed = view(EFF).replace(TABS_LINE, "const tabsKey = () => `${lsKey()}:tab`")
+      const raw = view(TIX).replace(TABS_LINE, "const tabsKey = () => `${LS_KEY}:tabs`")
+      for (const edits of [{ [EFF]: renamed }, { [TIX]: raw }, { [EFF]: view(EFF).replace(TABS_LINE, "") }])
+        assert.equal(verdicts(edits)[1], false, Object.keys(edits)[0])
+    })
+
+    test("the same wrong per-tab key on both sides still fails: it would overwrite the most recent effort", () => {
+      const same = "const tabsKey = () => `${lsKey()}`"
+      assert.equal(verdicts({ [EFF]: view(EFF).replace(TABS_LINE, same), [TIX]: view(TIX).replace(TABS_LINE, same) })[1], false)
+    })
+
+    test("a leftover raw LS_KEY use in localStorage still fails", () => {
+      const eff = view(EFF).replace("localStorage.setItem(lsKey(), key)", "localStorage.setItem(LS_KEY, key)")
+      assert.notEqual(eff, view(EFF))
+      assert.equal(verdicts({ [EFF]: eff })[2], false)
+    })
+  })
+
   test("a page block that is code, not a stub, fails — however its fence is written", () => {
     const shapes = [PLANTED, PLANTED.replace(/```/g, "~~~"), PLANTED.replace(/^/gm, "> "), `- ${PLANTED}`,
       `1. ${PLANTED}`, `> - ${PLANTED}`, `- a\n  - ${PLANTED}`, PLANTED.replace("```dataviewjs", "````DataviewJS")]

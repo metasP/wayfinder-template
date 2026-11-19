@@ -8,7 +8,11 @@ import {
   foldKey,
   foldOpen,
   folds,
+  parseTabs,
+  pruneTabs,
   summaryCounts,
+  tabEffort,
+  tabShowing,
 } from "../template/_tools/lib/page-nav.mjs"
 
 const memoryStorage = (entries = []) => {
@@ -123,5 +127,64 @@ describe("summaryCounts", () => {
   test("splits lint into errors and warnings", () => {
     const lint = [{ severity: "error" }, { severity: "warn" }, { severity: "warn" }]
     assert.deepEqual(summaryCounts({ lint }), [{ id: "lint", count: 3, errors: 1, warnings: 2 }])
+  })
+})
+
+// Effort Tickets per tab (spec *Modules* §5–6): which effort a tab shows, what is kept for tabs that are gone,
+// and which tab already shows an effort.
+describe("tabEffort", () => {
+  const known = ["r/a", "r/b"]
+
+  test("a tab shows its own stored effort over the most recent one", () => {
+    assert.deepEqual(tabEffort({ tab: "r/b", recent: "r/a", known }), { key: "r/b", missing: null })
+  })
+
+  test("a tab with nothing stored starts on the most recently selected effort", () => {
+    assert.deepEqual(tabEffort({ tab: null, recent: "r/a", known }), { key: "r/a", missing: null })
+  })
+
+  test("a tab whose effort no longer exists falls through to the most recent one", () => {
+    assert.deepEqual(tabEffort({ tab: "r/gone", recent: "r/a", known }), { key: "r/a", missing: null })
+  })
+
+  test("with nothing usable it selects nothing and names the first stored effort that is gone", () => {
+    assert.deepEqual(tabEffort({ tab: "r/gone", recent: "r/old", known }), { key: null, missing: "r/gone" })
+    assert.deepEqual(tabEffort({ tab: null, recent: "r/old", known }), { key: null, missing: "r/old" })
+    assert.deepEqual(tabEffort({ tab: null, recent: null, known }), { key: null, missing: null })
+  })
+})
+
+describe("parseTabs", () => {
+  test("reads the stored tab → effort object", () => {
+    assert.deepEqual(parseTabs('{"leaf1":"r/a"}'), { leaf1: "r/a" })
+  })
+
+  test("nothing stored, broken JSON or a non-object reads as no tabs", () => {
+    for (const text of [null, "", "{oops", "[]", '"r/a"', "null"]) assert.deepEqual(parseTabs(text), {}, String(text))
+  })
+
+  test("drops entries whose effort isn't a string", () => {
+    assert.deepEqual(parseTabs('{"a":"r/a","b":3,"c":null}'), { a: "r/a" })
+  })
+})
+
+describe("pruneTabs", () => {
+  test("keeps only the tabs that are still open, without touching the input", () => {
+    const tabs = Object.freeze({ a: "r/a", b: "r/b", c: "r/a" })
+    assert.deepEqual(pruneTabs(tabs, ["a", "c", "z"]), { a: "r/a", c: "r/a" })
+    assert.deepEqual(tabs, { a: "r/a", b: "r/b", c: "r/a" })
+  })
+})
+
+describe("tabShowing", () => {
+  const tabs = { a: "r/a", b: "r/b" }
+
+  test("finds the open tab already showing an effort", () => {
+    assert.equal(tabShowing(tabs, "r/b", ["a", "b"]), "b")
+  })
+
+  test("a tab that is closed doesn't count, and an effort no tab shows gives null", () => {
+    assert.equal(tabShowing(tabs, "r/b", ["a"]), null)
+    assert.equal(tabShowing(tabs, "r/c", ["a", "b"]), null)
   })
 })

@@ -34,7 +34,7 @@
 
 const CORE = "_tools/lib/core.mjs"
 const NAV = "_tools/lib/page-nav.mjs"
-const NAV_REQUIRED = ["folds", "bindFoldClicks", "summaryCounts"]
+const NAV_REQUIRED = ["folds", "bindFoldClicks", "summaryCounts", "tabEffort", "parseTabs", "pruneTabs", "tabShowing"]
 const CONFIG_NOTE = "Wayfinder Config.md"
 const PICKS_NOTE = "Wayfinder Picks.md"
 const PICKS_REF = "Wayfinder Picks"

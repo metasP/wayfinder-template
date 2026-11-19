@@ -10,7 +10,7 @@
 // ที่อยู่ในไฟล์นี้มีแค่ **การวาด**: HTML · CSS · การจัดเรียง · คลิกตัวเลขใบ
 
 // ── สัญญากับ `Wayfinder Effort Tickets` — ห้ามแก้ข้างเดียว ──────────────────
-// คลิกตัวเลขใบ (44/47) = **เขียน** คีย์นี้ แล้วเปิดโน้ตนั้น ซึ่งเป็นฝั่ง **อ่าน**
+// คลิกตัวเลขใบ (44/47) ที่ยังไม่มี tab เปิดอยู่ = **เขียน** คีย์นี้ (effort "ล่าสุด") แล้วเปิด tab ใหม่ ซึ่งเป็นฝั่ง **อ่าน**
 // ค่าที่เก็บคือสตริง "<repo>/<effort>" เช่น "my-repo/some-effort" — ไม่ใช่ path ของ map.md
 // คีย์ไม่ตรงกัน = เปิดหน้าไปแล้วไม่เลือกอะไร ซึ่งดูเหมือนโหลดช้ามากกว่าดูเหมือนของพัง ⇒ พังเงียบ
 // `_tools/doctor.mjs` จึงดึงคีย์จากทั้งสองไฟล์มาเทียบ โดยจับที่ **ชื่อตัวแปร**
@@ -22,7 +22,8 @@ const LS_KEY = "wayfinder-effort-tickets:selected"
 // ⇒ ต่อชื่อ vault ท้ายคีย์ ให้แต่ละ vault มีช่องของตัวเอง · ทั้งสองไฟล์ต้องคิดคีย์แบบเดียวกัน
 // และ **ห้ามส่ง `LS_KEY` ดิบ ๆ เข้า localStorage อีก** — `doctor.mjs` ตรวจทั้งสองข้อนี้
 const lsKey = () => `${LS_KEY}:${app.vault.getName()}`
-const SELECT_EVENT = "wayfinder-effort-select" // ยิงหลังเขียนคีย์ ให้ pane ที่เปิดค้างสลับ effort ตามทันที
+// effort ของแต่ละ tab หน้าใบ (`{ <leaf id>: "<repo>/<effort>" }`) — หน้าใบเขียน หน้านี้อ่านเพื่อหา tab ที่เปิดอยู่แล้ว
+const tabsKey = () => `${lsKey()}:tabs`
 const TICKETS_NOTE = "Wayfinder Effort Tickets"
 const PAGE = "efforts" // namespace ของการพับกลุ่ม (`wf.folds`)
 
@@ -231,25 +232,45 @@ const draw = ({ rows, warn, active, folded, cfg, isOpen, foldCss }) => {
       `</div>`
 }
 
-// ── คลิกตัวเลขใบ → เปิดหน้าใบของ effort นั้น ─────────────────────────────
-// ผูกหลังวาดเสร็จเสมอ: `innerHTML` สร้าง element ใหม่ทั้งชุด listener ที่ผูกไว้ก่อนหน้าตายไปด้วย
-const goTickets = (key) => {
-  try { localStorage.setItem(lsKey(), key) } catch (_) {} // ① เขียนคีย์ก่อน — หน้าใบอ่านตอนวาด
-  window.dispatchEvent(new CustomEvent(SELECT_EVENT))    // ② ปลุก pane ที่เปิดหน้าใบค้างอยู่ให้สลับตาม
-  app.workspace.openLinkText(TICKETS_NOTE, "")           // ③ ค่อยเปิด/โฟกัสโน้ต
+// ── คลิกตัวเลขใบ → tab หน้าใบของ effort นั้น ─────────────────────────────
+// มี tab ที่เปิด effort นี้อยู่แล้ว ⇒ โฟกัสมัน · ไม่มี ⇒ เปิด tab ใหม่ ไม่แย่ง tab ที่ดู effort อื่นอยู่
+// ทุกการแตะ workspace ห่อ try: Obsidian เปลี่ยน internals เมื่อไหร่ ก็ถอยไปเปิด tab ใหม่เสมอ
+// tab เบื้องหลังที่ Obsidian ยังไม่โหลดหลังเปิดแอป (deferred) ไม่มี `view.file` — อ่านโน้ตจาก view state ที่เซฟไว้แทน
+const noteOf = (leaf) => leaf.view?.file?.path ?? leaf.getViewState?.()?.state?.file ?? ""
+const ticketLeaves = () => {
+  try {
+    return (app.workspace.getLeavesOfType("markdown") ?? []).filter((l) => noteOf(l).split("/").pop() === `${TICKETS_NOTE}.md`)
+  } catch (_) { return [] }
 }
-const bindCounts = () => {
+const focusTab = (nav, key) => {
+  try {
+    const leaves = ticketLeaves()
+    const id = nav.tabShowing(nav.parseTabs(localStorage.getItem(tabsKey())), key, leaves.map((l) => l.id))
+    const leaf = id && leaves.find((l) => l.id === id)
+    if (!leaf) return false
+    app.workspace.revealLeaf(leaf)
+    return true
+  } catch (_) { return false }
+}
+const goTickets = (nav, key) => {
+  if (focusTab(nav, key)) return
+  // tab ใหม่ยังไม่มี effort ของตัวเอง ⇒ เริ่มจาก "ล่าสุด" เหมือน tab ที่เปิดเอง — เขียนก่อนเปิดเสมอ หน้าใบอ่านตอนวาด
+  try { localStorage.setItem(lsKey(), key) } catch (_) {}
+  app.workspace.openLinkText(TICKETS_NOTE, "", "tab")
+}
+// ผูกหลังวาดเสร็จเสมอ: `innerHTML` สร้าง element ใหม่ทั้งชุด listener ที่ผูกไว้ก่อนหน้าตายไปด้วย
+const bindCounts = (nav) => {
   // `registerDomEvent` ปลด listener ให้เองตอนบล็อกถูกทิ้ง ⇒ ไม่ค้างสะสมทุกครั้งที่ dataview วาดใหม่
   const comp = dv.component ?? dv.currentComponent
   const on = (el, ev, fn) =>
     comp?.registerDomEvent ? comp.registerDomEvent(el, ev, fn) : el.addEventListener(ev, fn)
   for (const el of dv.container.querySelectorAll("[data-go]")) {
-    on(el, "click", (ev) => { ev.preventDefault(); ev.stopPropagation(); goTickets(el.dataset.go) })
+    on(el, "click", (ev) => { ev.preventDefault(); ev.stopPropagation(); goTickets(nav, el.dataset.go) })
     // แถวในกลุ่มที่พับไว้ก็โฟกัสด้วยคีย์บอร์ดได้ ⇒ ต้องกดด้วยคีย์บอร์ดได้ด้วย ไม่ใช่เมาส์อย่างเดียว
     on(el, "keydown", (ev) => {
       if (ev.key !== "Enter" && ev.key !== " ") return
       ev.preventDefault()
-      goTickets(el.dataset.go)
+      goTickets(nav, el.dataset.go)
     })
   }
 }
@@ -263,6 +284,6 @@ return dv.view("_tools/views/wf-core", {
     const isOpen = (k) => wf.folds.isOpen(PAGE, k, { hasContent: groups.folded[k].length > 0, lowTraffic: true })
     dv.container.innerHTML = draw({ rows, ...groups, cfg, isOpen, foldCss: wf.nav.FOLD_CSS })
     wf.nav.bindFoldClicks(dv.container, PAGE, wf.folds)
-    bindCounts()
+    bindCounts(wf.nav)
   },
 })

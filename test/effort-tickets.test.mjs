@@ -214,6 +214,79 @@ describe("selection", () => {
   })
 })
 
+describe("each tab keeps its own effort", () => {
+  const TABS = `${SELECTED}:tabs`
+  const TICKETS = "Wayfinder Effort Tickets.md"
+  const LEAVES = [{ id: "t1", path: TICKETS }, { id: "t2", path: TICKETS }]
+  const renderTab = async (here, entries, leaves = LEAVES) => {
+    const dv = fakeDataview({ notes: NOTES, storage: new Map(entries), leaves, here, currentFilePath: TICKETS })
+    for (const src of BLOCKS) await dv.run(src)
+    assert.deepEqual(dv.out, [], "nothing but the page's own HTML (no loader error)")
+    const head = dv.dv.container.querySelector(".wft-head").innerHTML
+    const title = dv.tabs.find((t) => t.id === here).tabHeaderInnerTitleEl.textContent
+    return { dv, head, title, tabs: () => JSON.parse(dv.storage.get(TABS) ?? "{}") }
+  }
+  const shows = (head, key) => assert.match(head, new RegExp(`data-href="${key}/map\\.md"`))
+
+  test("a tab shows its own effort, not the most recently selected one, and is titled with it", async () => {
+    const { head, title } = await renderTab("t2", [[SELECTED, "r/a"], [TABS, JSON.stringify({ t1: "r/a", t2: "r/b" })]])
+    shows(head, "r/b")
+    assert.equal(title, "Tickets · r/b")
+  })
+
+  test("a tab opened by hand starts on the most recent effort and keeps it from then on", async () => {
+    const { head, tabs } = await renderTab("t2", [[SELECTED, "r/a"], [TABS, JSON.stringify({ t1: "r/b" })]])
+    shows(head, "r/a")
+    assert.deepEqual(tabs(), { t1: "r/b", t2: "r/a" })
+  })
+
+  test("a tab whose effort was removed falls back to the most recent one", async () => {
+    const { head } = await renderTab("t1", [[SELECTED, "r/a"], [TABS, JSON.stringify({ t1: "r/gone" })]])
+    shows(head, "r/a")
+  })
+
+  test("tabs that are closed, or show another note now, are dropped from storage", async () => {
+    const leaves = [...LEAVES, { id: "t3", path: "elsewhere.md" }]
+    const stored = JSON.stringify({ t1: "r/a", gone: "r/b", t3: "r/p" })
+    const { tabs } = await renderTab("t1", [[SELECTED, "r/a"], [TABS, stored]], leaves)
+    assert.deepEqual(tabs(), { t1: "r/a" })
+  })
+
+  test("choosing an effort in one tab sets that tab and the most recent one, leaving the other tab alone", async () => {
+    const { dv, tabs } = await renderTab("t1", [[SELECTED, "r/a"], [TABS, JSON.stringify({ t1: "r/a", t2: "r/a" })]])
+    const pick = { target: { closest: () => ({ dataset: { key: "r/b" } }) } }
+    await dv.inPage(async () => dv.dv.container.querySelector(".wft-list").fire("mousedown", pick))
+    assert.deepEqual(tabs(), { t1: "r/b", t2: "r/a" })
+    assert.equal(dv.storage.get(SELECTED), "r/b")
+    assert.equal(dv.tabs.find((t) => t.id === "t1").tabHeaderInnerTitleEl.textContent, "Tickets · r/b")
+    shows(dv.dv.container.querySelector(".wft-head").innerHTML, "r/b")
+  })
+
+  test("a background tab Obsidian hasn't loaded since a restart keeps its effort", async () => {
+    const leaves = [{ id: "t1", path: TICKETS }, { id: "t2", path: TICKETS, deferred: true }]
+    const { tabs } = await renderTab("t1", [[SELECTED, "r/a"], [TABS, JSON.stringify({ t1: "r/a", t2: "r/b" })]], leaves)
+    assert.deepEqual(tabs(), { t1: "r/a", t2: "r/b" })
+  })
+
+  test("a block embedded in another note neither claims nor renames that note's tab", async () => {
+    const dv = fakeDataview({
+      notes: NOTES,
+      storage: new Map([[SELECTED, "r/a"]]),
+      leaves: [{ id: "host", path: "notes/host.md" }],
+      here: "host",
+      currentFilePath: TICKETS,
+    })
+    for (const src of BLOCKS) await dv.run(src)
+    assert.equal(dv.storage.get(TABS), undefined)
+    assert.equal(dv.tabs[0].tabHeaderInnerTitleEl.textContent, "notes/host")
+  })
+
+  test("with no effort to show, the tab keeps its default title", async () => {
+    const { title } = await renderTab("t1", [])
+    assert.equal(title, "Wayfinder Effort Tickets")
+  })
+})
+
 describe("the ✅ group's fold", () => {
   const resolvedTag = (body) => /<details class="wft-grp wf-fold" data-fold="resolved"( open)?>/.exec(body)
   test("starts closed while tickets are pending, and remembers the owner's toggle on the next redraw", async () => {

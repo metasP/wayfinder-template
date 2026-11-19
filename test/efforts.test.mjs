@@ -184,15 +184,50 @@ describe("odd map values", () => {
 })
 
 describe("ticket count → Effort Tickets", () => {
-  test("clicking an effort's count stores it for this vault and opens Effort Tickets", async () => {
-    const { dv } = await render()
+  const RECENT = "wayfinder-effort-tickets:selected:test-vault"
+  const TABS = `${RECENT}:tabs`
+  const TICKETS = "Wayfinder Effort Tickets.md"
+  const click = async (dv, key) => {
+    const counts = dv.dv.container.querySelectorAll("[data-go]")
+    await dv.inPage(() => counts.find((el) => el.dataset.go === key).fire("click"))
+  }
+
+  test("with no tab showing the effort, it becomes the most recent one and a new tab opens Effort Tickets", async () => {
+    const { dv } = await render(NOTES, { leaves: [{ id: "eff", path: "Wayfinder Efforts.md" }] })
     const counts = dv.dv.container.querySelectorAll("[data-go]")
     // Moving and folded efforts show a count to click (⚠️ rows show the action instead).
     assert.ok(["r/a", "r/frozen"].every((key) => counts.some((el) => el.dataset.go === key)))
-    await dv.inPage(() => counts.find((el) => el.dataset.go === "r/b").fire("click"))
-    assert.equal(dv.storage.get("wayfinder-effort-tickets:selected:test-vault"), "r/b")
-    assert.deepEqual(dv.opened, ["Wayfinder Effort Tickets"])
-    assert.deepEqual(dv.events, ["wayfinder-effort-select"])
+    await click(dv, "r/b")
+    assert.equal(dv.storage.get(RECENT), "r/b")
+    assert.deepEqual(dv.opened, [{ link: "Wayfinder Effort Tickets", newLeaf: "tab" }])
+    assert.deepEqual(dv.revealed, [])
+    assert.deepEqual(dv.events, [], "no broadcast that would switch every open Effort Tickets tab")
+  })
+
+  test("a tab already showing the effort is focused instead, and nothing else changes", async () => {
+    const storage = new Map([[RECENT, "r/a"], [TABS, JSON.stringify({ t1: "r/a", t2: "r/b" })]])
+    const leaves = [{ id: "t1", path: TICKETS }, { id: "t2", path: TICKETS }]
+    const { dv } = await render(NOTES, { storage, leaves })
+    await click(dv, "r/b")
+    assert.deepEqual(dv.revealed, ["t2"])
+    assert.deepEqual(dv.opened, [])
+    assert.equal(dv.storage.get(RECENT), "r/a")
+  })
+
+  test("a background tab Obsidian hasn't loaded since a restart is focused too", async () => {
+    const storage = new Map([[TABS, JSON.stringify({ t1: "r/b" })]])
+    const { dv } = await render(NOTES, { storage, leaves: [{ id: "t1", path: TICKETS, deferred: true }] })
+    await click(dv, "r/b")
+    assert.deepEqual(dv.revealed, ["t1"])
+    assert.deepEqual(dv.opened, [])
+  })
+
+  test("a remembered tab that was closed, or now shows another note, doesn't count", async () => {
+    const storage = new Map([[TABS, JSON.stringify({ gone: "r/b", moved: "r/b" })]])
+    const { dv } = await render(NOTES, { storage, leaves: [{ id: "moved", path: "elsewhere.md" }] })
+    await click(dv, "r/b")
+    assert.deepEqual(dv.revealed, [])
+    assert.deepEqual(dv.opened, [{ link: "Wayfinder Effort Tickets", newLeaf: "tab" }])
   })
 })
 

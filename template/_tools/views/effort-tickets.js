@@ -5,7 +5,8 @@
 // hold the a-word Dataview searches for (see the head of wf-core.js): it returns the loader's promise.
 
 // ── 0. สัญญากับหน้าอื่น — ห้ามแก้ข้างเดียว ──────────────────────────────────
-// คีย์นี้ถูก **เขียน** โดย `_tools/views/efforts.js` (ตอนคลิกตัวเลข 44/47) และ **อ่าน** ที่นี่
+// คีย์นี้คือ effort ที่ **เลือกล่าสุด** — `_tools/views/efforts.js` เขียนตอนคลิกตัวเลข 44/47 ก่อนเปิด tab ใหม่
+// และหน้านี้เขียนทุกครั้งที่เลือก · tab ที่ยังไม่มี effort ของตัวเองเริ่มจากค่านี้
 // ค่าที่เก็บคือสตริง "<repo>/<effort>" เช่น "my-repo/some-effort"
 // ถ้าสองหน้าใช้คีย์คนละตัว อาการคือ "เปิดหน้ามาแล้วไม่เลือกอะไร" — ดูเหมือนโหลดช้า ไม่เหมือนของพัง
 // ⇒ ไม่มีใครรู้ว่ามันเสีย · `_tools/doctor.mjs` จึงดึงสตริงนี้จากทั้งสองไฟล์แล้วเทียบ
@@ -14,10 +15,10 @@ const LS_KEY = "wayfinder-effort-tickets:selected"
 // localStorage ของ Obsidian เป็นของ **ทั้งแอป ไม่ใช่ของ vault** — ต่อชื่อ vault ท้ายคีย์ ให้แต่ละ vault
 // มีช่องของตัวเอง · ทั้งสองไฟล์ต้องคิดคีย์แบบเดียวกัน และ **ห้ามส่ง `LS_KEY` ดิบ ๆ เข้า localStorage**
 const lsKey = () => `${LS_KEY}:${app.vault.getName()}`
-
-// event ที่ `Wayfinder Efforts` ยิงต่อจากการเขียนคีย์ — ทำให้หน้านี้ที่เปิดค้างอยู่ใน pane อื่น
-// สลับ effort ตามทันที แทนที่จะต้องรอ dataview วาดบล็อกใหม่ (หรือปิดเปิดหน้า)
-const SELECT_EVENT = "wayfinder-effort-select"
+// effort **ของแต่ละ tab**: JSON `{ <leaf id>: "<repo>/<effort>" }` — Efforts อ่านเพื่อหา tab ที่เปิด effort นั้นอยู่แล้ว
+// ⇒ ต้องคิดจาก `lsKey()` ตัวเดียวกันและประกาศเหมือนกันทั้งสองไฟล์ (doctor เทียบบรรทัดนี้)
+const tabsKey = () => `${lsKey()}:tabs`
+// ไม่มี event กระจายข้าม pane อีกแล้ว: การเลือกใน tab หนึ่งต้องไม่ไปสลับ tab อื่น (สเปก Modules §5)
 const PAGE = "effort-tickets" // namespace ของการพับกลุ่ม ✅ (`wf.folds`)
 
 // หน้านี้ **ไม่มีกฎของตัวเอง** — กลุ่มใบ · "ปลดกี่ใบ" · เส้นกราฟ · blocker ที่ยังค้าง · ค่าจาก Config
@@ -388,6 +389,31 @@ const BLOCK_WORD = {
   waiting: (n) => `รอ ${n}`,
 }
 
+// ── tab ที่หน้านี้อยู่ (สเปก Modules §5, §7) ──────────────────────────────────
+// tab = workspace leaf · `leaf.id` ถูกเก็บใน layout ที่ Obsidian เซฟไว้ ⇒ รอดการปิดเปิดแอป
+// Obsidian ไม่มี API บอกว่าบล็อก dataview อยู่ leaf ไหน ⇒ หา leaf ที่ `containerEl` ครอบ container ของเรา
+// ทุกการแตะ workspace ห่อ try: ถ้า Obsidian เปลี่ยน internals หน้านี้ถอยไปทำงานแบบเดิม (effort ล่าสุด · ชื่อ tab ปกติ)
+const markdownLeaves = () => {
+  try { return app.workspace.getLeavesOfType("markdown") ?? [] } catch (_) { return [] }
+}
+// โน้ตที่ leaf เปิดอยู่ · tab เบื้องหลังที่ Obsidian ยังไม่โหลดหลังเปิดแอป (deferred) ยังไม่มี `view.file`
+// มีแต่ view state ที่เซฟไว้ ⇒ ต้องอ่านจากตรงนั้นด้วย ไม่งั้น tab พวกนั้นถูกนับว่า "ปิดไปแล้ว" แล้วโดนล้าง
+const fileOf = (leaf) => {
+  try { return leaf.view?.file?.path ?? leaf.getViewState?.()?.state?.file ?? null } catch (_) { return null }
+}
+// leaf ที่ครอบบล็อกนี้ **และเปิดโน้ตของบล็อกนี้เอง** — บล็อกที่ถูก embed ในโน้ตอื่นไม่ผูก/ไม่เปลี่ยนชื่อ tab ของโน้ตนั้น
+const leafOf = (el, path) =>
+  markdownLeaves().find((l) => {
+    try { return l.view.containerEl.contains(el) && (!path || fileOf(l) === path) } catch (_) { return false }
+  }) ?? null
+const leavesShowing = (path) => markdownLeaves().filter((l) => path && fileOf(l) === path)
+// ชื่อ tab ผ่าน element ภายในของ Obsidian — พังเมื่อไหร่ก็แค่ได้ชื่อโน้ตตามปกติ ไม่มี error
+const setTabTitle = (leaf, text) => {
+  try { leaf.tabHeaderInnerTitleEl.textContent = text } catch (_) {}
+}
+// บล็อกอาจวาดก่อนถูกแปะเข้า DOM ของ tab (reading view วาดแบบ lazy) ⇒ ลองหา leaf ซ้ำอีกไม่กี่ครั้ง
+const ADOPT_TRIES = 10, ADOPT_DELAY_MS = 100
+
 // ── 4. หน้า — วาดโครงครั้งเดียว แล้วอัปเดตทีละส่วน ────────────────────────────
 //   ห้ามเขียน `dv.container.innerHTML` ทับทุกครั้งที่พิมพ์ ไม่งั้น `<input>` เสีย focus
 function page(wf) {
@@ -400,15 +426,28 @@ function page(wf) {
   const inFrontier = new Set(core.frontier(index).map((t) => t.ref))
   const rows = effortRows(wf)
 
-  // selection อยู่ใน localStorage ตัวเดียว ที่เหลือเป็นของชั่วคราว
-  const readLS = () => { try { return localStorage.getItem(lsKey()) } catch (_) { return null } }
-  const writeLS = (k) => { try { localStorage.setItem(lsKey(), k) } catch (_) {} }
-  let selected = readLS()
-  // effort ที่จำไว้อาจถูกลบ/เปลี่ยนชื่อไปแล้ว — บอกตรง ๆ ดีกว่าเปิดมาเจอหน้าว่างแบบไม่มีเหตุผล
-  const missing = selected && !rows.some((r) => r.key === selected) ? selected : null
-  if (missing) selected = null
+  // selection อยู่ใน localStorage: effort ของ tab นี้ + effort ที่เลือกล่าสุด · ที่เหลือเป็นของชั่วคราว
+  const readKey = (key) => { try { return localStorage.getItem(key) } catch (_) { return null } }
+  const writeKey = (key, value) => { try { localStorage.setItem(key, value) } catch (_) {} }
+  const readTabs = () => wf.nav.parseTabs(readKey(tabsKey()))
+  const known = rows.map((r) => r.key)
+  const ownPath = dv.currentFilePath // โน้ตที่บล็อกนี้เขียนอยู่ (Dataview)
+  let leaf = leafOf(dv.container, ownPath) // tab ที่บล็อกนี้วาดอยู่ — null ถ้ายังหาไม่เจอ (ดู `adopt`)
+  let touched = false // เจ้าของเลือก effort เองแล้ว ⇒ `adopt` ที่มาทีหลังห้ามวาดทับ
+  const resolve = () => wf.nav.tabEffort({ tab: leaf ? readTabs()[leaf.id] : null, recent: readKey(lsKey()), known })
+  // effort ที่จำไว้อาจถูกลบ/เปลี่ยนชื่อไปแล้ว — บอกตรง ๆ ดีกว่าเปิดมาเจอหน้าว่างแบบไม่มีเหตุผล (`missing`)
+  let { key: selected, missing } = resolve()
   let query = ""
   let listOpen = !selected // ยังไม่เคยเลือกอะไร → มีแค่รายการให้เลือก
+
+  // ผูก effort ที่แสดงเข้ากับ tab นี้ — tab ที่เปิดมาเฉย ๆ จะได้ไม่เปลี่ยนตามเมื่อ "ล่าสุด" เปลี่ยนทีหลัง
+  // พร้อมล้าง tab ที่ปิดไปแล้วหรือไปเปิดโน้ตอื่น (localStorage จะได้ไม่โตไปเรื่อย ๆ) แล้วตั้งชื่อ tab
+  const settle = () => {
+    if (!leaf || !selected) return
+    const live = [leaf.id, ...leavesShowing(fileOf(leaf)).map((l) => l.id)]
+    writeKey(tabsKey(), JSON.stringify({ ...wf.nav.pruneTabs(readTabs(), live), [leaf.id]: selected }))
+    setTabTitle(leaf, `Tickets · ${selected}`)
+  }
 
   // ── ชิ้นส่วนที่วาดซ้ำ ──
   const nameOf = (r, asLink) => {
@@ -605,8 +644,10 @@ function page(wf) {
 
   // ── การโต้ตอบ ──
   const select = (key) => {
+    touched = true
     selected = key
-    writeLS(key)
+    writeKey(lsKey(), key)
+    settle()
     query = ""
     $input.value = ""
     listOpen = false
@@ -648,16 +689,24 @@ function page(wf) {
     app.workspace.openLinkText(a.getAttribute("data-href"), "", ev.ctrlKey || ev.metaKey)
   })
 
-  // หน้านี้เปิดค้างอยู่ใน pane อื่น แล้วมีคนคลิก 44/47 บน `Wayfinder Efforts`
-  // `registerDomEvent` ปลด listener ให้เองตอนบล็อกถูกทิ้ง ⇒ ไม่มี listener ค้างสะสมทุกครั้งที่ dataview วาดใหม่
-  const comp = dv.component ?? dv.currentComponent
-  if (comp?.registerDomEvent)
-    comp.registerDomEvent(window, SELECT_EVENT, () => {
-      const k = readLS()
-      if (k && k !== selected && rows.some((r) => r.key === k)) select(k)
-    })
+  // หา tab ของตัวเองให้เจอ แล้วตัดสิน effort ใหม่ด้วยค่าของ tab นั้น — วาดใหม่เฉพาะเมื่อผลต่างจากที่วาดไปแล้ว
+  const adopt = (tries) => {
+    leaf = leaf ?? leafOf(dv.container, ownPath)
+    if (!leaf) {
+      if (tries > 0 && markdownLeaves().length) setTimeout(() => adopt(tries - 1), ADOPT_DELAY_MS)
+      return
+    }
+    const next = resolve()
+    if (!touched && next.key !== selected) {
+      ;({ key: selected, missing } = next)
+      listOpen = !selected
+      renderAll()
+    }
+    settle()
+  }
 
   renderAll()
+  adopt(ADOPT_TRIES)
 }
 
 return dv.view("_tools/views/wf-core", { render: page })
