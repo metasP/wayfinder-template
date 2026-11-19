@@ -23,9 +23,27 @@ describe("wayfinder-next skill", () => {
   })
 
   // stylized-set-kit retro: chips resolved without merging, and the user had to say "merge into main" each time.
-  test("every chip prompt makes the session own the merge into main, before it resolves", () => {
-    assert.match(SKILL, /^The merge is yours: once the user approves the work, rebase this branch onto main and fast-forward main[^\n]*before you resolve/m)
-    assert.match(SKILL, /^การ merge เป็นหน้าที่ของ session นี้:[^\n]*ก่อน resolve/m)
+  // parallel-run-fixes#03: then "ผ่าน merge" was followed by a second "merge PR เลย" — one go-ahead covers it all.
+  test("every chip prompt makes the session own the merge, on one go-ahead that covers ff main, the PR and resolve", () => {
+    assert.match(SKILL, /^The merge is yours, on one go-ahead:[^\n]*fast-forward main[^\n]*merge --ff-only[^\n]*CI is green[^\n]*gh pr merge[^\n]*then resolve/m)
+    assert.match(SKILL, /^การ merge เป็นหน้าที่ของ session นี้ และใช้ go-ahead ครั้งเดียว:[^\n]*merge --ff-only[^\n]*CI เขียว[^\n]*gh pr merge[^\n]*resolve/m)
+  })
+
+  // parallel-run-fixes#03: every set-kit session spent 4–20 commands re-reading the map, the ticket and the README,
+  // guessed the claim ref wrong, and opened with `echo ======` that the zsh hook refused.
+  test("the chip prompt carries the ticket, the map's decisions and a wf cheat sheet", () => {
+    const [start, end] = [SKILL.indexOf("## Chip prompt template"), SKILL.indexOf("## This session never works")]
+    assert.ok(start >= 0 && end > start, "the chip prompt template section moved")
+    const template = SKILL.slice(start, end)
+    for (const block of template.split(/^`th`:$/m)) {
+      assert.match(block, /<the ticket's `## Question` section, verbatim>/, "the prompt does not carry the ticket")
+      assert.match(block, /<the map's `## Decisions so far` lines, verbatim/, "the prompt does not carry the decisions")
+      for (const verb of ["claim", "show", "resolve", "wait", "release", "lint", "map-status"])
+        assert.match(block, new RegExp(`node __VAULT__/_tools/wf\\.mjs ${verb} `), `the cheat sheet has no wf ${verb}`)
+      assert.match(block, /resolve <ref> --gist "[^"]*" --answer-file /, "the cheat sheet does not resolve from a worktree")
+      assert.match(block, /`echo ---`/, "the prompt does not say echo ---")
+    }
+    assert.match(template, /`<ref>`[^\n]*`data\.ref`/, "the skill does not say what fills <ref>")
   })
 
   // The desktop harness dropped spawn_task; an "offer" start shows a Do it here button that turned a

@@ -162,10 +162,10 @@ Respect the answer literally. "Spawn all anyway" is a real choice — the user m
 
 ## Workflow
 
-1. **Find the active map.** Wayfinder maps live in `__VAULT__/<repo>/<effort>/map.md`. Use the map from the current conversation if known; else list `__VAULT__/*/*/map.md` and pick the one meant (ask if ambiguous). Read `language` from `__VAULT__/Wayfinder Config.md` in the same pass (see [Language](#language)).
+1. **Find the active map.** Wayfinder maps live in `__VAULT__/<repo>/<effort>/map.md`. Use the map from the current conversation if known; else list `__VAULT__/*/*/map.md` and pick the one meant (ask if ambiguous). Read `language` from `__VAULT__/Wayfinder Config.md` in the same pass (see [Language](#language)), and keep the map's `## Decisions so far` lines — every chip prompt carries them.
 2. **Get the frontier** (see [No argument](#no-argument--frontier-order-then-skip-collisions)) — with explicit numbers too, since validation reads it — then **resolve the requested tickets** per [Picking tickets](#picking-tickets). A map in the fog gets its ticket from `wf new` here, before anything is spawned, so the chip carries the NN `wf` printed.
 3. **Validate + confirm** per the section above. Drop or keep flagged tickets according to the answer.
-4. **Read each surviving ticket** for its `## Question` bold line → short title; `type` → `L`.
+4. **Read each surviving ticket** — its `## Question` section goes into the chip prompt verbatim, its bold line → short title; `type` → `L`.
 5. **Allocate the run numbers** — one `bump-runs` call for the whole batch (see [Run number](#run-number)). Ascending ticket order gets ascending `RR`.
 6. **Start one session per ticket** with `mcp__ccd_session__start_session` (load it with `ToolSearch` `select:mcp__ccd_session__start_session` when it is only listed as deferred):
    - `initiation`: **`"user_asked"`** — the user ran `/wayfinder-next`, which is the request for these sessions. **Never `"offer"`**: an offer shows a **Do it here** button, and one click turns *this* session into the ticket's session (see [This session never works the ticket](#this-session-never-works-the-ticket)).
@@ -184,6 +184,13 @@ Respect the answer literally. "Spawn all anyway" is a real choice — the user m
 
 ## Chip prompt template (write in `language`)
 
+The prompt hands the session everything it needs to start working, so it doesn't spend its first commands re-reading the map, the ticket and the README, or guessing how `wf` takes a ticket ref. Fill it in:
+
+- `<ref>` — the ticket's ref exactly as `wf` prints it: the frontier row's `data.ref` (or `wf new`'s), e.g. `acme-web/checkout-redesign#07`. Write it in every cheat-sheet line, so the session copies a working command.
+- `<the ticket's ``## Question`` section, verbatim>` — the ticket file's `## Question` section as it stands, heading excluded; don't summarize it.
+- `<the map's ``## Decisions so far`` lines, verbatim …>` — every line under that heading of `map.md`; none yet → `(none yet)` / `(ยังไม่มี)`.
+- `<main checkout>` — the main checkout of the repo the ticket changes (the folder `cwd` points at, or this project's).
+
 `en`:
 
 ```
@@ -193,7 +200,25 @@ Map: <absolute map.md path>
 
 Mode: Work through the map. Do ticket <NN> (<title>) — issues/<NN>-<slug>.md
 Follow the wayfinder steps: claim the ticket before starting, resolve, record (## Answer + status:resolved + add 1 line to the map's "Decisions so far"); resolve at most 1 ticket per session
-The merge is yours: once the user approves the work, rebase this branch onto main and fast-forward main to it (git -C <main checkout> merge --ff-only <branch>) before you resolve — don't wait to be told; until then lint warns unmerged-branch
+The merge is yours, on one go-ahead: when the user approves the work, that one approval covers every step below — don't wait to be told, and don't ask again between them: rebase this branch onto main and fast-forward main to it (git -C <main checkout> merge --ff-only <branch>); if the work has a PR, push the branch and, once CI is green, merge it (gh pr merge <N> --merge) and git -C <main checkout> pull --ff-only; then resolve. Until main has the branch, lint warns unmerged-branch
+
+The ticket (already read for you — no need to open it again before you start):
+<the ticket's `## Question` section, verbatim>
+
+Decisions so far on this map:
+<the map's `## Decisions so far` lines, verbatim — or (none yet)>
+
+Cheat sheet for wf — every ticket and map state change goes through it, and it commits its own write; never edit frontmatter by hand:
+  claim (first thing):     node __VAULT__/_tools/wf.mjs claim <ref>
+  ticket + map context:    node __VAULT__/_tools/wf.mjs show <ref>
+  resolve from a worktree: node __VAULT__/_tools/wf.mjs resolve <ref> --gist "<one line>" --answer-file <answer-file>
+  parked on outside work:  node __VAULT__/_tools/wf.mjs wait <ref> --note "<what you wait for>"
+  hand it back:            node __VAULT__/_tools/wf.mjs release <ref>
+  lint this map:           node __VAULT__/_tools/wf.mjs lint <repo>/<effort>
+  close the map (only when no ticket is left): node __VAULT__/_tools/wf.mjs map-status <repo>/<effort> done
+<answer-file> is any file whose ## Answer section holds your answer — the ticket in your worktree will do; the verb copies it into the vault.
+A `wf: warning: lint …` line after a verb is yours to handle: run its (fix: …) or say why not.
+The shell is zsh: separate outputs with `echo ---`, never `echo =====` (zsh reads =word as a command lookup)
 ```
 
 `th`:
@@ -205,7 +230,25 @@ Map: <absolute map.md path>
 
 โหมด: Work through the map. ทำ ticket <NN> (<title>) — issues/<NN>-<slug>.md
 ทำตามขั้นตอน wayfinder: claim ticket ก่อนเริ่ม, resolve, record (## Answer + status:resolved + เติม 1 บรรทัดใน map "Decisions so far"), ห้าม resolve เกิน 1 ticket ต่อ session
-การ merge เป็นหน้าที่ของ session นี้: พอผู้ใช้ผ่านงานแล้ว rebase branch นี้บน main แล้ว fast-forward main (git -C <main checkout> merge --ff-only <branch>) ก่อน resolve — ไม่ต้องรอให้สั่ง · ก่อนหน้านั้น lint จะเตือน unmerged-branch
+การ merge เป็นหน้าที่ของ session นี้ และใช้ go-ahead ครั้งเดียว: พอผู้ใช้ผ่านงาน คำเดียวนั้นครอบทุกขั้นข้างล่าง — ไม่ต้องรอให้สั่ง และไม่ต้องถามซ้ำระหว่างขั้น: rebase branch นี้บน main แล้ว fast-forward main (git -C <main checkout> merge --ff-only <branch>) · ถ้างานมี PR ให้ push branch แล้วพอ CI เขียวก็ merge (gh pr merge <N> --merge) แล้ว git -C <main checkout> pull --ff-only · จากนั้น resolve · ก่อน main จะมี branch นี้ lint จะเตือน unmerged-branch
+
+เนื้อใบ (อ่านให้แล้ว — ไม่ต้องเปิดซ้ำก่อนเริ่ม):
+<the ticket's `## Question` section, verbatim>
+
+Decisions so far ของ map นี้:
+<the map's `## Decisions so far` lines, verbatim — หรือ (ยังไม่มี)>
+
+cheat sheet ของ wf — สถานะของใบและ map เปลี่ยนผ่านมันทางเดียว (มัน commit ให้เอง) ห้ามแก้ frontmatter มือ:
+  claim (ทำก่อนอย่างอื่น):  node __VAULT__/_tools/wf.mjs claim <ref>
+  ดูใบ + บริบทของ map:     node __VAULT__/_tools/wf.mjs show <ref>
+  resolve จาก worktree:    node __VAULT__/_tools/wf.mjs resolve <ref> --gist "<หนึ่งบรรทัด>" --answer-file <ไฟล์-answer>
+  รอของนอกมือ:              node __VAULT__/_tools/wf.mjs wait <ref> --note "<รออะไร>"
+  ปล่อยใบคืน:               node __VAULT__/_tools/wf.mjs release <ref>
+  lint map นี้:             node __VAULT__/_tools/wf.mjs lint <repo>/<effort>
+  ปิด map (เมื่อไม่เหลือใบแล้วเท่านั้น): node __VAULT__/_tools/wf.mjs map-status <repo>/<effort> done
+<ไฟล์-answer> คือไฟล์ไหนก็ได้ที่ ## Answer มีคำตอบ — ใบใน worktree ของเราก็ได้ · verb คัดลอกลง vault ให้
+บรรทัด `wf: warning: lint …` หลัง verb เป็นงานของเรา: รันคำสั่งใน (fix: …) หรือบอกว่าทำไมยังไม่รัน
+shell คือ zsh: คั่น output ด้วย `echo ---` ห้าม `echo =====` (zsh อ่าน =word เป็นการหาคำสั่ง)
 ```
 
 **When you spawn more than one chip for the same map**, append this line to every prompt in the batch — concurrent sessions will both edit `map.md`:
