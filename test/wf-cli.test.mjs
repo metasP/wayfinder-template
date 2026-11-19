@@ -45,7 +45,7 @@ describe("usage errors exit 2", () => {
   test("--help prints the usage and exits 0", () => {
     const top = wf(smallVault(), ["--help"])
     assert.equal(top.code, 0)
-    assert.match(top.stdout, /wf frontier \[--repo R\] \[--from repo\/effort\] \[--json\]/)
+    assert.match(top.stdout, /wf frontier \[--repo R\] \[--from repo\/effort\] \[--effort repo\/effort\] \[--json\]/)
     assert.match(top.stdout, /wf lint \[repo\/effort…\] \[--rule <rule>\] \[--fix\] \[--json\]/)
     assert.match(top.stdout, /wf claim <ref> \[--by name\] \[--force\] \[--json\]/)
     assert.match(top.stdout, /wf release <ref> \[--by name\] \[--force\] \[--json\]/)

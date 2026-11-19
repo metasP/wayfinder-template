@@ -29,13 +29,17 @@ const textOf = (rows) => {
 
 export default {
   name: "frontier",
-  summary: "open, unblocked tickets on active maps, in Picks order; --from sorts that effort's tickets first, it doesn't filter (--repo does)",
-  usage: "wf frontier [--repo R] [--from repo/effort] [--json]",
-  flags: { repo: "string", from: "string" },
+  summary: "open, unblocked tickets on active maps, in Picks order; --effort keeps one map's tickets only, --from sorts that effort's first without filtering, --repo filters by repo",
+  usage: "wf frontier [--repo R] [--from repo/effort] [--effort repo/effort] [--json]",
+  flags: { repo: "string", from: "string", effort: "string" },
   maxPositionals: 0,
   run({ roots, index, sort }, { flags }) {
-    const from = flags.from === undefined ? undefined : effortArg(flags.from, { roots, index })
-    const rows = frontier(index, { repo: flags.repo, from, sort }).map((t) => row(index, t))
+    const effortOf = (value) => (value === undefined ? undefined : effortArg(value, { roots, index }))
+    const only = effortOf(flags.effort)
+    const from = effortOf(flags.from) ?? only
+    const rows = frontier(index, { repo: flags.repo, from, sort })
+      .filter((t) => !only || t.effortKey === only)
+      .map((t) => row(index, t))
     return { data: { tickets: rows }, text: textOf(rows) }
   },
 }

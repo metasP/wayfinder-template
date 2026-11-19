@@ -102,10 +102,10 @@ node __VAULT__/_tools/wf.mjs new <repo/effort> --type <type> --title "<title>" -
 Get the candidates from the same read model as the Dashboard — one call serves this section and [validation](#validate-before-spawning--and-confirm):
 
 ```
-node __VAULT__/_tools/wf.mjs frontier --from <repo/effort> --json
+node __VAULT__/_tools/wf.mjs frontier --effort <repo/effort> --json
 ```
 
-`data.tickets` lists every open, unblocked ticket on an active map, already in the owner's **pick order** (the `sort:` in *Wayfinder Picks*; `--from` gives its `same_effort` key a context). Each row carries `ref` (`repo/effort#NN`), `repo`, `effort`, `nn`, `type`, `title`, `target_repo` and `serial`. Keep the rows of this map's `repo`/`effort`, in the order given — **that order is the ranking**, and its top row is the top pick.
+Always pass `--effort` with this map: without it (or with `--from` alone, which only sorts) the call returns every active map's tickets — kilobytes of rows you then throw away. `data.tickets` lists this map's open, unblocked tickets, already in the owner's **pick order** (the `sort:` in *Wayfinder Picks*). Each row carries `ref` (`repo/effort#NN`), `repo`, `effort`, `nn`, `type`, `title`, `target_repo` and `serial`. Keep them in the order given — **that order is the ranking**, and its top row is the top pick.
 
 Then walk the rows from the top and add each one that **collides** with nothing already in the batch, until the batch holds 3. Two tickets collide on:
 

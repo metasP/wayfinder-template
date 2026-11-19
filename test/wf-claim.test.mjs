@@ -63,7 +63,7 @@ describe("wf claim refuses", () => {
   })
 
   test("a waiting ticket", () => {
-    refused(oneTicket({ status: "waiting", status_note: "vendor reply" }), ["claim", "r/e#01", "--by", "a"], /r\/e#01 is waiting \(vendor reply\)/, "wf release r/e#01")
+    refused(oneTicket({ status: "waiting", status_note: "vendor reply" }), ["claim", "r/e#01", "--by", "a"], /r\/e#01 is waiting \(vendor reply\)/, 'wf resolve r/e#01 --gist "…" (a waiting ticket resolves as it is — no release, no claim)')
   })
 
   test("a resolved ticket", () => {

@@ -17,7 +17,10 @@ const FIX_FROM = {
         ? [`wf claim ${t.ref}`, `wf resolve ${t.ref} --out-of-scope --gist "…" (past the destination)`]
         : `wf claim ${t.ref}`,
   claimed: (t) => `wf release ${t.ref}`,
-  waiting: (t) => `wf release ${t.ref}`,
+  waiting: (t, verb) =>
+    verb === "claim"
+      ? [`wf resolve ${t.ref} --gist "…" (a waiting ticket resolves as it is — no release, no claim)`, `wf release ${t.ref} (to give it up instead)`]
+      : `wf release ${t.ref}`,
   resolved: (t) => `wf new ${t.effortKey} --type ${t.type ?? "<type>"} --title <title> (a resolved ticket stays resolved; open a follow-up)`,
 }
 
