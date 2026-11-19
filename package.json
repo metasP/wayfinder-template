@@ -13,7 +13,8 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "try-in-vault": "node scripts/try-in-vault.mjs"
   },
   "bin": {
     "wayfinder-template": "template/_tools/bootstrap.mjs"
