@@ -280,6 +280,7 @@ an old worktree, or a directory the app reused). So the `wf(claim)` commit also 
 
 - `Session: <full CLAUDE_CODE_SESSION_ID>`, when the variable is set.
 - `Cwd: <the directory wf ran in>` — Claude Code keeps a session's transcript under a folder named after it.
+- `Branch: <the branch checked out there>` — omitted when detached or outside git; `unmerged-branch` checks it.
 
 A retro finds every ticket's session from the vault alone:
 `git -C <vault> log --grep '^wf(claim): <repo>/<effort>#' --format='%s %(trailers:key=Session,valueonly,separator=)'`.
@@ -318,7 +319,7 @@ Map transitions (Q25):
 | `chart <repo/effort> --title "…" [--serial]` | Creates `map.md` in `draft` with the standard section skeleton (`--serial` adds `serial: true`). Refuses if the map exists. |
 | `map-status <repo/effort> active` | Requires a non-empty `## Destination`. |
 | `map-status <repo/effort> paused\|dropped --note "…" [--superseded-by <repo/effort>]` | `--note` is required. |
-| `map-status <repo/effort> done [--force]` | Requires no ticket in `open`/`claimed`/`waiting`, and no lint error in the effort unless `--force`. Prints a reminder to run `/retro`. |
+| `map-status <repo/effort> done [--force]` | Requires no ticket in `open`/`claimed`/`waiting`, and — unless `--force` — no lint error and no `unmerged-branch` in the effort. Prints a reminder to run `/retro`. |
 
 Every map transition clears or replaces `status_note`.
 
@@ -440,6 +441,11 @@ What every write verb does, in order:
 - A file in an effort's `issues/` and a `.md` under its `assets/` with the same name (`issue-asset-name-clash`): a bare
   `[[name]]` is ambiguous.
 - The same effort slug under two repo folders (`effort-in-two-repos`).
+- `resolved` ticket whose latest claim commit's `Branch:` (in the repository at or above its `Cwd:`) is not contained
+  in the branch the main checkout has out (`unmerged-branch`): approved work that never reached main. It reads git
+  outside the vault, so it is not part of core `lint()` — `wf lint`, the post-write lint and `map-status done` add it
+  (`_tools/lib/unmerged.mjs`). No finding for a claim without `Branch:`, main's own branch, a deleted branch, a branch whose commits main already has (`git cherry`: a local squash), no
+  repository, or an `## Answer` linking a pull request (`/pull/N` — the PR owns the merge).
 - An asset with `superseded_by:` that a live note still links (`superseded-asset-linked`) — live: a map outside its
   `## Decisions so far`/`## Retro`, an unresolved ticket, an asset not itself superseded; the successor is exempt.
 

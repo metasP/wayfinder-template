@@ -1,7 +1,7 @@
 // `wf map-status <repo/effort> active|paused|dropped|done [--note "…"] [--superseded-by <repo/effort>] [--force]`
 // (spec *Verbs*: map transitions; Q25). `active` needs a real `## Destination` (not empty, not chart's
 // placeholder); `paused` and `dropped` need `--note`; `done` needs no open, claimed or waiting ticket
-// and no lint error in the effort (`--force` closes it anyway), and reminds to run `/retro`. Every transition restamps `status_since` and replaces `status_note`
+// and no lint error nor unmerged branch (`unmerged.mjs`) in the effort (`--force` closes it anyway), and reminds to run `/retro`. Every transition restamps `status_since` and replaces `status_note`
 // with `--note` or clears it. `--superseded-by` (paused or dropped only) writes `superseded_by` as a
 // wikilink to the replacing map; any transition without it clears the key.
 import { effortRefArg, oneLineFlag } from "../args.mjs"
@@ -11,6 +11,7 @@ import { invariantError, usageError } from "../errors.mjs"
 import { effortKeyOf, report } from "../pipeline.mjs"
 import { mapArg, withNext } from "./map.mjs"
 import { noMap } from "./ticket.mjs"
+import { mergeCommand, unmergedTickets } from "../unmerged.mjs"
 
 const TARGETS = [...new Set(MAP_TRANSITIONS.filter((row) => row.verb === "map-status").map((row) => row.to))]
 const NEEDS_NOTE = MAP_FIELDS.status_note.required
@@ -63,6 +64,17 @@ const assertLintClean = (ctx, m) => {
   })
 }
 
+// A resolved ticket's branch that never reached main: the work is approved but not in the product yet.
+const assertMerged = (ctx, m) => {
+  const unmerged = unmergedTickets(ctx.vault, ctx.index, (t) => t.effortKey === m.key)
+  if (!unmerged.length) return
+  const count = `${unmerged.length} unmerged branch${unmerged.length === 1 ? "" : "es"}`
+  const list = unmerged.map((u) => `${u.ref} (${u.branch})`).join(", ")
+  throw invariantError(`${m.key} has ${count}: ${list} — merge it into main before the map is done`, {
+    fix: [...unmerged.map(mergeCommand), `wf map-status ${m.key} done --force (close it anyway)`],
+  })
+}
+
 const assertNothingPending = (index, m) => {
   const pending = index.efforts.get(m.key).tickets.filter((t) => isPending(index, t))
   if (!pending.length) return
@@ -105,6 +117,7 @@ export default {
     if (to === "active") assertDestination(m, ctx.textOf(m.path))
     if (to === "done") assertNothingPending(ctx.index, m)
     if (to === "done" && flags.force !== true) assertLintClean(ctx, m)
+    if (to === "done" && flags.force !== true) assertMerged(ctx, m)
     const supersededBy = successorArg(flags["superseded-by"], ctx, m, to)
     const fields = { status: to, status_since: ctx.today, status_note: flags.note, superseded_by: supersededBy }
     const text = editFrontmatter(ctx.textOf(m.path), Object.entries(fields))

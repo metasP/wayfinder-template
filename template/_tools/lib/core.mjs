@@ -852,7 +852,8 @@ export function ticketsBlockOf(body) {
 const SEVERITY_ORDER = Object.freeze({ error: 0, warn: 1 })
 
 const finding = (severity, rule, ref, message, fix = null) => ({ severity, rule, ref, message, fix })
-const byFinding = (a, b) =>
+/** Finding order: errors first, then by ref, rule and message. */
+export const byFinding = (a, b) =>
   SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] ||
   compare(a.ref, b.ref) ||
   compare(a.rule, b.rule) ||

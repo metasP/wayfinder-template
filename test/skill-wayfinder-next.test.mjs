@@ -22,6 +22,12 @@ describe("wayfinder-next skill", () => {
     assertCommandsParse(commands)
   })
 
+  // stylized-set-kit retro: chips resolved without merging, and the user had to say "merge into main" each time.
+  test("every chip prompt makes the session own the merge into main, before it resolves", () => {
+    assert.match(SKILL, /^The merge is yours: once the user approves the work, rebase this branch onto main and fast-forward main[^\n]*before you resolve/m)
+    assert.match(SKILL, /^การ merge เป็นหน้าที่ของ session นี้:[^\n]*ก่อน resolve/m)
+  })
+
   // The desktop harness dropped spawn_task; an "offer" start shows a Do it here button that turned a
   // planning session into a build session, and an app-picked worktree name hid the session from a retro.
   test("starts sessions with start_session user_asked, on a branch named after the ticket", () => {
@@ -38,7 +44,7 @@ describe("wayfinder-next skill", () => {
   test("checks each started session's folder and branch for <effort>-<NN>, and warns", () => {
     assert.match(SKILL, /\*\*Check where each session landed\.\*\*[^\n]*mcp__ccd_session_mgmt__list_sessions` `\{"linked": true\}`/)
     assert.match(SKILL, /Both should contain `<effort>-<NN>`[^\n]*\*\*warn\*\*/)
-    assert.match(SKILL, /`Session:` \/ `Cwd:` trailers/)
+    assert.match(SKILL, /`Session:` \/ `Cwd:` \/ `Branch:` trailers/)
   })
 
   test("leaves runs to bump-runs and ranking to frontier", () => {
