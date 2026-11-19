@@ -155,6 +155,7 @@ Check **every** requested ticket against the frontier from the call above (run i
 | **resolved** | status `resolved` | already done; a chip re-opens settled work |
 | **waiting** | status `waiting` | it is parked on something outside our hands (its `status_note` says what); a session can't finish it today |
 | **map ไม่ active** | status `open`, no ⛔, yet not in the frontier — the map's `status:` is not `active` | the map is paused / not yet charted / dropped **on purpose** — its tickets are off the Dashboard, and a chip drags one back into play behind that decision |
+| **PR ไม่ merge** | any status — the ticket's text or the map's `Notes` section names a pull request (`#NN`, `/pull/NN`) the ticket builds on, and `gh pr view NN --json state` says `OPEN` | the session builds on code main doesn't have: it copies the PR's files into the vault or the installed skills by hand, and the next `bootstrap --yes` from main overwrites them (merge-route-fixes#03). A PR whose `state` is `MERGED` or `CLOSED`, or a `gh` that can't answer, is no flag — say which in the report |
 | **no file** | no line for NN | there is no ticket NN — a new ticket comes from [`wf new`](#fog-ticket--wf-new), never from a number typed ahead. Always dropped, never offered under "Spawn all anyway": the session would have no file to open |
 
 When a line contradicts the frontier, the block has drifted: `wf lint --fix <repo/effort>` regenerates it.
@@ -172,6 +173,13 @@ Respect the answer literally. "Spawn all anyway" is a real choice — the user m
 
 - `en`: `⚠️ This ticket is blocked by 05, which is not resolved — if it is still open when you start, stop and report; don't guess 05's answer`
 - `th`: `⚠️ ใบนี้ถูก block ด้วย 05 ที่ยังไม่ปิด — ถ้ายังไม่ปิดตอนเริ่ม ให้หยุดแล้วรายงาน อย่าเดาคำตอบของ 05`
+
+and for a ticket that builds on an unmerged PR, name it — `merge #NN first` — so neither the chip nor the user finds out at the next `bootstrap --yes`:
+
+- `en`: `⚠️ This ticket builds on PR #73, which is not merged — merge #73 first (or stop and report); never copy its files into the vault or the installed skills by hand`
+- `th`: `⚠️ ใบนี้ต่อยอดบน PR #73 ที่ยังไม่ merge — merge #73 ก่อน (หรือหยุดแล้วรายงาน) · ห้ามก็อบไฟล์ของ PR ลง vault หรือสกิลที่ติดตั้งเอง`
+
+When the map's `Notes` section doesn't say it yet, add the line `- ใบ <NN> ต่อยอดบน PR #<N> — merge #<N> ก่อน` there (Write/Edit, below the frontmatter), so the next run of this skill sees it too.
 
 ## Workflow
 

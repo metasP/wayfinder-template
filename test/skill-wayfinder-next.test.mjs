@@ -50,6 +50,16 @@ describe("wayfinder-next skill", () => {
     assert.match(notes, /\*\*Approval happens in the chip\.\*\*[^\n]*never relay/, "the starting session may still relay approvals")
   })
 
+  // merge-route-fixes#03: tickets built on unmerged PR #73, copied its files into the vault by hand, and
+  // `bootstrap --yes` from main wiped them; nobody had said "merge #73 first".
+  test("a ticket that builds on an open PR is flagged, and its chip and the map's Notes say merge #NN first", () => {
+    const validate = SKILL.slice(SKILL.indexOf("## Validate before spawning"), SKILL.indexOf("## Workflow"))
+    assert.match(validate, /^\| \*\*PR ไม่ merge\*\* \|[^\n]*gh pr view NN --json state[^\n]*OPEN/m)
+    assert.match(validate, /- `en`: `⚠️ This ticket builds on PR #73, which is not merged — merge #73 first/)
+    assert.match(validate, /- `th`: `⚠️ ใบนี้ต่อยอดบน PR #73 ที่ยังไม่ merge — merge #73 ก่อน/)
+    assert.match(validate, /`Notes` section doesn't say it yet, add the line `- ใบ <NN> ต่อยอดบน PR #<N> — merge #<N> ก่อน`/)
+  })
+
   // parallel-run-fixes#03: every set-kit session spent 4–20 commands re-reading the map, the ticket and the README,
   // guessed the claim ref wrong, and opened with `echo ======` that the zsh hook refused.
   test("the chip prompt carries the ticket, the map's decisions and a wf cheat sheet", () => {

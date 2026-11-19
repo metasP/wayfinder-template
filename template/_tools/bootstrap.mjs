@@ -27,6 +27,8 @@
 //     (บน vault ที่ติดตั้งแล้ว = dry run ของ update · บนเครื่องเปล่าที่ยังไม่ตอบ 5 ข้อ = คำถาม 5 ข้อ)
 //   update ลงมือเฉพาะเมื่อมี `--yes` (ไม่มีทั้งสองธง = แผน แล้วออก code 2) — มัน migrate โน้ตด้วย
 //     `wf migrate` และแก้ ~/.claude/settings.json + CLAUDE.md · แผนพิมพ์ diff ของทั้งหมด
+//   update ไม่ทับของที่มีแต่ใน vault (แก้ใน vault/สกิลเอง หรือมาจาก commit ที่ checkout นี้ไม่มี) — หยุดก่อน
+//     เขียนอะไรทั้งนั้น · `--discard-vault-changes` = ตั้งใจทิ้งของพวกนั้น (lib/bootstrap/vault-only.mjs)
 //
 // `--wire-hook` / `--wire-memory` ยัง opt-in เหมือนเดิม (ใช้กับ vault ที่ติดตั้งอยู่แล้ว)
 // — ในโหมด install ทั้งสองชิ้นมาจากคำตอบข้อ 2 (`hook` / `memory`) แทน
@@ -53,6 +55,7 @@ import { readClaudeFiles, wireClaudeFiles } from './lib/bootstrap/claude.mjs'
 import { wireObsidian } from './lib/bootstrap/obsidian.mjs'
 import { finishPlan, fingerprint } from './lib/bootstrap/plan-check.mjs'
 import { pruneDropped } from './lib/bootstrap/prune.mjs'
+import { templateLineage, vaultOnlyChanges, vaultOnlyMessage } from './lib/bootstrap/vault-only.mjs'
 import { findRepo, isRepoRoot } from './lib/bootstrap/find-repo.mjs'
 import { die, log } from './lib/bootstrap/say.mjs'
 
@@ -416,6 +419,7 @@ const renderVault = (rel, text, isSkill = false) => {
 }
 
 // ── 4b. copy ────────────────────────────────────────────────────────────────
+// (4a2 — ของที่มีแต่ใน vault — อยู่ท้ายนิยามของ `place` ข้างล่าง เพราะใช้ `renderedBuf` ตัวเดียวกัน)
 const files = {}          // managed: rel → sha ของไฟล์ที่เขียนลงไปจริง
 const seeded = {}         // seed-once: rel → sha ตอน install (update ไม่แตะ)
 const rendered = []
@@ -434,14 +438,18 @@ const stats = { written: 0, skipped: 0, seeded: 0, keptSeed: 0, localEdits: [], 
 //     ของโฟลเดอร์อื่นทิ้ง
 const mustWrite = (rel, isSkill) => isSkill || rel.startsWith('_tools/')
 
-const place = async (src, dest, rel, { isSkill = false, seed = false } = {}) => {
+// ไบต์ที่จะวางจริง (เรนเดอร์แล้ว) — ตัวเดียวที่ทั้ง `place` และตัวเช็คของที่มีแต่ใน vault (4a2) ใช้
+const renderedBuf = async (src, rel, isSkill) => {
   const raw = await readFile(src)
-  let buf = raw
-  if (isText(raw)) {
-    const text = raw.toString('utf8')
-    const out = renderVault(rel, text, isSkill)
-    if (out !== text) { buf = Buffer.from(out, 'utf8'); rendered.push(rel) }
-  }
+  if (!isText(raw)) return { buf: raw, changed: false }
+  const text = raw.toString('utf8')
+  const out = renderVault(rel, text, isSkill)
+  return out === text ? { buf: raw, changed: false } : { buf: Buffer.from(out, 'utf8'), changed: true }
+}
+
+const place = async (src, dest, rel, { isSkill = false, seed = false } = {}) => {
+  const { buf, changed } = await renderedBuf(src, rel, isSkill)
+  if (changed) rendered.push(rel)
   const digest = sha(buf)
   const already = await readFile(dest).then((b) => sha(b), () => null)
 
@@ -468,6 +476,41 @@ const place = async (src, dest, rel, { isSkill = false, seed = false } = {}) => 
   if (rel.endsWith('.sh')) await chmod(dest, 0o755)
   stats.written++
   return digest
+}
+
+// ── 4a2. ของที่มีแต่ใน vault — update หยุด `--yes` ก่อนทับ/ลบ (lib/bootstrap/vault-only.mjs) ──────
+// ไฟล์ที่ update นี้จะทับ (template ยังมี) หรือลบ (template เลิก ship แล้ว — ตามเงื่อนไขของ 4d)
+const shaOf = (path) => readFile(path).then(sha, () => null)
+const updateTouches = async () => {
+  const entries = []
+  for (const rel of wanted) {
+    if (isSeed(rel)) continue
+    const { buf } = await renderedBuf(join(SRC, srcOf(rel)), rel, false)
+    entries.push({ shown: rel, now: await shaOf(join(TARGET, rel)), next: sha(buf), prev: oldManifest.files?.[rel] })
+  }
+  for (const [rel, prev] of Object.entries(oldManifest.files ?? {}))
+    if (!wanted.includes(rel) && !isSeed(rel) && parts.has(partOf(rel)))
+      entries.push({ shown: rel, now: await shaOf(join(TARGET, rel)), next: null, prev })
+  if (!parts.has('skills')) return entries
+  for (const rel of skillFiles) {
+    const { buf } = await renderedBuf(join(SKILLS_SRC, rel), rel, true)
+    entries.push({ shown: `skills/${rel}`, now: await shaOf(skillDest(rel)), next: sha(buf), prev: oldManifest.skills?.[rel] })
+  }
+  for (const [rel, prev] of Object.entries(oldManifest.skills ?? {}))
+    if (!skillFiles.includes(rel)) entries.push({ shown: `skills/${rel}`, now: await shaOf(skillDest(rel)), next: null, prev })
+  return entries
+}
+if (MODE === 'update') {
+  const lineage = await templateLineage({ run, repo: REPO, installed: oldManifest.template_sha, head: templateSha })
+  const vaultOnly = vaultOnlyChanges({ entries: await updateTouches(), diverged: lineage !== null })
+  if (vaultOnly.length) {
+    const discard = has('discard-vault-changes')
+    const onTrial = await exists(join(TARGET, '.git/wayfinder-try'))
+    const heading = discard ? `⚠️  --discard-vault-changes: ${WILL}ทิ้งของพวกนี้` : PLAN ? '⚠️  --yes จะหยุดตรงนี้' : 'หยุดก่อนเขียนอะไรทั้งนั้น'
+    const message = vaultOnlyMessage({ files: vaultOnly, lineage, headLabel: templateLabel, onTrial, heading })
+    if (!PLAN && !discard) die(message, 2)
+    log(`  ${message}`)
+  }
 }
 
 // ข้อ 9 ของ map: ship `example-repo/` **ตอน install เท่านั้น** เพื่อให้ Dashboard ไม่ว่างวันแรก

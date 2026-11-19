@@ -251,6 +251,13 @@ node template/_tools/bootstrap.mjs --vault ~/Documents/Git/wayfinder-vault --yes
 (`wf migrate`) and rewrites parts of `~/.claude/` (below), so you read the plan first. Run
 without `--plan` or `--yes`, an update prints the plan, writes nothing, and exits 2.
 
+**An update never overwrites a change only the vault has.** When a file it would overwrite or
+remove was edited in the vault or the installed skills after the last install — or the last install
+came from a commit this checkout doesn't have, such as an unmerged PR branch — `--yes` stops before
+writing anything and names each file (`--plan` shows the same list). Move the edit into the template
+and merge it first (or run from a checkout that has that commit); `--discard-vault-changes` drops
+those changes on purpose.
+
 > **Coming from 0.4.x?** 0.5.0 is a breaking release: follow
 > [Upgrading from 0.4.x](#upgrading-from-04x) below, in order.
 
