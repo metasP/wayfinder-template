@@ -49,6 +49,7 @@ exit 0 = ผ่านหมด · ไม่ต้องเปิด Obsidian
 · ตรวจ hook (frontmatter guard บน PreToolUse · autocommit บน PostToolUse `Write|Edit` · ฟ้องเส้นรุ่นเก่าที่ค้าง)
 · ฟ้อง `wf-autocommit-failures.log` ใน git dir ของ vault จนกว่าจะล้าง · และ `vault_schema` ที่เก่ากว่า
 `wf` (⇒ รัน `wf migrate`) · `--json` พิมพ์ผลเป็น JSON
+· `--template <wayfinder-template>` เทียบไฟล์ที่ template เป็นเจ้าของกับ repo แล้วฟ้องไฟล์ที่ต่าง (README § ไฟล์ที่ template เป็นเจ้าของ)
 
 **ข้อที่เครื่องตรวจแทนไม่ได้ ต้องเปิด Obsidian ดูเอง** (`doctor.mjs` พิมพ์รายการเต็มไว้ท้ายรายงาน) — สองข้อหลัก:
 

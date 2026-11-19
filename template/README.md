@@ -12,6 +12,34 @@ map ที่เก็บใน git worktree ของ repo งานหาย�
 vault นี้อยู่นอก repo และมี git ของตัวเอง → map ไม่ผูกชะตากับ branch/worktree ของ repo ใด ๆ
 และไม่มีทางหลุดเข้าไปใน PR ของ repo งาน
 
+## ไฟล์ที่ template เป็นเจ้าของ
+
+จะแก้ `wf` · doctor · หน้า · README นี้ หรือสกิล `wayfinder-next` — **อ่านหัวข้อนี้ก่อน** ไฟล์พวกนี้ไม่ใช่ของ vault:
+ต้นฉบับอยู่ใน repo **wayfinder-template** และการอัปเดต template ครั้งถัดไป **ทับทั้งไฟล์** ⇒ แก้ตรงนี้ = หาย
+
+| ใน vault / เครื่อง | ต้นฉบับใน repo wayfinder-template |
+|---|---|
+| `README.md` (ไฟล์นี้) · `SETUP.md` · `Wayfinder Dashboard.md` · `Wayfinder Efforts.md` · `Wayfinder Effort Tickets.md` | `template/<ชื่อเดียวกัน>` |
+| `_tools/**` (ยกเว้น `_tools/harness-kit/` ที่เป็นของคุณ) | `template/_tools/**` |
+| `~/.claude/skills/wayfinder-next/` (สกิลที่ติดตั้ง — ไม่มี git ให้กู้) | `skills/wayfinder-next/` |
+
+ของคุณที่ update ไม่แตะ: `<repo>/<effort>/` · `Wayfinder Config.md` · `Wayfinder Picks.md` (หัวข้อ "ของคุณ ที่การอัปเดตไม่แตะ" ใน SETUP.md)
+
+**ลำดับที่ถูก**
+
+1. แก้ใน worktree ของ repo wayfinder-template (test อยู่ใน `test/`) → PR → merge เข้า `main`
+2. ลงของใหม่: vault ที่มี `.wayfinder-template.json` ⇒ อัปเดตด้วย `bootstrap.mjs` (หัวข้อ "อัปเดต" ใน SETUP.md)
+   · vault ที่ไม่มี ⇒ copy ไฟล์ที่ต่างทีละไฟล์ แทนโทเคน path ของ vault (ตัวที่ installer เรนเดอร์ — ดูจาก diff) ด้วย path จริง
+   แล้ว commit ใน vault ระบุ commit ต้นทาง
+3. เช็คว่าไม่เหลือที่ต่าง — doctor §10 เทียบทุกไฟล์ข้างบน (หลังเรนเดอร์ path แบบเดียวกับ installer) แล้วฟ้องทีละไฟล์:
+
+```bash
+node <vault>/_tools/doctor.mjs --template <ราก repo wayfinder-template>
+```
+
+(ไม่ใส่ `--template` ⇒ ใช้ `source_repo` ของ `.wayfinder-template.json` · หาไม่เจอ ⇒ ⚠️ บอกวิธีชี้)
+⇒ ❌ ที่ §10 = มีคนแก้ใน vault/สกิลตรง ๆ หรือ PR ที่ยังไม่ merge — ย้ายเข้า template ก่อน update รอบหน้า
+
 ## โครงสร้าง
 
 ```
@@ -26,7 +54,7 @@ wayfinder-vault/
 ├── _tools/
 │   ├── wf.mjs                  ← CLI ตัวเดียวที่เปลี่ยนสถานะของ map/ticket (ดู § Wayfinding operations)
 │   ├── bootstrap.mjs           ← ติดตั้ง/อัปเดต vault (ดู `INSTALL.md` ของ repo ต้นฉบับ)
-│   ├── doctor.mjs              ← ตรวจสุขภาพ vault + ลินต์ ticket ทุกใบ
+│   ├── doctor.mjs              ← ตรวจสุขภาพ vault + ลินต์ ticket ทุกใบ + เทียบกับ template (`--template`)
 │   ├── lib/core.mjs            ← read model ตัวเดียวที่ `wf` กับทุกหน้าใช้ร่วมกัน (frontier · lint · …)
 │   ├── views/wf-core.js        ← loader กลางของ Dataview: หน้าไหนจะใช้ core ต้องโหลดผ่านตัวนี้
 │   ├── views/<หน้า>.js         ← โค้ดของแต่ละหน้า (dashboard · efforts · effort-tickets · picks) — บล็อกในโน้ต
