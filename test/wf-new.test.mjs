@@ -190,8 +190,19 @@ describe("wf resolve", () => {
 
   test("waiting → resolved", () => {
     const vault = vaultWith(effort([withBody(ticket("r/e/issues/01-a.md", { status: "waiting", status_note: "vendor" }), ANSWERED)]))
-    assert.equal(run(vault, ["resolve", "r/e#01", "--gist", "g"]).code, 0)
+    const r = run(vault, ["resolve", "r/e#01", "--gist", "g"])
+    assert.equal(r.code, 0, r.stderr)
     assert.match(frontmatterOf(vault, "r/e/issues/01-a.md"), /^status: resolved$/m)
+    assert.doesNotMatch(r.stdout + r.stderr, /release/, "a waiting ticket needs no release or claim first")
+  })
+
+  test("prints one short line, without the gist, so a lint warning after it stays in view", () => {
+    const gist = "a long decision ".repeat(20).trim()
+    const vault = vaultWith(effort([withBody(ticket("r/e/issues/01-a.md", { status: "claimed", claimed_by: "me" }), ANSWERED)]))
+    const r = run(vault, ["resolve", "r/e#01", "--gist", gist])
+    assert.equal(r.code, 0, r.stderr)
+    assert.match(r.stdout, /^resolved r\/e#01 → Decisions so far \(commit [0-9a-f]{7}\)\n$/)
+    assert.match(r.stderr, /^wf: warning: lint warn map-finished r\/e: .*\(fix: wf map-status r\/e done\)$/m)
   })
 
   test("--out-of-scope: open → resolved, the line goes under ## Out of scope", () => {

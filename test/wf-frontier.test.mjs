@@ -59,6 +59,12 @@ describe("wf frontier", () => {
     assert.deepEqual(refsOf(wf(makeVault({ notes: twoEfforts() }), ["frontier", "--json"])), expected)
   })
 
+  test("--effort keeps only that effort's tickets, in the order --from would give", () => {
+    const vault = makeVault({ notes: twoEfforts(), picks: { sort: ["same_effort", "nn desc"] } })
+    assert.deepEqual(refsOf(wf(vault, ["frontier", "--effort", "r/a", "--json"])), ["r/a#02", "r/a#01"])
+    assert.deepEqual(refsOf(wf(vault, ["frontier", "--effort", "[[r/b/map]]", "--json"])), ["r/b#01"])
+  })
+
   test("--from takes the effort as repo/effort, a ticket ref, a vault path or a wikilink", () => {
     const vault = makeVault({ notes: twoEfforts(), picks: { sort: ["same_effort"] } })
     for (const from of ["r/b", "r/b#01", "r/b/map.md", `${vault}/r/b/issues/01-b1.md`, "[[r/b/map]]", "[[r/b/issues/01-b1]]"]) {

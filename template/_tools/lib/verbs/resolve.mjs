@@ -49,7 +49,7 @@ const assertAnswered = (t, text) => {
 
 export default {
   name: "resolve",
-  summary: "claimed/waiting → resolved, the decision added to the map (--out-of-scope: open/claimed)",
+  summary: "claimed/waiting → resolved, the decision added to the map; a waiting ticket needs no release or claim first (--out-of-scope: open/claimed)",
   usage: 'wf resolve <ref> --gist "…" [--answer-file <file>] [--out-of-scope] [--json]',
   flags: { gist: "string", "answer-file": "string", "out-of-scope": "boolean" },
   minPositionals: 1,
@@ -76,5 +76,5 @@ export default {
     const data = { ref: t.ref, status: "resolved", status_since: ctx.today, out_of_scope: outOfScope, gist: flags.gist, section, answer_written: answer !== undefined }
     return { ref: t.ref, edits, data }
   },
-  report: (outcome) => report(outcome, `resolved ${outcome.ref} — ${outcome.data.section}: ${outcome.data.gist}`),
+  report: (outcome) => report(outcome, `resolved ${outcome.ref} → ${outcome.data.section}`),
 }

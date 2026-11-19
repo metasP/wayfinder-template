@@ -14,7 +14,7 @@ const commands = wfCommands(SKILL)
 
 describe("wayfinder-next skill", () => {
   test("runs wf frontier --json and wf bump-runs by absolute path", () => {
-    assert.match(SKILL, /node __VAULT__\/_tools\/wf\.mjs frontier --from \S+ --json/)
+    assert.match(SKILL, /node __VAULT__\/_tools\/wf\.mjs frontier --effort \S+ --json/)
     assert.match(SKILL, /node __VAULT__\/_tools\/wf\.mjs bump-runs \S+ --count \S+ --json/)
   })
 
@@ -140,7 +140,7 @@ describe("wayfinder-next skill", () => {
     )
     const issues = () => readdirSync(join(vault, "r/e/issues")).sort()
     const before = issues()
-    const frontier = wf(vault, ["frontier", "--from", "r/e", "--json"])
+    const frontier = wf(vault, ["frontier", "--effort", "r/e", "--json"])
     assert.equal(frontier.code, 0, frontier.stderr)
     assert.deepEqual(frontier.json.data.tickets, [], "an all-resolved map has no frontier row")
 
@@ -171,7 +171,7 @@ describe("wayfinder-next skill", () => {
     const vault = makeVault({
       notes: [map("r/e/map.md"), ticket("r/e/issues/01-one.md", { target_repo: "lib" }), ticket("r/e/issues/02-two.md")],
     })
-    const frontier = wf(vault, ["frontier", "--from", "r/e", "--json"])
+    const frontier = wf(vault, ["frontier", "--effort", "r/e", "--json"])
     assert.equal(frontier.code, 0, frontier.stderr)
     for (const key of ["ref", "repo", "effort", "nn", "type", "title", "target_repo"])
       assert.ok(key in frontier.json.data.tickets[0], `frontier rows have no ${key}`)
