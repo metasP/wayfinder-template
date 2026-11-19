@@ -182,6 +182,9 @@ blockers:
 status_note: "รอ example-repo/production รับ fix ก่อน"   # มีเมื่อ waiting เท่านั้น
 wait_until: 2026-09-15      # ไม่บังคับ — เลยวันแล้ว lint เตือน
 target_repo: example-lib    # ไม่บังคับ — ใบที่ไปแก้ repo อื่น
+touches:                    # ไม่บังคับ — path/glob ที่ใบนี้เขียน (นับจาก root ของ repo) ⇒ frontier จัดรอบให้
+  - src/build/**
+  - README.md
 ---
 
 ## Question
@@ -199,6 +202,7 @@ target_repo: example-lib    # ไม่บังคับ — ใบที่ไ
 | `status` · `status_since` | ทุก verb ที่เปลี่ยนสถานะ |
 | `blockers` | `--blocker` ของ `wf new` · `wf block` |
 | `claimed_by` | `wf claim` · ล้างโดย `wf release` / `wf resolve` |
+| `touches` | `--touches` ของ `wf new` · `wf touches` (ได้ทุกสถานะ) |
 | `status_note` · `wait_until` | `wf wait` · ล้างเมื่อใบออกจาก `waiting` |
 
 `blockers` เป็น **wikilink** ไม่ใช่เลข — ฟิลด์เดียวได้สองอย่าง: Dataview deref `b.status` ข้ามไฟล์ได้
@@ -251,16 +255,17 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
 | `wf map-status <repo/effort> paused --note "…"` | map: อื่น ๆ → `paused` | `--note` บังคับ · `--superseded-by <repo/effort>` ได้ |
 | `wf map-status <repo/effort> dropped --note "…"` | map: อื่น ๆ → `dropped` | `--note` บังคับ · `--superseded-by <repo/effort>` ได้ |
 | `wf map-status <repo/effort> done` | map: อื่น ๆ → `done` | ไม่มีใบ `open`/`claimed`/`waiting` ค้าง · lint ของ effort ไม่มี error (`--force` ข้าม) · คืน `retro_prompt` ให้เปิด side session ของ `/retro` |
-| `wf new <repo/effort> --type research\|prototype\|grilling\|task --title "…"` | ticket: — → `open` | map ต้องไม่ `done`/`dropped` (`draft`/`active`/`paused` รับใบใหม่ได้) · `NN` = เลขสูงสุด + 1 จองใต้ lock ด้วย exclusive create ⇒ สอง session ไม่มีทางได้เลขเดียวกัน · เขียนโครง Question/Answer (`--question "…"` หรือ stdin) · `--blocker ref` ต้องชี้ใบที่มีจริง · `--target-repo R` ได้ · `--type` รับตัวอักษร `R`/`P`/`G`/`T` แบบชื่อ chip ด้วย |
+| `wf new <repo/effort> --type research\|prototype\|grilling\|task --title "…"` | ticket: — → `open` | map ต้องไม่ `done`/`dropped` (`draft`/`active`/`paused` รับใบใหม่ได้) · `NN` = เลขสูงสุด + 1 จองใต้ lock ด้วย exclusive create ⇒ สอง session ไม่มีทางได้เลขเดียวกัน · เขียนโครง Question/Answer (`--question "…"` หรือ stdin) · `--blocker ref` ต้องชี้ใบที่มีจริง · `--target-repo R` ได้ · `--touches <glob>` (ซ้ำได้) เขียน `touches:` · `--type` รับตัวอักษร `R`/`P`/`G`/`T` แบบชื่อ chip ด้วย |
 | `wf claim <ref>` | `open` → `claimed` | อ่านใบใหม่ใต้ lock ⇒ สอง session claim ใบเดียวกันไม่ได้ · ใบต้องไม่ติด blocker และ map ต้อง `active` · ประทับ `claimed_by` (`--by name` · ไม่งั้นชื่อ branch ของ worktree ที่เรียก · ไม่งั้น session id) · map `serial: true` ⇒ ไม่ยอมเมื่อใบอื่นใน map `claimed` อยู่ (`--force` ข้ามได้) · commit มี trailer `Session:` (session id เต็ม) · `Cwd:` · `Branch:` (branch ที่ checkout อยู่ — `unmerged-branch` ใช้) ⇒ retro หา session ของทุกใบได้ด้วย `git log --grep '^wf(claim): <repo>/<effort>#' --format='%s %(trailers:key=Session,valueonly,separator=)'` |
 | `wf release <ref>` | `claimed`/`waiting` → `open` | ล้าง `claimed_by` · `status_note` · `wait_until` · ปล่อยได้เฉพาะใบที่ `claimed_by` ตรงกับผู้เรียก (หาชื่อแบบเดียวกับ `claim` หรือ `--by`) · ใบของคนอื่นต้อง `--force` · ใช้เมื่อเลิกถือหรือเลิกรอ **ไม่ใช่** ขั้นก่อน resolve — ใบ `waiting` ที่ของนอกมาแล้ว ⇒ `wf resolve` ได้ตรง ๆ |
 | `wf wait <ref> --note "…"` | `open`/`claimed` → `waiting` | ต้องบอกว่ารออะไร · `--until YYYY-MM-DD` ⇒ lint เตือนเมื่อเลยวัน · `claimed_by` คงอยู่ — คนเดิมยังถือใบ · ใบ `claimed` ของคนอื่นต้อง `--force` |
 | `wf resolve <ref> --gist "…"` | `claimed`/`waiting` → `resolved` | ใบ `waiting` resolve ได้ตรง ๆ ไม่ต้อง `release` → `claim` ก่อน · `## Answer` ต้องไม่ว่างและไม่ใช่ placeholder · ต่อท้าย `## Decisions so far` หนึ่งบรรทัด `- [[NN-slug]]: ‹gist›` โดยอ่าน map ใหม่ใต้ lock ⇒ session ที่ resolve พร้อมกันไม่เขียนทับกัน · `--answer-file <file>` เขียน `## Answer` ของใบใน main checkout จากไฟล์ก่อน ในคอมมิตเดียวกัน (ไฟล์ที่มี `## Answer` ⇒ เอาแค่ section นั้น) |
 | `wf resolve <ref> --out-of-scope --gist "…"` | `open`/`claimed` → `resolved` | ใบที่เลย Destination · ต่อท้าย `## Out of scope` แทน `## Decisions so far` |
 | `wf block <ref> <blocker-ref>` | — | เพิ่ม (หรือ `--remove`) blocker หนึ่งเส้น · ไม่ยอมถ้าเกิดวง |
+| `wf touches <ref> <glob>…` | — | แทน `touches:` ทั้งรายการ (path/glob นับจาก root ของ repo ของใบ · ห้าม absolute หรือ `..`) · `--none` ⇒ `touches: []` (เขียนแค่ `## Answer`) · `--clear` ⇒ ลบคีย์ · ได้ทุกสถานะ · ค่าเดิม ⇒ ไม่เขียน |
 | `wf bump-runs <repo/effort>` | — | จองเลขรอบถัดไป (`--count k` ⇒ `k` เลข) ใต้ lock แล้วพิมพ์ช่วงนั้น |
 | `wf serial <repo/effort> on` · `off` | — | `on` เขียน `serial: true` ลง map · `off` ลบคีย์ · ได้ทุกสถานะของ map · ไม่ยอมถ้าเป็นอยู่แล้ว |
-| `wf frontier` | — (อ่านอย่างเดียว) | ใบที่หยิบได้ เรียงตาม [[Wayfinder Picks]] · `--repo R` (repo ต้นทางหรือ `target_repo`) กรอง · `--effort repo/effort` เหลือแค่ใบของ map นั้น · `--from repo/effort` แค่เรียงใบของ effort นั้นขึ้นก่อน ไม่ได้กรอง (`same_effort`) ⇒ ทำงานใน map เดียวใช้ `--effort` เสมอ ไม่งั้นได้ใบของทุก map |
+| `wf frontier` | — (อ่านอย่างเดียว) | ใบที่หยิบได้ เรียงตาม [[Wayfinder Picks]] · `--repo R` (repo ต้นทางหรือ `target_repo`) กรอง · `--effort repo/effort` เหลือแค่ใบของ map นั้น · `--from repo/effort` แค่เรียงใบของ effort นั้นขึ้นก่อน ไม่ได้กรอง (`same_effort`) ⇒ ทำงานใน map เดียวใช้ `--effort` เสมอ ไม่งั้นได้ใบของทุก map · **แบ่งรอบ**: ทุกแถวมี `round` — รอบ 1 = ปั่นพร้อมกันได้เลย ข้างใบที่ `claimed` อยู่ · ใบที่ชนกับใบที่อยู่ก่อนตามลำดับ (หรือกับใบ `claimed`) ไปรอบหลัง พร้อม `collides_with` บอกว่าชนใบไหน · ชน = repo เดียวกัน (`target_repo` ถ้ามี) และ `touches:` ทับกัน (directory คลุมทุกอย่างข้างใต้) · ไม่มี `touches:` ⇒ `task`/`prototype` ถือทั้ง repo · `research`/`grilling` ไม่ชนใคร · map `serial` ⇒ รอบละใบ |
 | `wf lint` | — (อ่านอย่างเดียว) | findings ทั้ง vault หรือเฉพาะ effort ที่ระบุ · `--fix` สร้าง block ที่ derive ได้ใหม่ ไม่เปลี่ยนสถานะ |
 | `wf show <ref>` | — (อ่านอย่างเดียว) | ใบเดียว (frontmatter + body ตามไฟล์) + `## Destination` · `## Notes` ของ map ทั้งหัวข้อ + บรรทัดอื่นใน map ที่มี wikilink ถึงใบนี้ (`## Decisions so far` · `## Not yet specified` …) · ข้าม `## Tickets` · ใช้แทน `cat` map ทั้งไฟล์ — แต่ยังต้อง Read ไฟล์ก่อน Edit |
 | `wf migrate` | vault schema 1 → 2 | ค่าเริ่มต้นแค่พิมพ์ diff · `--yes` เขียนทั้งหมดเป็น commit เดียว |

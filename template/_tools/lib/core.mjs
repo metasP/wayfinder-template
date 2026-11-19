@@ -36,6 +36,7 @@ export const TICKET_FIELDS = deepFreeze({
   wait_until: { required: false, shape: "scalar", format: "date" },
   claimed_by: { required: ["claimed"], shape: "scalar" },
   target_repo: { required: false, shape: "scalar" },
+  touches: { required: false, shape: "list" },
 })
 
 export const MAP_FIELDS = deepFreeze({
@@ -263,6 +264,8 @@ const ticketRecord = (id, note) => {
     waitUntil: isoDate(fm.wait_until),
     claimedBy: optionalString(fm.claimed_by),
     targetRepo: optionalString(fm.target_repo),
+    // The paths or globs the ticket writes; null when it has no `touches:` key (lib/rounds.mjs).
+    touches: hasOwn(fm, "touches") ? asList(fm.touches).map((p) => String(p).trim()).filter(Boolean) : null,
     // The `## Answer` text when the caller read the body: null = no such section, undefined = not read.
     answer: note.answer,
     links: note.links ?? [],

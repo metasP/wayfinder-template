@@ -104,6 +104,12 @@ describe("wayfinder-next skill", () => {
     assert.match(SKILL, /\*\*The session that started the chips reports changes only\.\*\*[^\n]*never write "still waiting/)
   })
 
+  test("takes the batch from the frontier's round 1 instead of judging collisions itself", () => {
+    assert.match(SKILL, /\*\*The batch is the first 3 rows with `round: 1`\*\*/)
+    assert.match(SKILL, /`collides_with`/)
+    assert.match(SKILL, /wf\.mjs touches <ref> <glob>…/)
+  })
+
   test("leaves runs to bump-runs and ranking to frontier", () => {
     assert.doesNotMatch(SKILL, /\bruns:/, "the skill still edits runs: itself")
     assert.doesNotMatch(SKILL, /urgen|unblocks the most|lowest[- ]number|tie-break|parallel-safe/i, "the skill still ranks")
@@ -173,7 +179,7 @@ describe("wayfinder-next skill", () => {
     })
     const frontier = wf(vault, ["frontier", "--effort", "r/e", "--json"])
     assert.equal(frontier.code, 0, frontier.stderr)
-    for (const key of ["ref", "repo", "effort", "nn", "type", "title", "target_repo"])
+    for (const key of ["ref", "repo", "effort", "nn", "type", "title", "target_repo", "round", "touches", "collides_with"])
       assert.ok(key in frontier.json.data.tickets[0], `frontier rows have no ${key}`)
 
     const bump = wf(vault, ["bump-runs", "r/e", "--count", "2", "--json"])

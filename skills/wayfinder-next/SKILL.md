@@ -1,6 +1,6 @@
 ---
 name: wayfinder-next
-description: Start the NEXT wayfinder session(s) — one `start_session` per ticket, each in its own worktree named `<effort>-<NN>`. Reads the active wayfinder map's tickets and starts one session ("chip") per ticket, titled `#RR-LNN-{short title}` where RR is a run number allocated by `wf bump-runs`, L is the ticket type letter (T/G/R/P), NN is the ticket number, and the short title is generated from the ticket. Accepts one or more ticket numbers as arguments (e.g. `02` or `01, 02, 04`); with no argument it takes the map's frontier in `wf frontier` order and spawns 1-3 chips — the top ticket plus any that don't collide with it. Confirms with the user before spawning a chip for a ticket that is blocked, claimed, resolved, or missing. Use when a wayfinder session or ticket is done and you want to queue the next ticket(s) as clickable chips, or when the user says "create wayfinder chip", "next wayfinder session", "chip for next ticket", "wayfinder chip".
+description: Start the NEXT wayfinder session(s) — one `start_session` per ticket, each in its own worktree named `<effort>-<NN>`. Reads the active wayfinder map's tickets and starts one session ("chip") per ticket, titled `#RR-LNN-{short title}` where RR is a run number allocated by `wf bump-runs`, L is the ticket type letter (T/G/R/P), NN is the ticket number, and the short title is generated from the ticket. Accepts one or more ticket numbers as arguments (e.g. `02` or `01, 02, 04`); with no argument it takes up to 3 tickets from round 1 of `wf frontier` (tickets whose `touches:` don't overlap each other or a claimed ticket), in its order. Confirms with the user before spawning a chip for a ticket that is blocked, claimed, resolved, or missing. Use when a wayfinder session or ticket is done and you want to queue the next ticket(s) as clickable chips, or when the user says "create wayfinder chip", "next wayfinder session", "chip for next ticket", "wayfinder chip".
 ---
 
 # Wayfinder Next-Session Chip
@@ -31,7 +31,7 @@ It prints `{ ok, data, error }`. Exit `1` is a refused invariant (`error.details
 
 | what the user typed | what to do |
 |---|---|
-| nothing | take the map's frontier **in `wf frontier` order** and spawn **1–3 chips** — the top ticket, plus up to two that don't collide with it (see [Picking tickets](#picking-tickets)) |
+| nothing | take **round 1** of the map's frontier, in `wf frontier` order, and spawn **1–3 chips** (see [Picking tickets](#picking-tickets)) |
 | `02` | that ticket — one chip |
 | `01, 02, 04` · `01 02 04` · `1,2,4` | those tickets — **one chip each**, in ascending order |
 | `after <NN>` | run by **ticket NN's own session** right after its `wf resolve` — offer the next chips in its wrap_up, or close the map; starts nothing on its own (see [After a ticket resolves](#after-a-ticket-resolves-after-nn)) |
@@ -79,13 +79,13 @@ node __VAULT__/_tools/wf.mjs bump-runs <repo/effort> --count <k> --json
 **NN always comes from `wf`** — a ticket it lists, or the one `wf new` just created. Never pick a number yourself, and never renumber.
 
 - **Explicit numbers given** → those are the tickets. Validate them (next section); don't silently substitute others.
-- **No argument** → take candidates **in `wf frontier` order** and spawn **1–3 chips** (see below).
+- **No argument** → take the frontier's **round 1** rows **in `wf frontier` order** and spawn **1–3 chips** (see below).
 - **No argument, and the frontier has no row for this map** → read the map's `## Tickets` block (see [Validate](#validate-before-spawning--and-confirm)). If any line is not `resolved`, report what holds each one (blocked, claimed, waiting, or the map isn't `active`) and stop.
   **Every line `resolved`, and the map's `status:` is `active`** → if its `## Not yet specified` or scope still names work, the next ticket is in the fog: commission **one** with `wf new` (see [Fog ticket](#fog-ticket--wf-new)) and spawn its chip like any other — the batch is that one chip. Nothing left to name → the map is complete: [close it and leave a `/retro` card](#complete-map--close-it-and-leave-a-retro-card), then stop. A map that is not `active` gets no new ticket — report its status and stop.
 
 ### Fog ticket → `wf new`
 
-Pick the **type** you are about to commission (grilling / task / research / prototype — you're writing the prompt, so you know), a one-line **title**, and the one-line **question** — written as the ticket's bold line (`**…**`), since the short title comes from it — both drawn from the map's `## Not yet specified` or scope and written in `language`. If you can't decide the type, the work isn't shaped enough for a chip — chart it first. Then let `wf` make the ticket:
+Pick the **type** you are about to commission (grilling / task / research / prototype — you're writing the prompt, so you know), a one-line **title**, and the one-line **question** — written as the ticket's bold line (`**…**`), since the short title comes from it — both drawn from the map's `## Not yet specified` or scope and written in `language`. If you can't decide the type, the work isn't shaped enough for a chip — chart it first. When you know which files a task or prototype will write, add one `--touches <glob>` per path, so the frontier can run it beside other tickets. Then let `wf` make the ticket:
 
 ```
 node __VAULT__/_tools/wf.mjs new <repo/effort> --type <type> --title "<title>" --question "**<question>**" --json
@@ -111,7 +111,7 @@ node __VAULT__/_tools/wf.mjs map-status <repo/effort> done --json
 - On success, call `mcp__ccd_session__start_session` once: `initiation` `"own_initiative"`, `context` `"fresh"`, `use_worktree` `false` (the retro reads transcripts and writes the vault through `wf`), `title` `Retro: <repo>/<effort>`, `prompt` **exactly** `data.retro_prompt` — the `/retro` command must be the first thing in the prompt. Never `"user_asked"`: a retro reads every session of the effort, so the user decides when it runs.
 - Report the closed map and the card. Start no ticket chip.
 
-### No argument → frontier order, then skip collisions
+### No argument → round 1 of the frontier
 
 Get the candidates from the same read model as the Dashboard — one call serves this section and [validation](#validate-before-spawning--and-confirm):
 
@@ -121,14 +121,16 @@ node __VAULT__/_tools/wf.mjs frontier --effort <repo/effort> --json
 
 Always pass `--effort` with this map: without it (or with `--from` alone, which only sorts) the call returns every active map's tickets — kilobytes of rows you then throw away. `data.tickets` lists this map's open, unblocked tickets, already in the owner's **pick order** (the `sort:` in *Wayfinder Picks*). Each row carries `ref` (`repo/effort#NN`), `repo`, `effort`, `nn`, `type`, `title`, `target_repo` and `serial`. Keep them in the order given — **that order is the ranking**, and its top row is the top pick.
 
-Then walk the rows from the top and add each one that **collides** with nothing already in the batch, until the batch holds 3. Two tickets collide on:
+`wf` has already dealt the rows into **rounds** — don't judge collisions yourself. Each row carries `round`, `touches` and `collides_with`:
 
-- **same files** — both would write the same file or code region, or the same `## Answer`;
-- **same repo** — both change code in one repo (a ticket's repo is its `target_repo` when set, else its home `repo`).
+- **`round: 1`** — can start now: its `touches:` overlap no other round-1 row and no ticket that is `claimed` right now.
+- **`round` 2, 3, …** — waits for a round before it; `collides_with` names the claimed tickets and the higher-ranked rows it overlaps.
 
-A colliding row is skipped and the walk goes on to the next row. **1 is a fine batch.**
+Two tickets collide when they share a repo (`target_repo` when set, else the home `repo`) and their `touches:` overlap — a directory covers everything under it. A ticket with no `touches:` is a guess `wf` won't make: a `task` or `prototype` takes its whole repo, a `research` or `grilling` ticket writes only its `## Answer` and collides with nothing. A serial map's rows are one per round.
 
-**Serial map** — the rows carry `serial: true` (the map's frontmatter has `serial: true`; `wf serial <repo/effort> on` set it): its tickets are worked one at a time, so the batch is **the top row alone**. If the map's `## Tickets` block already shows a `claimed` line, spawn nothing — `wf claim` in the new session would refuse it — and report which ticket holds the map.
+**The batch is the first 3 rows with `round: 1`**, in the order given. **1 is a fine batch.** No round-1 row while the frontier has rows ⇒ every row waits on a claimed ticket: spawn nothing, and report which claimed ticket holds each (its `collides_with`).
+
+**A row held back only because a ticket has no `touches:`** (a task or prototype taking its whole repo) is often a false collision. Don't spawn it anyway — say in the report which ticket lacks `touches:` and that `node __VAULT__/_tools/wf.mjs touches <ref> <glob>…` (the paths it writes) lets the next frontier pair them.
 
 ⇒ Spawn without asking; [step 7](#workflow) reports the walk so the user can override in one word.
 
@@ -136,8 +138,8 @@ A colliding row is skipped and the walk goes on to the next row. **1 is a fine b
 
 Every chip prompt ends its merge line with this step, so the user never types `/wayfinder-next` or "close the map" between tickets. It runs in **ticket NN's own session**, in the turn that merged and ran `wf resolve` — the user's go-ahead covers it, so don't ask before running it. It reads; it starts no ticket session by itself.
 
-1. **Get the frontier** for this map (the call in [No argument](#no-argument--frontier-order-then-skip-collisions)) and read the map's `## Tickets` block for `claimed` lines — tickets other sessions are working right now.
-2. **Frontier has rows** → walk them as in No argument, but a row is also skipped when it collides with a **claimed** ticket (same files, or the same repo when the map has no file-level split), and a serial map gets nothing while a ticket is claimed. Don't call `start_session` and don't `bump-runs`: put the batch in this turn's `wrap_up` — `ask` "Start the next ticket(s)?" / "เริ่มใบถัดไปเลยไหม?", `actions[0]` a reply naming them (`Start 08, 09` / `เริ่ม 08, 09`), `actions[1]` `Not now` / `ยังก่อน`, and the recap names each one in a clause. When the user clicks, run this skill with those numbers — the normal path, `"user_asked"` (the click is their request), validated again, so a ticket another session took meanwhile is flagged rather than doubled.
+1. **Get the frontier** for this map (the call in [No argument](#no-argument--round-1-of-the-frontier)) and read the map's `## Tickets` block for `claimed` lines — tickets other sessions are working right now.
+2. **Frontier has round-1 rows** → the batch is the first 3 of them, as in No argument (`wf` already put rows that overlap a **claimed** ticket in a later round, and a serial map's rows after its claimed one). Don't call `start_session` and don't `bump-runs`: put the batch in this turn's `wrap_up` — `ask` "Start the next ticket(s)?" / "เริ่มใบถัดไปเลยไหม?", `actions[0]` a reply naming them (`Start 08, 09` / `เริ่ม 08, 09`), `actions[1]` `Not now` / `ยังก่อน`, and the recap names each one in a clause. When the user clicks, run this skill with those numbers — the normal path, `"user_asked"` (the click is their request), validated again, so a ticket another session took meanwhile is flagged rather than doubled.
 3. **No row, but lines are still `claimed` / `waiting` / blocked** → nothing to offer: say in one clause of the recap which tickets hold the map. The session that resolves the last of them closes it.
 4. **No row, every line `resolved`, scope or `## Not yet specified` still names work** → offer the fog ticket the same way (`Open ticket: <title>` / `เปิดใบ: <title>`); run `wf new` only after the click, so nothing is created on a "not now".
 5. **Map complete** → do [Complete map](#complete-map--close-it-and-leave-a-retro-card) now, without asking: `wf map-status … done`, then the `/retro` card. When `wf` refuses (another ticket's branch not yet on main, a lint error), put its `error.fix` in the recap and stop — the session that clears it closes the map.
@@ -174,7 +176,7 @@ Respect the answer literally. "Spawn all anyway" is a real choice — the user m
 ## Workflow
 
 1. **Find the active map.** Wayfinder maps live in `__VAULT__/<repo>/<effort>/map.md`. Use the map from the current conversation if known; else list `__VAULT__/*/*/map.md` and pick the one meant (ask if ambiguous). Read `language` from `__VAULT__/Wayfinder Config.md` in the same pass (see [Language](#language)), and keep the map's `## Decisions so far` lines — every chip prompt carries them.
-2. **Get the frontier** (see [No argument](#no-argument--frontier-order-then-skip-collisions)) — with explicit numbers too, since validation reads it — then **resolve the requested tickets** per [Picking tickets](#picking-tickets). A map in the fog gets its ticket from `wf new` here, before anything is spawned, so the chip carries the NN `wf` printed.
+2. **Get the frontier** (see [No argument](#no-argument--round-1-of-the-frontier)) — with explicit numbers too, since validation reads it — then **resolve the requested tickets** per [Picking tickets](#picking-tickets). A map in the fog gets its ticket from `wf new` here, before anything is spawned, so the chip carries the NN `wf` printed.
 3. **Validate + confirm** per the section above. Drop or keep flagged tickets according to the answer.
 4. **Read each surviving ticket** — its `## Question` section goes into the chip prompt verbatim, its bold line → short title; `type` → `L`.
 5. **Allocate the run numbers** — one `bump-runs` call for the whole batch (see [Run number](#run-number)). Ascending ticket order gets ascending `RR`.
@@ -191,7 +193,7 @@ Respect the answer literally. "Spawn all anyway" is a real choice — the user m
    When the app refuses `"user_asked"` because this turn was not started by the user (another session's message, an automated event), call again with `"own_initiative"` — it leaves a card the user starts, with no **Do it here** button. `own_initiative` takes no `cwd`: for a ticket whose repo is not this project, start nothing and tell the user to run `/wayfinder-next <NN>` from their own message.
 7. **Check where each session landed.** After the last `start_session`, call `mcp__ccd_session_mgmt__list_sessions` `{"linked": true}` once (load it with `ToolSearch` when deferred) and read each started session's branch. The branch should contain `<effort>-<NN>`; when it does not — the app ignored `branch_name` — **warn** in the report: the ticket, the session link, its folder and branch, and that a retro will find it by its claim commit instead (`wf claim` records the full session id, the folder and the branch as `Session:` / `Cwd:` / `Branch:` trailers). Do not stop or restart the session for this. A folder that does not name the ticket is expected at this point — the chip moves itself out of it as its first step — so don't warn about the folder. A session still starting with no folder yet, and an `"own_initiative"` card nobody has started, have nothing to check — say so in one line.
 8. **Report** every session started, one line each (`#RR-LNN-title` and its session link), plus one line for anything skipped and why.
-   When you picked with no argument, add the walk: the top pick, and each row skipped for a collision with what it collided with, so the user can swap one in with one word.
+   When you picked with no argument, add the rounds: each row left out, with its `round` and `collides_with` (and any ticket lacking `touches:`), so the user can swap one in with one word.
 
 ## Chip prompt template (write in `language`)
 
@@ -227,6 +229,7 @@ Cheat sheet for wf — every ticket and map state change goes through it, and it
   resolve from a worktree: node __VAULT__/_tools/wf.mjs resolve <ref> --gist "<one line>" --answer-file <answer-file>
   parked on outside work:  node __VAULT__/_tools/wf.mjs wait <ref> --note "<what you wait for>"
   hand it back:            node __VAULT__/_tools/wf.mjs release <ref>
+  files it writes:         node __VAULT__/_tools/wf.mjs touches <ref> <glob>…   (right after the claim when the ticket has no touches: — keeps parallel tickets off your files)
   lint this map:           node __VAULT__/_tools/wf.mjs lint <repo>/<effort>
   close the map (only when no ticket is left): node __VAULT__/_tools/wf.mjs map-status <repo>/<effort> done
 <answer-file> is any file whose ## Answer section holds your answer — the ticket in your worktree will do; the verb copies it into the vault.
@@ -259,6 +262,7 @@ cheat sheet ของ wf — สถานะของใบและ map เป�
   resolve จาก worktree:    node __VAULT__/_tools/wf.mjs resolve <ref> --gist "<หนึ่งบรรทัด>" --answer-file <ไฟล์-answer>
   รอของนอกมือ:              node __VAULT__/_tools/wf.mjs wait <ref> --note "<รออะไร>"
   ปล่อยใบคืน:               node __VAULT__/_tools/wf.mjs release <ref>
+  ไฟล์ที่ใบนี้เขียน:          node __VAULT__/_tools/wf.mjs touches <ref> <glob>…   (ทำหลัง claim ถ้าใบยังไม่มี touches: — กันใบที่ปั่นขนานไม่ให้มาแตะไฟล์เดียวกัน)
   lint map นี้:             node __VAULT__/_tools/wf.mjs lint <repo>/<effort>
   ปิด map (เมื่อไม่เหลือใบแล้วเท่านั้น): node __VAULT__/_tools/wf.mjs map-status <repo>/<effort> done
 <ไฟล์-answer> คือไฟล์ไหนก็ได้ที่ ## Answer มีคำตอบ — ใบใน worktree ของเราก็ได้ · verb คัดลอกลง vault ให้

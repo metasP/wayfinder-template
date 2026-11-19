@@ -71,6 +71,8 @@ const TICKET_HINTS = {
   status_note: (ctx) =>
     `${code("status_note")} is set by ${code(ctx.wf(`wait ${ctx.ref} --note "…"`))} and cleared by ${code(ctx.wf(`release ${ctx.ref}`))} or ${code("resolve")}`,
   wait_until: (ctx) => `${code("wait_until")} is set by ${code(ctx.wf(`wait ${ctx.ref} --note "…" --until YYYY-MM-DD`))}`,
+  touches: (ctx) =>
+    `to change ${code("touches")}, run ${code(ctx.wf(`touches ${ctx.ref} <glob>…`))} (${code("--none")}: only its answer · ${code("--clear")}: remove the key)`,
 }
 
 const MAP_HINTS = {

@@ -98,24 +98,89 @@ describe("wf frontier", () => {
             target_repo: "lib",
             serial: false,
             unblocks: 1,
+            touches: null,
+            round: 1,
+            collides_with: [],
           },
         ],
       },
     })
   })
 
-  test("prints one aligned line per ticket, or says the frontier is empty", () => {
+  test("prints each round, then one aligned line per ticket, or says the frontier is empty", () => {
     const vault = makeVault({
       notes: [
         map("r/e/map.md"),
         ticket("r/e/issues/01-a.md", { title: "First", type: "research" }),
         ticket("r/e/issues/12-b.md", { title: "Second", target_repo: "lib" }),
+        ticket("r/e/issues/13-c.md", { title: "Third", target_repo: "lib", touches: ["x.md"] }),
       ],
     })
     const r = wf(vault, ["frontier"])
     assert.equal(r.code, 0)
-    assert.equal(r.stdout, "r/e#01  research  First\nr/e#12  task      Second  → lib\n")
+    assert.equal(
+      r.stdout,
+      [
+        "round 1",
+        "  r/e#01  research  First",
+        "  r/e#12  task      Second  → lib",
+        "round 2",
+        "  r/e#13  task      Third  → lib  (after r/e#12)",
+        "",
+      ].join("\n"),
+    )
     const empty = wf(makeVault({ notes: [map("r/e/map.md")] }), ["frontier"])
     assert.equal(empty.stdout, "no open, unblocked tickets on active maps\n")
+  })
+
+  describe("rounds", () => {
+    const roundsOf = (r) => Object.fromEntries(r.json.data.tickets.map((t) => [t.ref, t.round]))
+
+    test("tickets touching separate files share round 1; an overlapping one waits, naming why", () => {
+      const vault = makeVault({
+        notes: [
+          map("r/e/map.md"),
+          ticket("r/e/issues/01-guide.md", { touches: ["guide/README.md"] }),
+          ticket("r/e/issues/02-tools.md", { touches: ["template/_tools/**"] }),
+          ticket("r/e/issues/03-guide-too.md", { touches: ["guide/*.md"] }),
+          ticket("r/e/issues/04-question.md", { type: "research" }),
+        ],
+      })
+      const r = wf(vault, ["frontier", "--effort", "r/e", "--json"])
+      assert.equal(r.code, 0, r.stderr)
+      assert.deepEqual(roundsOf(r), { "r/e#01": 1, "r/e#02": 1, "r/e#03": 2, "r/e#04": 1 })
+      const third = r.json.data.tickets.find((t) => t.ref === "r/e#03")
+      assert.deepEqual(third.touches, ["guide/*.md"])
+      assert.deepEqual(third.collides_with, ["r/e#01"])
+    })
+
+    test("a claimed ticket's files are taken: what overlaps it starts in round 2", () => {
+      const vault = makeVault({
+        notes: [
+          map("r/e/map.md"),
+          ticket("r/e/issues/01-busy.md", { status: "claimed", claimed_by: "s", touches: ["a.md"] }),
+          ticket("r/e/issues/02-same.md", { touches: ["a.md"] }),
+          ticket("r/e/issues/03-other.md", { touches: ["b.md"] }),
+        ],
+      })
+      const r = wf(vault, ["frontier", "--effort", "r/e", "--json"])
+      assert.deepEqual(roundsOf(r), { "r/e#02": 2, "r/e#03": 1 })
+      assert.deepEqual(r.json.data.tickets[0].collides_with, ["r/e#01"])
+    })
+
+    test("a code ticket without touches takes its repo; a serial map runs one ticket per round", () => {
+      const loose = makeVault({
+        notes: [map("r/e/map.md"), ticket("r/e/issues/01-a.md"), ticket("r/e/issues/02-b.md", { touches: ["b.md"] })],
+      })
+      assert.deepEqual(roundsOf(wf(loose, ["frontier", "--json"])), { "r/e#01": 1, "r/e#02": 2 })
+      const serial = makeVault({
+        notes: [
+          map("r/e/map.md", { serial: true }),
+          ticket("r/e/issues/01-a.md", { touches: ["a.md"] }),
+          ticket("r/e/issues/02-b.md", { touches: ["b.md"] }),
+        ],
+      })
+      assert.deepEqual(roundsOf(wf(serial, ["frontier", "--json"])), { "r/e#01": 1, "r/e#02": 2 })
+    })
   })
 })

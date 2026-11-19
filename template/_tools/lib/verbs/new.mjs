@@ -1,10 +1,10 @@
-// `wf new <repo/effort> --type research|prototype|grilling|task|R|P|G|T --title "…" [--question "…" | stdin] [--blocker ref]… [--target-repo R]`
+// `wf new <repo/effort> --type research|prototype|grilling|task|R|P|G|T --title "…" [--question "…" | stdin] [--blocker ref]… [--target-repo R] [--touches glob]…`
 // — — → open (spec *Verbs*: ticket transitions). NN is the effort's highest + 1, taken under the lock
 // and written with an exclusive create, so two sessions never get the same number. The note gets the
 // `## Question` / `## Answer` skeleton; the placeholder follows `language:` (Q36).
 import { readFileSync } from "node:fs"
 import { isatty } from "node:tty"
-import { effortRefArg, oneLineFlag } from "../args.mjs"
+import { effortRefArg, oneLineFlag, touchesArg } from "../args.mjs"
 import { formatRef, noteText, TICKET_TYPE_LETTERS, TICKET_TYPES } from "../core.mjs"
 import { invariantError, usageError } from "../errors.mjs"
 import { editFrontmatter } from "../edit.mjs"
@@ -82,15 +82,16 @@ const skeleton = (fields, question, language) =>
 export default {
   name: "new",
   summary: "— → open: a new ticket with the next NN",
-  usage: 'wf new <repo/effort> --type research|prototype|grilling|task|R|P|G|T --title "…" [--question "…" | stdin] [--blocker ref]… [--target-repo R] [--json]',
-  flags: { type: "string", title: "string", question: "string", blocker: "strings", "target-repo": "string" },
+  usage: 'wf new <repo/effort> --type research|prototype|grilling|task|R|P|G|T --title "…" [--question "…" | stdin] [--blocker ref]… [--target-repo R] [--touches glob]… [--json]',
+  flags: { type: "string", title: "string", question: "string", blocker: "strings", "target-repo": "string", touches: "strings" },
   minPositionals: 1,
   maxPositionals: 1,
   writes: () => true,
   prepare({ flags, positionals }) {
     const targetRepo = flags["target-repo"] === undefined ? null : oneLine("target-repo", flags["target-repo"])
     const title = oneLine("title", flags.title)
-    return { flags: { ...flags, type: typeOf(flags.type), title, targetRepo, question: questionOf(flags.question) }, positionals }
+    const touches = flags.touches === undefined ? null : touchesArg("new", flags.touches)
+    return { flags: { ...flags, type: typeOf(flags.type), title, targetRepo, touches, question: questionOf(flags.question) }, positionals }
   },
   plan(ctx, { flags, positionals }) {
     const home = effortOf(positionals[0], ctx)
@@ -100,9 +101,10 @@ export default {
     // A new ticket has no inlinks yet, so its blockers can't close a cycle.
     const links = [...new Set(blockers.map((b) => blockerLink(home.key, b)))]
     const fields = { type: flags.type, status: "open", status_since: ctx.today, title: flags.title, blockers: links }
-    const written = flags.targetRepo ? { ...fields, target_repo: flags.targetRepo } : fields
+    const optional = { target_repo: flags.targetRepo, touches: flags.touches }
+    const written = { ...fields, ...Object.fromEntries(Object.entries(optional).filter(([, v]) => v !== null)) }
     const text = skeleton(written, flags.question, ctx.config.language)
-    return { ref, edits: [{ path, text, create: true }], data: { ref, path, ...fields, target_repo: flags.targetRepo } }
+    return { ref, edits: [{ path, text, create: true }], data: { ref, path, ...fields, ...optional } }
   },
   report: (outcome) => report(outcome, `created ${outcome.ref} at ${outcome.data.path}`),
 }

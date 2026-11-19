@@ -31,6 +31,7 @@ export function wfCommands(markdown) {
 export function assertCommandsParse(commands) {
   assert.ok(commands.length > 0, "found no wf commands in the doc's code")
   for (const { text, verb, argv } of commands) {
+    if (verb === "help" && !argv.length) continue // `wf help` is the CLI's own listing, not a verb
     const v = verbs.get(verb)
     assert.ok(v, `${JSON.stringify(text)}: wf has no verb ${verb}`)
     if (!argv.length) continue // a bare `wf <verb>` names the verb; it isn't a command line

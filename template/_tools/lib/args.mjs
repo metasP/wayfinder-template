@@ -55,6 +55,21 @@ export function oneLineFlag(verb, name, value) {
 }
 
 /**
+ * `touches:` entries from arguments: each a path or glob relative to the ticket's repo, on one line,
+ * with no `..` segment and not absolute — it names files inside the repo the ticket writes.
+ */
+export function touchesArg(verb, values) {
+  return values.map((value) => {
+    const text = String(value).trim()
+    if (!text) throw usageError(`${verb}: a touches entry is empty — give a path or glob relative to the repo`)
+    if (/[\r\n]/.test(text)) throw usageError(`${verb}: a touches entry must be one line`)
+    if (text.startsWith("/") || text.split("/").includes(".."))
+      throw usageError(`${verb}: touches ${JSON.stringify(text)} must be relative to the repo, inside it (e.g. src/**, README.md)`)
+    return text
+  })
+}
+
+/**
  * The `repo/effort` an argument names — `repo/effort`, a vault path or a full-path wikilink — whether
  * or not the effort exists yet. A ticket ref is not an effort.
  */

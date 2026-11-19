@@ -575,8 +575,9 @@ describe("schema", () => {
     const f = core.TICKET_FIELDS
     assert.deepEqual(Object.keys(f), [
       "type", "status", "status_since", "title", "blockers",
-      "status_note", "wait_until", "claimed_by", "target_repo",
+      "status_note", "wait_until", "claimed_by", "target_repo", "touches",
     ])
+    assert.equal(f.touches.shape, "list")
     assert.equal(f.blockers.shape, "list")
     assert.equal(f.title.shape, "scalar")
     assert.deepEqual(core.requiredFields("ticket", "open"), ["type", "status", "status_since", "title", "blockers"])
