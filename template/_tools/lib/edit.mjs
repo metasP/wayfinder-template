@@ -201,6 +201,18 @@ export function appendToSection(text, heading, line) {
 }
 
 /**
+ * `text` with `line` appended to its `## Build board`. A map without the section gets one just above
+ * `## Tickets` (where the vault README puts it), else at the end.
+ */
+export function appendBoardLine(text, line) {
+  const lines = linesOf(text)
+  if (sectionRange(lines, "Build board")) return appendToSection(text, "Build board", line)
+  const tickets = headingIndex(lines, headingMask(lines), TICKETS_HEADING_RE)
+  if (tickets === -1) return appendToSection(text, "Build board", line)
+  return insertLines(lines, tickets, ["## Build board", "", line, ""], eolOf(lines))
+}
+
+/**
  * `text` with the `## Build board` lines bound to ticket `nn` (`↔ NN`) ticked: `{ text, ticked }`,
  * `ticked` the lines it changed. A map without the section, or without such a line, comes back as it is.
  */

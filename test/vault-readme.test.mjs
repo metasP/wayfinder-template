@@ -60,7 +60,8 @@ describe("vault README", () => {
       verbRows.find((row) => {
         if (!row[0].startsWith(`\`wf ${verb} `)) return false
         if (verb === "map-status") return row[0].includes(` ${to}`)
-        return row[0].includes(" --out-of-scope") === (flag === "--out-of-scope")
+        const variants = [...TICKET_TRANSITIONS, ...MAP_TRANSITIONS].filter((t) => t.verb === verb && t.flag).map((t) => t.flag)
+        return variants.every((f) => row[0].includes(` ${f}`) === (flag === f))
       })
     const word = (status) => new RegExp(`\\b${status}\\b`)
     for (const transition of [...TICKET_TRANSITIONS, ...MAP_TRANSITIONS]) {
