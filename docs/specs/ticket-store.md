@@ -448,6 +448,11 @@ What every write verb does, in order:
   local branch of the `Cwd:` repository with `<effort>-<NN>` as a path segment, optionally a hex `-<suffix>`
   (`claude/<effort>-<NN>-7c4ab6`) — the message says `found by name`. No finding for a claim with neither `Branch:` nor a branch named for the ticket, main's own branch, a deleted branch, a branch whose commits main already has (`git cherry`: a local squash), no
   repository, or an `## Answer` linking a pull request (`/pull/N` — the PR owns the merge).
+- An open pull request, in a repository with an `origin` that the effort's claims ran in, whose patch is already in
+  `origin/<main>` (`stale-pr`, merge-route-fixes#03): a PR left open after its commits reached main by cherry-pick
+  or squash, which later tickets mistake for pending work. Only the post-write lint of `resolve` and of
+  `map-status … done` adds it, since it asks the host (`gh pr list`); no `gh`, or a host it can't reach, adds no
+  finding (`_tools/lib/stale-prs.mjs`).
 - An asset with `superseded_by:` that a live note still links (`superseded-asset-linked`) — live: a map outside its
   `## Decisions so far`/`## Retro`, an unresolved ticket, an asset not itself superseded; the successor is exempt.
 

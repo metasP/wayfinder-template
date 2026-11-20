@@ -20,6 +20,7 @@ import { writeFiles } from "./io.mjs"
 import { takeLock } from "./lock.mjs"
 import { assertCommittable, commitFiles, gitDirs, indexEntries, restoreIndex } from "./repo.mjs"
 import { checkSchema, isTrackerNote, locateVault, noteOf, readText, readVault, worktreeVaultOf } from "./store.mjs"
+import { stalePrFindings } from "./stale-prs.mjs"
 import { unmergedFindings } from "./unmerged.mjs"
 
 /** The `repo/effort` a ref or vault path belongs to, or null (`Wayfinder Picks`). */
@@ -121,7 +122,7 @@ const transact = (verb, args, { vault, checkout, gitDir, trees, warnings }) => {
   const files = edits.map((e) => e.path)
   const creates = new Set(plan.edits.filter((e) => e.create).map((e) => e.path))
   const commit = edits.length ? writeAndCommit(vault, edits, commitMessage(verb, plan), creates) : null
-  return { ...plan, files, commit, index: after, vault, config, sort, today }
+  return { ...plan, verb: verb.name, files, commit, index: after, vault, config, sort, today }
 }
 
 // Step 8, after the lock is released: the touched efforts' findings, as warnings.
@@ -129,7 +130,18 @@ const lintTouched = (outcome) => {
   const efforts = touchedEfforts(outcome.files, outcome.ref)
   const touched = (ref) => efforts.has(effortKeyOf(ref))
   const unmerged = unmergedFindings(outcome.vault, outcome.index, (t) => outcome.files.includes(t.path))
-  return [...lint(outcome.index, outcome).filter((f) => touched(f.ref)), ...unmerged].sort(byFinding)
+  const stale = closingEffort(outcome)
+  const stalePrs = stale ? stalePrFindings(outcome.vault, outcome.index, stale) : []
+  return [...lint(outcome.index, outcome).filter((f) => touched(f.ref)), ...unmerged, ...stalePrs].sort(byFinding)
+}
+
+// The effort a verb just closed something in — a ticket resolved, or the map done — whose repositories are
+// checked for open PRs already in main (`stale-pr`). Only these verbs: the check asks the host over the network.
+const closingEffort = (outcome) => {
+  if (!outcome.commit) return null
+  if (outcome.verb === "resolve") return effortKeyOf(outcome.ref)
+  if (outcome.verb === "map-status" && outcome.data?.status === "done") return outcome.ref
+  return null
 }
 
 const findingLine = (f) => `lint ${f.severity} ${f.rule} ${f.ref}: ${f.message}${f.fix ? ` (fix: ${f.fix})` : ""}`

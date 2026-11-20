@@ -343,6 +343,10 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
   (หรือ branch ของ main checkout ถ้าไม่มี origin) ได้ `unmerged-branch` (warn) ตอน resolve / `wf lint` — fix คือ push + เปิด PR —
   และ `wf map-status <repo/effort> done` ไม่ยอมจนกว่าจะ merge · branch ที่ ff เข้า main ในเครื่องแต่ยังไม่ขึ้น origin ยังนับว่าไม่ merge ·
   `doctor` (§6b) เตือนเมื่อ main ในเครื่องของ repo ที่ map active claim ไว้ นำหรือตามหลัง `origin/<main>` ·
+  `wf resolve` / `wf map-status … done` เตือน `stale-pr` (warn) ถ้า PR ที่ยังเปิดใน repo ที่ใบของ map นี้ claim ไว้มี patch
+  อยู่ใน `origin/<main>` แล้ว — fix คือ `gh pr close` (ถาม host ผ่าน `gh` · ไม่มี `gh` / ต่อ host ไม่ได้ = ไม่เตือน) ·
+  ใบที่ต่อยอดบน PR ที่ยังไม่ merge: เขียน `merge #NN ก่อน` ใน Notes ของ map แล้ว merge ก่อน — ห้ามก็อบไฟล์ของ PR ลง vault/สกิลเอง
+  (`bootstrap --yes` หยุดเมื่อจะทับของที่มีแต่ใน vault — merge-route-fixes#03) ·
   claim ที่ไม่มี `Branch:` (ทำก่อนมี trailer นี้ หรือ detached) ⇒ `wf` หา branch เองจากชื่อ: branch ใน repo ของ `Cwd:` ที่มี
   `<effort>-<NN>` เป็นท่อนหนึ่งของชื่อ ต่อท้ายด้วย hash ได้ (`claude/<effort>-<NN>-7c4ab6`) — ข้อความบอก `found by name` ·
   ไม่โดน: ใบที่ไม่มี commit (research, grilling) · branch ที่ลบแล้ว · Answer ที่ลิงก์ PR (`/pull/N` — PR เป็นเจ้าของ merge) ·

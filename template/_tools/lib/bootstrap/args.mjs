@@ -7,7 +7,7 @@
 import { readFile } from 'node:fs/promises'
 import { die } from './say.mjs'
 
-const BOOL_FLAGS = new Set(['plan', 'yes', 'wire-hook', 'wire-memory'])
+const BOOL_FLAGS = new Set(['plan', 'yes', 'wire-hook', 'wire-memory', 'discard-vault-changes'])
 const VALUE_FLAGS = new Set(['from', 'vault', 'parts', 'on-conflict', 'skills-dir', 'allow-brew'])
 
 /** The `// ใช้:` comment block at the head of `script` (bootstrap.mjs), uncommented: what `--help` prints. */
