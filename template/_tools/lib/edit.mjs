@@ -3,6 +3,7 @@
 // line endings — is kept. The generated `## Tickets` block is spliced the same way (spec *Generated
 // `## Tickets` block*). Pure: text in, text out.
 import { usageError } from "./errors.mjs"
+import { tickLines } from "./build-board.mjs"
 import { BLOCK_CLOSE, BLOCK_OPEN, codeMask, ticketsBlockSpan } from "./core.mjs"
 import { CLOSE_RE, KEY_RE, OPEN_RE, parseNote } from "./frontmatter.mjs"
 
@@ -197,4 +198,16 @@ export function appendToSection(text, heading, line) {
   const inserted = last === range.start ? ["", line] : [line]
   const after = last + 1 === lines.length || last + 1 < range.end ? [] : [""]
   return insertLines(lines, last + 1, [...inserted, ...after], eol)
+}
+
+/**
+ * `text` with the `## Build board` lines bound to ticket `nn` (`↔ NN`) ticked: `{ text, ticked }`,
+ * `ticked` the lines it changed. A map without the section, or without such a line, comes back as it is.
+ */
+export function tickBuildBoard(text, nn) {
+  const lines = linesOf(text)
+  const range = sectionRange(lines, "Build board")
+  if (!range) return { text, ticked: [] }
+  const { lines: body, ticked } = tickLines(lines.slice(range.start + 1, range.end), nn)
+  return { text: [...lines.slice(0, range.start + 1), ...body, ...lines.slice(range.end)].join(""), ticked }
 }

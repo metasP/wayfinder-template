@@ -5,6 +5,7 @@
 import { readdirSync, readFileSync, realpathSync } from "node:fs"
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { isAssetNote, isUnindexedTicket, parseRef, SCHEMA_VERSION, ticketsBlockOf, wikilinksOf } from "./core.mjs"
+import { boardItems } from "./build-board.mjs"
 import { sectionText } from "./edit.mjs"
 import { parseNote } from "./frontmatter.mjs"
 import { usageError } from "./errors.mjs"
@@ -191,7 +192,8 @@ const linksOutside = (body, headings) => {
 
 /**
  * A parsed note as the core's input: every note carries its body's `links`; maps carry `ticketsBlock`
- * (null without markers) and the links under `## Out of scope`, tickets their `## Answer` (null without one).
+ * (null without markers), the links under `## Out of scope` and the `## Build board` checkbox lines, tickets
+ * their `## Answer` (null without one).
  */
 export const noteOf = (path, { frontmatter, body }) =>
   basename(path) === "map.md"
@@ -201,6 +203,7 @@ export const noteOf = (path, { frontmatter, body }) =>
         ticketsBlock: ticketsBlockOf(body),
         links: linksOutside(body, HISTORY_SECTIONS),
         outOfScope: wikilinksOf(sectionText(body, "Out of scope")),
+        buildBoard: boardItems(sectionText(body, "Build board")),
       }
     : { path, frontmatter, answer: sectionText(body, "Answer"), links: wikilinksOf(body) }
 

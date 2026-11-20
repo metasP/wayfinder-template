@@ -232,6 +232,45 @@ describe("wf resolve", () => {
   })
 })
 
+describe("wf resolve ticks the ## Build board", () => {
+  const BOARD_BODY = (lines) => `# The map\n\n## Build board\n\n${lines.join("\n")}\n\n## Decisions so far\n\n## Out of scope\n\n`
+  const boardVault = (lines, status = "claimed") =>
+    vaultWith([
+      { ...map("r/e/map.md"), body: BOARD_BODY(lines) },
+      withBody(ticket("r/e/issues/01-a.md", { title: "A", status, claimed_by: "me" }), status === "open" ? PLACEHOLDER : ANSWERED),
+      ticket("r/e/issues/11-k.md", { title: "K" }),
+    ])
+  const boardOf = (vault) => read(vault, "r/e/map.md").split("## Build board\n\n")[1].split("\n\n")[0]
+
+  test("ticks only the lines bound to the ticket by ↔ NN, in the same commit", () => {
+    const vault = boardVault(["- [ ] [#80](u) ↔ 01 — A", "- [ ] [#81](u) ↔ 11 — K", "  - [ ] [#82](u) ↔ 1 · second card of A", "- [ ] [#83](u) A without a binding"])
+    const r = run(vault, ["resolve", "r/e#01", "--gist", "g", "--json"])
+    assert.equal(r.code, 0, r.stderr)
+    assert.equal(boardOf(vault), "- [x] [#80](u) ↔ 01 — A\n- [ ] [#81](u) ↔ 11 — K\n  - [x] [#82](u) ↔ 1 · second card of A\n- [ ] [#83](u) A without a binding")
+    assert.deepEqual(r.json.data.board_ticked, ["- [x] [#80](u) ↔ 01 — A", "  - [x] [#82](u) ↔ 1 · second card of A"])
+    assert.deepEqual(lastCommit(vault), { subject: "wf(resolve): r/e#01", files: ["r/e/issues/01-a.md", "r/e/map.md"] })
+  })
+
+  test("says on its line how many board lines it ticked", () => {
+    const r = run(boardVault(["- [ ] [#80](u) ↔ 01 — A"]), ["resolve", "r/e#01", "--gist", "g"])
+    assert.match(r.stdout, /^resolved r\/e#01 → Decisions so far · ticked 1 Build board line \(commit [0-9a-f]{7}\)\n$/)
+  })
+
+  test("--out-of-scope leaves the board as it is: the card was not done", () => {
+    const vault = boardVault(["- [ ] [#80](u) ↔ 01 — A"], "open")
+    assert.equal(run(vault, ["resolve", "r/e#01", "--out-of-scope", "--gist", "g"]).code, 0)
+    assert.equal(boardOf(vault), "- [ ] [#80](u) ↔ 01 — A")
+  })
+
+  test("a board line inside a code fence is not touched", () => {
+    const vault = boardVault(["```", "- [ ] [#80](u) ↔ 01 — A", "```"])
+    const r = run(vault, ["resolve", "r/e#01", "--gist", "g", "--json"])
+    assert.equal(r.code, 0, r.stderr)
+    assert.match(read(vault, "r/e/map.md"), /```\n- \[ \] \[#80\]\(u\) ↔ 01 — A\n```/)
+    assert.deepEqual(r.json.data.board_ticked, [])
+  })
+})
+
 describe("wf resolve --answer-file", () => {
   const claimed = (body) => vaultWith(effort([withBody(ticket("r/e/issues/01-a.md", { title: "A", status: "claimed", claimed_by: "me" }), body)]))
   const fileWith = (text) => {

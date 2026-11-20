@@ -618,3 +618,42 @@ describe("body rules", () => {
     assert.deepEqual(rules(fixed, "superseded-asset-linked"), [])
   })
 })
+
+describe("## Build board rules (warn)", () => {
+  const body = (note, text) => noteOf(note.path, { frontmatter: note.frontmatter, body: text })
+  const BOARD = (lines) => `## Build board\n\n${lines.join("\n")}\n\n## Tickets\n`
+  const rules = (notes) =>
+    lint(notes)
+      .filter((f) => f.rule.startsWith("build-board"))
+      .map((f) => [f.severity, f.rule, f.ref, f.message, f.fix])
+
+  test("a resolved ticket whose board line is still unticked is a warning on the ticket", () => {
+    const notes = [
+      body(map("r/e/map.md"), BOARD(["- [ ] [#80](u) ↔ 01 — A", "- [x] [#81](u) ↔ 02 — B", "- [ ] [#82](u) ↔ 03 — C"])),
+      ticket("r/e/issues/01-a.md", { status: "resolved" }),
+      ticket("r/e/issues/02-b.md", { status: "resolved" }),
+      ticket("r/e/issues/03-c.md"),
+    ]
+    assert.deepEqual(rules(notes), [
+      ["warn", "build-board-unticked", "r/e#01", "resolved, but its ## Build board line in r/e/map.md is unticked: - [ ] [#80](u) ↔ 01 — A", null],
+    ])
+  })
+
+  test("a done map with an unticked board line is a warning on the map", () => {
+    const notes = [
+      body(map("r/e/map.md", { status: "done", status_since: "2026-10-12" }), BOARD(["- [ ] [#7](u) a card no ticket owns", "- [x] [#8](u) ↔ 01 — A"])),
+      ticket("r/e/issues/01-a.md", { status: "resolved" }),
+    ]
+    assert.deepEqual(rules(notes), [
+      ["warn", "build-board-open", "r/e", "done, but ## Build board has 1 unticked line: - [ ] [#7](u) a card no ticket owns — tick it once its card is closed", "wf map-status r/e active"],
+    ])
+  })
+
+  test("a fully ticked board, a board of plain links, or a body never read is no finding", () => {
+    const done = { status: "done", status_since: "2026-10-12" }
+    const resolved = ticket("r/e/issues/01-a.md", { status: "resolved" })
+    assert.deepEqual(rules([body(map("r/e/map.md", done), BOARD(["- [x] [#8](u) ↔ 01 — A", "- [X] [#9](u) ↔ 1"])), resolved]), [])
+    assert.deepEqual(rules([body(map("r/e/map.md", done), BOARD(["- **repo**: [#7](u) a · [#8](u) b"])), resolved]), [])
+    assert.deepEqual(rules([map("r/e/map.md", done), resolved]), [])
+  })
+})

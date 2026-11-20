@@ -441,6 +441,9 @@ What every write verb does, in order:
 - A file in an effort's `issues/` and a `.md` under its `assets/` with the same name (`issue-asset-name-clash`): a bare
   `[[name]]` is ambiguous.
 - The same effort slug under two repo folders (`effort-in-two-repos`).
+- `## Build board` checkbox lines (`- [ ] [#80](url) ↔ 02 — title`, bound to ticket 02 by `↔ NN`; `wf resolve`
+  ticks them, not `--out-of-scope`): a `resolved` ticket whose bound line is unticked (`build-board-unticked`), and a
+  `done` map with any unticked line (`build-board-open`). A board of plain links is not read.
 - `resolved` ticket whose latest claim commit's `Branch:` (in the repository at or above its `Cwd:`) is not contained
   in the branch the main checkout has out (`unmerged-branch`): approved work that never reached main. It reads git
   outside the vault, so it is not part of core `lint()` — `wf lint`, the post-write lint and `map-status done` add it
