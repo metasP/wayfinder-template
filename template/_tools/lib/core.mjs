@@ -82,6 +82,7 @@ const otherMapStatuses = (to) => MAP_STATUSES.filter((s) => s !== to)
 
 export const MAP_TRANSITIONS = deepFreeze([
   { verb: "chart", from: null, to: "draft" },
+  { verb: "chart", flag: "--active", from: null, to: "active" },
   { verb: "map-status", from: otherMapStatuses("active"), to: "active" },
   { verb: "map-status", from: otherMapStatuses("paused"), to: "paused" },
   { verb: "map-status", from: otherMapStatuses("dropped"), to: "dropped" },

@@ -250,12 +250,13 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
 
 | Verb | Transition | รับประกันอะไร |
 | --- | --- | --- |
-| `wf chart <repo/effort> --title "…"` | map: — → `draft` | สร้าง `map.md` พร้อมโครงหัวข้อ · ไม่ยอมถ้ามี map อยู่แล้ว · `--serial` ⇒ เขียน `serial: true` ตั้งแต่ต้น |
+| `wf chart <repo/effort> --title "…"` | map: — → `draft` | สร้าง `map.md` พร้อมโครงหัวข้อ · ไม่ยอมถ้ามี map อยู่แล้ว · `--serial` ⇒ เขียน `serial: true` ตั้งแต่ต้น · `--destination "…"` (หลายบรรทัดได้) เขียน `## Destination` แทน placeholder |
+| `wf chart <repo/effort> --title "…" --destination "…" --active` | map: — → `active` | เหมือนบรรทัดบน แต่เปิด map เป็น `active` เลยในคอมมิตเดียว · `--active` ต้องมากับ `--destination` · ใช้ตอน `/to-tickets` chart map จากการ์ดที่ spec มี Destination อยู่แล้ว (§ Build ticket — `/to-tickets`) |
 | `wf map-status <repo/effort> active` | map: อื่น ๆ → `active` | `## Destination` ต้องมีเนื้อจริง ไม่ใช่ข้อความ placeholder ของ `chart` |
 | `wf map-status <repo/effort> paused --note "…"` | map: อื่น ๆ → `paused` | `--note` บังคับ · `--superseded-by <repo/effort>` ได้ |
 | `wf map-status <repo/effort> dropped --note "…"` | map: อื่น ๆ → `dropped` | `--note` บังคับ · `--superseded-by <repo/effort>` ได้ |
 | `wf map-status <repo/effort> done` | map: อื่น ๆ → `done` | ไม่มีใบ `open`/`claimed`/`waiting` ค้าง · lint ของ effort ไม่มี error (`--force` ข้าม) · คืน `retro_prompt` ให้เปิด side session ของ `/retro` |
-| `wf new <repo/effort> --type research\|prototype\|grilling\|task --title "…"` | ticket: — → `open` | map ต้องไม่ `done`/`dropped` (`draft`/`active`/`paused` รับใบใหม่ได้) · `NN` = เลขสูงสุด + 1 จองใต้ lock ด้วย exclusive create ⇒ สอง session ไม่มีทางได้เลขเดียวกัน · เขียนโครง Question/Answer (`--question "…"` หรือ stdin) · `--blocker ref` ต้องชี้ใบที่มีจริง · `--target-repo R` ได้ · `--touches <glob>` (ซ้ำได้) เขียน `touches:` · `--type` รับตัวอักษร `R`/`P`/`G`/`T` แบบชื่อ chip ด้วย |
+| `wf new <repo/effort> --type research\|prototype\|grilling\|task --title "…"` | ticket: — → `open` | map ต้องไม่ `done`/`dropped` (`draft`/`active`/`paused` รับใบใหม่ได้) · `NN` = เลขสูงสุด + 1 จองใต้ lock ด้วย exclusive create ⇒ สอง session ไม่มีทางได้เลขเดียวกัน · เขียนโครง Question/Answer (`--question "…"` หรือ stdin) · `--blocker ref` ต้องชี้ใบที่มีจริง · `--target-repo R` ได้ · `--touches <glob>` (ซ้ำได้) เขียน `touches:` · `--type` รับตัวอักษร `R`/`P`/`G`/`T` แบบชื่อ chip ด้วย · `--card <url>` (การ์ดบน tracker ของ repo งานที่ใบนี้ทำ) เติม `- [ ] [#N](url) ↔ NN — ‹title›` ลง `## Build board` ของ map ในคอมมิตเดียวกัน (ไม่มี section ⇒ สร้างไว้เหนือ `## Tickets`) — บรรทัดที่ `wf resolve` ติ๊กเอง |
 | `wf claim <ref>` | `open` → `claimed` | อ่านใบใหม่ใต้ lock ⇒ สอง session claim ใบเดียวกันไม่ได้ · ใบต้องไม่ติด blocker และ map ต้อง `active` · ประทับ `claimed_by` (`--by name` · ไม่งั้นชื่อ branch ของ worktree ที่เรียก · ไม่งั้น session id) · map `serial: true` ⇒ ไม่ยอมเมื่อใบอื่นใน map `claimed` อยู่ (`--force` ข้ามได้) · commit มี trailer `Session:` (session id เต็ม) · `Cwd:` · `Branch:` (branch ที่ checkout อยู่ — `unmerged-branch` ใช้) ⇒ retro หา session ของทุกใบได้ด้วย `git log --grep '^wf(claim): <repo>/<effort>#' --format='%s %(trailers:key=Session,valueonly,separator=)'` |
 | `wf release <ref>` | `claimed`/`waiting` → `open` | ล้าง `claimed_by` · `status_note` · `wait_until` · ปล่อยได้เฉพาะใบที่ `claimed_by` ตรงกับผู้เรียก (หาชื่อแบบเดียวกับ `claim` หรือ `--by`) · ใบของคนอื่นต้อง `--force` · ใช้เมื่อเลิกถือหรือเลิกรอ **ไม่ใช่** ขั้นก่อน resolve — ใบ `waiting` ที่ของนอกมาแล้ว ⇒ `wf resolve` ได้ตรง ๆ |
 | `wf wait <ref> --note "…"` | `open`/`claimed` → `waiting` | ต้องบอกว่ารออะไร · `--until YYYY-MM-DD` ⇒ lint เตือนเมื่อเลยวัน · `claimed_by` คงอยู่ — คนเดิมยังถือใบ · ใบ `claimed` ของคนอื่นต้อง `--force` |
@@ -409,7 +410,7 @@ vault ไม่มีแนวคิดเรื่อง branch และ branc
 | งาน build | ใช้ | หมายเหตุ |
 | --- | --- | --- |
 | ไม่เกิน 2 PR | `/implement` ต่อจากใบใน map เลย | ไม่ต้องมี spec หรือการ์ด · ใบใน vault เป็นเจ้าของ PR — ดู § `/implement` — ใครเป็นเจ้าของ PR |
-| 3 PR ขึ้นไป | `/to-spec` → `/to-tickets` → ทำการ์ดบน tracker ของ repo | หยิบการ์ดตามวิธีของ repo นั้น (board · orchestrator · assign ตัวเอง) — **ไม่ใช่** chip ของ `/wayfinder-next` |
+| 3 PR ขึ้นไป | `/to-spec` → `/to-tickets` → ทำการ์ดบน tracker ของ repo | หยิบการ์ดตามวิธีของ repo นั้น (board · orchestrator · assign ตัวเอง) · repo ไม่ได้บอกวิธีหยิบ ⇒ ทำผ่าน chip ของ `/wayfinder-next`: `/to-tickets` chart map ให้เอง ใบละการ์ด (§ Build ticket — `/to-tickets`) |
 | `/implement-spec` | **ยังทดลอง** — ใช้กับ effort ที่การ์ดทุกใบเป็น two-way door เท่านั้น | ได้ integration branch + PR ตัวเดียว ซึ่งขัดกับ 1 การ์ด = 1 PR ผลทดลองจะมาแก้ตารางนี้ |
 
 ### Spec — `/to-spec`
@@ -438,11 +439,28 @@ vault ไม่มีแนวคิดเรื่อง branch และ branc
   ⇒ บันทึกใน `## Build board` ของ map แทน · การ์ดที่ต้องรอ repo อื่น **ไม่ปล่อยเข้าคิวที่หยิบได้ทันที**
   (ค้างในสถานะรอตามคำของ tracker นั้น) · คนปล่อยเองเมื่อ blocker merge แล้ว
 - effort มี **issue ระดับฟีเจอร์** (ลิงก์ไว้ใน `## Build board`) และ tracker มี sub-issue ⇒ ผูกการ์ดทุกใบเป็น sub-issue ของมัน
-- ใบใน map ที่รัน `/to-tickets` เขียน `## Build board` แล้ว `wf wait <ref> --note "รอการ์ดใน ## Build board ปิดครบ"`
+- **การ์ดที่ repo หยิบเอง** — ใบใน map ที่รัน `/to-tickets` เขียน `## Build board` แล้ว `wf wait <ref> --note "รอการ์ดใน ## Build board ปิดครบ"`
+  (การ์ดที่ทำผ่าน chip ⇒ ข้างล่าง § การ์ดที่ทำผ่าน chip — `/to-tickets` chart map ให้เอง)
   — ใบนี้กันหน้า Efforts ไม่ให้เตือน "ใบหมดแล้ว → done" ระหว่างที่การ์ดยังเดิน (map ที่ใบค้างทุกใบเป็น `waiting`
   ไม่ถูกนับนาฬิกา `stale_days`) · **`wf resolve` เมื่อการ์ดทุกใบปิด** แล้วปิด map ตาม § ปิด map เป็น `done` ⇒ รัน `/retro`
 - **ไม่มีเครื่องไหนเห็นว่าการ์ดปิดครบ** (`wf` กับหน้า Efforts อ่าน tracker ไม่ได้) ⇒ ตัวทวงคือใบ `waiting` นี้ใน view
   `⏳ รอของนอก` ของ Dashboard · เห็นมันเมื่อไหร่ให้เปิด `## Build board` ไล่ลิงก์ ปิดครบแล้ว ⇒ resolve
+
+#### การ์ดที่ทำผ่าน chip — `/to-tickets` chart map ให้เอง
+
+`docs/agents/issue-tracker.md` ของ repo งาน**ไม่ได้บอกวิธีหยิบการ์ด** (board · orchestrator · คนในทีม) หรือบอกว่าหยิบผ่าน
+`/wayfinder-next` ⇒ การ์ดทุกใบได้ใบ `task` ใน map หนึ่งใบ (↔ ผูกด้วยเลข) ให้ `/wayfinder-next` ปั่น chip ได้ทันที ·
+**ทำต่อจากสร้างการ์ดเลย ในรอบเดียวกัน — ไม่ถามผู้ใช้ว่า "ไม่มี map จะทำยังไง"** และไม่แก้ map มือ:
+
+1. **map** — effort มี map อยู่แล้ว (ใบ `/to-spec` อยู่ในนั้น) ⇒ ใช้ map นั้น ·
+   ไม่มี ⇒ `wf chart <repo>/<slug> --title "‹ชื่อ spec›" --destination "‹ย่อจาก spec›" --active` คำสั่งเดียว ·
+   `<slug>` = slug ของ spec · Destination = สิ่งที่ผู้ใช้ได้เมื่อการ์ดครบ ย่อจากหัวข้อปัญหา/เป้าหมายของ spec (หลายบรรทัดได้)
+2. **ใบละการ์ด ตามลำดับ blocker** — `wf new <repo>/<slug> --type task --title "‹ชื่อการ์ด›" --card ‹url› --question "ทำ ‹url› ตาม spec ‹path›"`
+   (`--blocker` ตามการ์ดที่ต้อง merge ก่อน · `--touches` ถ้ารู้) — `--card` เติม `- [ ] [#N](url) ↔ NN — ‹ชื่อ›` ลง
+   `## Build board` ให้ในคอมมิตเดียวกัน ⇒ `wf resolve` ของใบนั้นติ๊กเอง · รันทุกใบใน Bash call เดียวได้ (`&&`)
+3. **ใบ `/to-tickets` เอง** (ถ้ามี) ⇒ `wf resolve` ได้เลย — ใบ `task` ของการ์ดเฝ้า map แทนใบ `waiting`
+4. **`## Notes`** (prose — Edit ได้ ไม่บังคับ) — บรรทัดเดียวชี้ spec (path · PR ที่ merge) · คำถามของใบชี้ spec อยู่แล้ว
+5. จบด้วย `/wayfinder-next` ของ map นั้น — ใบทำผ่าน chip แบบ "ทำจากใบใน map" ของ § `/implement` — ใครเป็นเจ้าของ PR · PR ใส่ `Closes #N` ของการ์ด
 
 ### `## Build board` ใน map
 
@@ -455,6 +473,15 @@ vault ไม่มีแนวคิดเรื่อง branch และ branc
 - **‹repo-a›**: [#7](‹url›) ‹ชื่อการ์ด› · [#8](‹url›) ‹ชื่อการ์ด›
 - **‹repo-b›**: [#12](‹url›) ‹ชื่อการ์ด›
 - ลำดับข้าม repo: `‹repo-b›#12 ⟵ ‹repo-a›#7` — ‹ทำไมต้องรอ›
+```
+
+การ์ดที่ทำผ่าน chip เป็นบรรทัด checkbox ผูกกับใบด้วย `↔ NN` — `--card` ของ `wf new` เขียน · `wf resolve` ติ๊ก:
+
+```markdown
+## Build board
+
+- [ ] [#79](‹url›) ↔ 01 — ‹ชื่อการ์ด›
+- [x] [#80](‹url›) ↔ 02 — ‹ชื่อการ์ด›
 ```
 
 - เขียนตอน `/to-tickets` · ใครเปิดการ์ดเพิ่มให้ effort นี้ในภายหลังเติมบรรทัดเอง

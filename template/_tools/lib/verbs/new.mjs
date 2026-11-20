@@ -1,13 +1,15 @@
-// `wf new <repo/effort> --type research|prototype|grilling|task|R|P|G|T --title "…" [--question "…" | stdin] [--blocker ref]… [--target-repo R] [--touches glob]…`
+// `wf new <repo/effort> --type research|prototype|grilling|task|R|P|G|T --title "…" [--question "…" | stdin] [--blocker ref]… [--target-repo R] [--touches glob]… [--card url]`
 // — — → open (spec *Verbs*: ticket transitions). NN is the effort's highest + 1, taken under the lock
 // and written with an exclusive create, so two sessions never get the same number. The note gets the
-// `## Question` / `## Answer` skeleton; the placeholder follows `language:` (Q36).
+// `## Question` / `## Answer` skeleton; the placeholder follows `language:` (Q36). `--card` names the
+// work repo's card this ticket builds: the map's `## Build board` gets `- [ ] [#N](url) ↔ NN — title`
+// in the same commit — the line `wf resolve` ticks (retro of dashboard-navigation, C).
 import { readFileSync } from "node:fs"
 import { isatty } from "node:tty"
 import { effortRefArg, oneLineFlag, touchesArg } from "../args.mjs"
 import { formatRef, noteText, TICKET_TYPE_LETTERS, TICKET_TYPES } from "../core.mjs"
 import { invariantError, usageError } from "../errors.mjs"
-import { editFrontmatter } from "../edit.mjs"
+import { appendBoardLine, editFrontmatter } from "../edit.mjs"
 import { report } from "../pipeline.mjs"
 import { blockerArg, blockerLink, noMap } from "./ticket.mjs"
 
@@ -75,6 +77,25 @@ const nextNn = (index, key) => {
   return Math.max(0, ...tickets, ...duplicates) + 1
 }
 
+// A card's link text: `#N` from an issue or PR URL's trailing number, else the URL itself.
+const CARD_NUMBER_RE = /\/(\d+)\/?(?:[?#].*)?$/
+const cardArg = (card) => {
+  const url = oneLine("card", card)
+  if (!/^https?:\/\/\S+$/.test(url)) throw usageError(`--card must be the card's URL (http… or https…), got ${JSON.stringify(url)}`)
+  return url
+}
+const boardLine = (url, nn, title) => {
+  const number = CARD_NUMBER_RE.exec(url)?.[1]
+  return `- [ ] [${number ? `#${number}` : url}](${url}) ↔ ${nn} — ${title}`
+}
+
+// The map's edit that adds the card's Build board line, or none without `--card`.
+const boardEdit = (ctx, key, card, nn, title) => {
+  if (card === null) return []
+  const mapPath = ctx.index.maps.get(key).path
+  return [{ path: mapPath, text: appendBoardLine(ctx.textOf(mapPath), boardLine(card, nn, title)) }]
+}
+
 const skeleton = (fields, question, language) =>
   editFrontmatter("---\n---\n", Object.entries(fields)) +
   ["", "## Question", "", question, "", "## Answer", "", noteText("answerPlaceholder", language), ""].join("\n")
@@ -82,8 +103,8 @@ const skeleton = (fields, question, language) =>
 export default {
   name: "new",
   summary: "— → open: a new ticket with the next NN",
-  usage: 'wf new <repo/effort> --type research|prototype|grilling|task|R|P|G|T --title "…" [--question "…" | stdin] [--blocker ref]… [--target-repo R] [--touches glob]… [--json]',
-  flags: { type: "string", title: "string", question: "string", blocker: "strings", "target-repo": "string", touches: "strings" },
+  usage: 'wf new <repo/effort> --type research|prototype|grilling|task|R|P|G|T --title "…" [--question "…" | stdin] [--blocker ref]… [--target-repo R] [--touches glob]… [--card url] [--json]',
+  flags: { type: "string", title: "string", question: "string", blocker: "strings", "target-repo": "string", touches: "strings", card: "string" },
   minPositionals: 1,
   maxPositionals: 1,
   writes: () => true,
@@ -91,20 +112,25 @@ export default {
     const targetRepo = flags["target-repo"] === undefined ? null : oneLine("target-repo", flags["target-repo"])
     const title = oneLine("title", flags.title)
     const touches = flags.touches === undefined ? null : touchesArg("new", flags.touches)
-    return { flags: { ...flags, type: typeOf(flags.type), title, targetRepo, touches, question: questionOf(flags.question) }, positionals }
+    const card = flags.card === undefined ? null : cardArg(flags.card)
+    return { flags: { ...flags, type: typeOf(flags.type), title, targetRepo, touches, card, question: questionOf(flags.question) }, positionals }
   },
   plan(ctx, { flags, positionals }) {
     const home = effortOf(positionals[0], ctx)
     const blockers = (flags.blocker ?? []).map((input) => blockerArg(input, ctx, home))
     const ref = formatRef({ ...home, nn: nextNn(ctx.index, home.key) })
-    const path = `${home.key}/issues/${ref.split("#").pop()}-${slugOf(flags.title)}.md`
+    const nn = ref.split("#").pop()
+    const path = `${home.key}/issues/${nn}-${slugOf(flags.title)}.md`
     // A new ticket has no inlinks yet, so its blockers can't close a cycle.
     const links = [...new Set(blockers.map((b) => blockerLink(home.key, b)))]
     const fields = { type: flags.type, status: "open", status_since: ctx.today, title: flags.title, blockers: links }
     const optional = { target_repo: flags.targetRepo, touches: flags.touches }
     const written = { ...fields, ...Object.fromEntries(Object.entries(optional).filter(([, v]) => v !== null)) }
     const text = skeleton(written, flags.question, ctx.config.language)
-    return { ref, edits: [{ path, text, create: true }], data: { ref, path, ...fields, ...optional } }
+    const edits = [{ path, text, create: true }, ...boardEdit(ctx, home.key, flags.card, nn, flags.title)]
+    const board = flags.card === null ? {} : { card: flags.card }
+    return { ref, edits, data: { ref, path, ...fields, ...optional, ...board } }
   },
-  report: (outcome) => report(outcome, `created ${outcome.ref} at ${outcome.data.path}`),
+  report: (outcome) =>
+    report(outcome, `created ${outcome.ref} at ${outcome.data.path}${outcome.data.card ? " · added its ## Build board line" : ""}`),
 }

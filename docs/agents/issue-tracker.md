@@ -33,6 +33,9 @@ If `gh` rejects a label as missing, create it once and retry:
 - One ticket = one PR into `main`. The PR body carries `Closes #<n>`. Commits follow Conventional Commits —
   release-please builds `CHANGELOG.md` from them.
 - When the effort has a feature-level issue, attach every ticket to it as a GitHub sub-issue.
+- Tickets are picked through `/wayfinder-next` chips — there is no board or orchestrator. Right after creating the
+  issues, without asking, chart the effort's map in the vault: one `task` per issue via `wf new … --card <url>`
+  (vault README § Build ticket — `/to-tickets`, "การ์ดที่ทำผ่าน chip").
 
 Every ticket body uses these headings, in this order:
 
