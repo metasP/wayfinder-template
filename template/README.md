@@ -339,6 +339,8 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
   **merge ทางเดียวคือ PR**: ผู้ใช้ผ่านงาน → `git rebase origin/main` → push branch + `gh pr create` → CI เขียว →
   `gh pr merge <N> --merge` → pull main ใน main checkout แบบ fast-forward เท่านั้น → resolve (ลิงก์ PR ใน `## Answer`) · ห้าม fast-forward /
   commit / reset main ใน main checkout เอง — ปน ff ในเครื่องกับ PR แล้ว main แยกทางจาก origin (merge-route-fixes#01) ·
+  `rebase` ใช้ได้เฉพาะตอน branch ยังไม่เคย push — branch ที่ push แล้ว (PR เปิดอยู่) ใช้ `git merge origin/main` + `git push`
+  ธรรมดา ห้าม force-push เพราะ auto mode ปฏิเสธ (merge-route-fixes#05) ·
   repo ที่ไม่มี `origin` เท่านั้นที่ใช้ rebase บน main → fast-forward main ใน main checkout ไปที่ branch ·
   `wf` จำ branch ไว้ใน trailer `Branch:` ของ claim commit — ใบที่ resolve แล้วแต่ branch นั้นยังไม่อยู่ใน `origin/<main>`
   (หรือ branch ของ main checkout ถ้าไม่มี origin) ได้ `unmerged-branch` (warn) ตอน resolve / `wf lint` — fix คือ push + เปิด PR —
