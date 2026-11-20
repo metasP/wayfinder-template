@@ -6,7 +6,7 @@
 // `--active` charts the map straight to active — what `/to-tickets` does when it charts a map from cards
 // whose spec already holds the destination (retro of dashboard-navigation, C).
 import { effortRefArg, oneLineFlag } from "../args.mjs"
-import { BLOCK_CLOSE, BLOCK_OPEN, noteText, renderTicketsBlock } from "../core.mjs"
+import { BLOCK_CLOSE, BLOCK_OPEN, codeMask, noteText, renderTicketsBlock } from "../core.mjs"
 import { editFrontmatter } from "../edit.mjs"
 import { invariantError, usageError } from "../errors.mjs"
 import { report } from "../pipeline.mjs"
@@ -52,10 +52,17 @@ const assertNoMap = (ctx, key, path) => {
 
 // The Destination's text, line endings as the skeleton's; null without the flag. Blank is refused —
 // a map without a real Destination never goes active.
+// A `#`/`##` line outside a code fence would end the section: the map would read as having no Destination.
+const SECTION_HEADING_RE = /^#{1,2}\s/
 const destinationArg = (destination) => {
   if (destination === undefined) return null
   const text = String(destination).replace(/\r\n?/g, "\n").trim()
   if (!text) throw usageError("--destination must not be blank")
+  const lines = text.split("\n")
+  const isCode = codeMask(lines)
+  const heading = lines.find((l, i) => !isCode[i] && SECTION_HEADING_RE.test(l))
+  if (heading !== undefined)
+    throw usageError(`--destination must not hold a # or ## heading (it would end the section): ${JSON.stringify(heading)} — use ### or a bullet`)
   return text
 }
 

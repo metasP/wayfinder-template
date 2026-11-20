@@ -48,6 +48,13 @@ describe("wf chart --destination [--active]", () => {
     refused(fresh(), ["chart", "r/new", "--title", "Nav", "--active"], 2, /--active goes with --destination/)
     refused(fresh(), ["chart", "r/new", "--title", "Nav", "--destination", "  \n "], 2, /--destination must not be blank/)
   })
+
+  test("refuses a # or ## heading in --destination, which would leave the active map without one (exit 2)", () => {
+    refused(fresh(), ["chart", "r/new", "--title", "Nav", "--destination", "Goal\n\n## Part\nmore", "--active"], 2, /must not hold a # or ## heading/)
+    const vault = fresh()
+    assert.equal(run(vault, ["chart", "r/new", "--title", "Nav", "--destination", "Goal\n### Part\n```\n# code\n```", "--active"]).code, 0)
+    assert.match(run(vault, ["show", "r/new#01"]).stderr + read(vault, "r/new/map.md"), /### Part/)
+  })
 })
 
 describe("wf new --card", () => {
