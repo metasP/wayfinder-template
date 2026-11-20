@@ -10,6 +10,23 @@ it reads the conventional-commit messages merged to `main`, keeps a release PR o
 GitHub release notes. `feat` bumps the minor version, `fix` the patch, and while the version is
 below 1.0.0 a breaking change (`feat!`) bumps the minor too.
 
+## [0.8.0](https://github.com/metasP/wayfinder-template/compare/v0.7.0...v0.8.0) (2026-11-20)
+
+
+### Features
+
+* /to-tickets charts the map from its cards — wf chart --destination --active, wf new --card ([a147321](https://github.com/metasP/wayfinder-template/commit/a14732147e4a301382c1ce570a92919a23fb2d1c))
+* /to-tickets charts the map from its cards — wf chart --destination --active, wf new --card ([3803500](https://github.com/metasP/wayfinder-template/commit/3803500255fe0ebc090117a669875982e0c64f14))
+
+
+### Bug Fixes
+
+* chip prompt merges origin/main into a pushed branch instead of rebasing ([3dc127a](https://github.com/metasP/wayfinder-template/commit/3dc127ac6f3ae1daf47a5da3c3e544c25f4d0297))
+* chip prompt merges origin/main into a pushed branch instead of rebasing ([a05a9d0](https://github.com/metasP/wayfinder-template/commit/a05a9d06707b608b3b7f6f310148fb1b1aab00e4))
+* chip prompt stays in the folder it got instead of moving worktrees ([c8349ab](https://github.com/metasP/wayfinder-template/commit/c8349ab43c256ccd0b38247aca2e47658d2a4f1e))
+* chip prompt stays in the folder it got instead of moving worktrees ([090e1db](https://github.com/metasP/wayfinder-template/commit/090e1db462951569deeb0b5e3a1922c09cdd8dcf))
+* wf chart refuses a # or ## heading in --destination ([6ec1771](https://github.com/metasP/wayfinder-template/commit/6ec1771e6fd1d4c10601a14e48c849d693d045fd))
+
 ## [0.7.0](https://github.com/metasP/wayfinder-template/compare/v0.6.0...v0.7.0) (2026-11-20)
 
 
