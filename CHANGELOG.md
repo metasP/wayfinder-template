@@ -10,6 +10,59 @@ it reads the conventional-commit messages merged to `main`, keeps a release PR o
 GitHub release notes. `feat` bumps the minor version, `fix` the patch, and while the version is
 below 1.0.0 a breaking change (`feat!`) bumps the minor too.
 
+## [0.7.0](https://github.com/metasP/wayfinder-template/compare/v0.6.0...v0.7.0) (2026-11-20)
+
+
+### Features
+
+* bootstrap stops before overwriting vault-only changes; stale-pr warning (merge-route-fixes[#03](https://github.com/metasP/wayfinder-template/issues/03)) ([779cc04](https://github.com/metasP/wayfinder-template/commit/779cc048408889cfebab0e7ba5c6414400d9b4f5))
+* bootstrap update stops before overwriting vault-only changes; resolve warns about stale PRs ([9394f92](https://github.com/metasP/wayfinder-template/commit/9394f92752468d575ebce3ce3e161a688fe3c7e5))
+* chip prompt carries the ticket, decisions and a wf cheat sheet; one go-ahead merges ([7e9153f](https://github.com/metasP/wayfinder-template/commit/7e9153fc79b3e0c2c3cffe260ec3e89b91885844))
+* chip prompt carries the ticket, decisions and a wf cheat sheet; one go-ahead merges ([4f465a8](https://github.com/metasP/wayfinder-template/commit/4f465a86c01a6977b5d2d93a93d3e0546c0de646))
+* closing a map leaves a /retro side-session card ([10bf349](https://github.com/metasP/wayfinder-template/commit/10bf34970d24acc6de91a5742b4df699092331c6))
+* closing a map leaves a /retro side-session card, not a reminder ([08afe70](https://github.com/metasP/wayfinder-template/commit/08afe70724ae0ba5711e968ccc2e2c0c8dcaee58))
+* Dashboard folds with remembered state + sticky summary bar ([cc55d6b](https://github.com/metasP/wayfinder-template/commit/cc55d6b30fac411a92cf66579c3b9e2b9faae103))
+* Dashboard folds with remembered state and a sticky summary bar ([d91e33d](https://github.com/metasP/wayfinder-template/commit/d91e33dcc9684661baac667444781fe81ade0ad2)), closes [#79](https://github.com/metasP/wayfinder-template/issues/79)
+* Effort Tickets keeps its effort per tab; Efforts focuses or opens a tab ([d955b9f](https://github.com/metasP/wayfinder-template/commit/d955b9f79a9182364ffa5df58c4bae557e05f67f)), closes [#81](https://github.com/metasP/wayfinder-template/issues/81)
+* Effort Tickets keeps its effort per tab; Efforts focuses or opens a tab ([#81](https://github.com/metasP/wayfinder-template/issues/81)) ([0ccd220](https://github.com/metasP/wayfinder-template/commit/0ccd220084795b68d9515dfec2f23fd467b03091))
+* npm run try-in-vault — try the worktree's template in the vault in one undoable command ([5d678a3](https://github.com/metasP/wayfinder-template/commit/5d678a3440c0932065e53e8e5ebf4f9df6a0cb62))
+* npm run try-in-vault puts the worktree's template into the vault in one undoable command ([7f3d1bb](https://github.com/metasP/wayfinder-template/commit/7f3d1bb91b4c24b9ca8ac8fcd8203d3b649e367d))
+* README names the template-owned files; doctor --template flags drift ([fd3265a](https://github.com/metasP/wayfinder-template/commit/fd3265a4214575703e80e6cf235bc38226a9fe2b))
+* README names the template-owned files; doctor --template flags drift ([247431d](https://github.com/metasP/wayfinder-template/commit/247431da5c9dfee10367afffcaee218d94756847))
+* ticket session offers the next chip after resolve; the last one closes the map ([1ac5475](https://github.com/metasP/wayfinder-template/commit/1ac547591fe99c372a65f1175013ad2b825e4be0))
+* tickets declare touches:, wf frontier deals the frontier into rounds that don't collide ([11c3992](https://github.com/metasP/wayfinder-template/commit/11c39928f2d0282cf77d8caa6fb7c5bc7056c556))
+* unmerged-branch — the ticket's session owns the merge into main ([914f2b5](https://github.com/metasP/wayfinder-template/commit/914f2b5aebbdd5113a440de14fa7098c2c86142c))
+* unmerged-branch — the ticket's session owns the merge into main ([f396bfc](https://github.com/metasP/wayfinder-template/commit/f396bfc53b8915ac3c7dd3b09d13e135605088d8))
+* wf resolve ticks the ticket's ## Build board line; lint flags unticked lines ([ad2777e](https://github.com/metasP/wayfinder-template/commit/ad2777e525202e8cad8b7f895898bc8de93ee2d3))
+* wf resolve ticks the ticket's ## Build board line; lint flags unticked lines ([68f09cf](https://github.com/metasP/wayfinder-template/commit/68f09cf18985223ab13e2728940d3f829b836bb9))
+* wf takes a ticket ref as repo/effort NN too; help and bad-ref errors list the forms ([f0b0183](https://github.com/metasP/wayfinder-template/commit/f0b01834f01aed68e3b53649365d04f5c621f439))
+
+
+### Bug Fixes
+
+* chip leaves its EnterWorktree folder before git -C &lt;main checkout&gt; at the merge ([fa31770](https://github.com/metasP/wayfinder-template/commit/fa317704d4d16c36ec39832c8ab387c1325daadb))
+* chip moves itself into a &lt;effort&gt;-&lt;NN&gt; worktree before it claims ([7d050eb](https://github.com/metasP/wayfinder-template/commit/7d050ebd32c9a706ac563f720933e28abd2593e2))
+* chips merge one way (PR); unmerged-branch measures origin/main; doctor warns when main leaves origin ([e5638e9](https://github.com/metasP/wayfinder-template/commit/e5638e9b7e9b49476c89bc09c968102bf9eaee33))
+* chips merge one way (PR); unmerged-branch measures origin/main; doctor warns when main leaves origin ([d6b56d5](https://github.com/metasP/wayfinder-template/commit/d6b56d54d25d187968a6c32a8c7f6de74c48088c))
+* guard skips dropped skills the prune keeps; stale-pr matches the PR's head oid, not its branch name ([c2ba898](https://github.com/metasP/wayfinder-template/commit/c2ba898a430e6e6dec1b975cb3e6eb7dc51c566c))
+* touches overlap expands braces (nested, across /), reads broken patterns conservatively, ignores case ([5e0896a](https://github.com/metasP/wayfinder-template/commit/5e0896abd1cce1fa4d6197de5e3dcf52932fcdf7))
+* unmerged PR fix fetches first and sets --base; doctor drift quotes paths and reads each claim dir once ([2bd9d64](https://github.com/metasP/wayfinder-template/commit/2bd9d64f0a4f0951020b0efaf49775fb5cf4116b))
+* unmerged PR fix pushes without force; chip prompt names the no-origin route ([020fd12](https://github.com/metasP/wayfinder-template/commit/020fd121c94bc0fcc694795ce782e44a66935ce8))
+* unmerged-branch checks the branch recorded at claim, not the worktree's HEAD ([c89c758](https://github.com/metasP/wayfinder-template/commit/c89c7586b0cc3c9886d9d8e8621e39de4307daa9))
+* unmerged-branch finds a claim's branch by name when the claim has no Branch: ([3f185bf](https://github.com/metasP/wayfinder-template/commit/3f185bfe8a552b91e89de215ad6a428d3e03b2bb))
+* unmerged-branch finds a claim's branch by name when the claim has no Branch: ([74f4db8](https://github.com/metasP/wayfinder-template/commit/74f4db8d5f9061e51f06db608bff46da5631f529))
+* wf retro papercuts — waiting resolves directly, short resolve line, frontier --effort ([bc7893e](https://github.com/metasP/wayfinder-template/commit/bc7893ed489423b9635b7859ed1280a49910bf6c))
+
+
+### Documentation
+
+* chips take the go-ahead only from the user in their own page ([7f2cecb](https://github.com/metasP/wayfinder-template/commit/7f2cecb3995194fc0d7991dcf8da4370b10e8e5a))
+* chips take the go-ahead only from the user in their own page; the conductor points at the chip instead of relaying ([a905ef5](https://github.com/metasP/wayfinder-template/commit/a905ef5821cf7fb7e8275b1b042ad7e730a884f2))
+* collapse Dashboard and Efforts page headers into an [!info]- callout ([b685044](https://github.com/metasP/wayfinder-template/commit/b685044de371b5da3553436c2758f81485803e75))
+* collapse Dashboard and Efforts page headers into an [!info]- callout ([6ac9758](https://github.com/metasP/wayfinder-template/commit/6ac9758de3a312db9e8690d54a20e45ee1b1649d)), closes [#80](https://github.com/metasP/wayfinder-template/issues/80)
+* spec — dashboard navigation (folding, summary bar, per-tab Effort Tickets) ([b0d7266](https://github.com/metasP/wayfinder-template/commit/b0d7266b56c291a805593ee3bd5353f90235f0f4))
+* spec for dashboard navigation — folding, summary bar, per-tab Effort Tickets ([dbf0157](https://github.com/metasP/wayfinder-template/commit/dbf0157880d96f0fb8a3b27f97b6c39498842dc7))
+
 ## [0.6.0](https://github.com/metasP/wayfinder-template/compare/v0.5.0...v0.6.0) (2026-10-30)
 
 
