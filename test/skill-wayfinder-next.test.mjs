@@ -103,20 +103,20 @@ describe("wayfinder-next skill", () => {
     assert.match(SKILL, /`Session:` \/ `Cwd:` \/ `Branch:` trailers/)
   })
 
-  // parallel-run-fixes#05: start_session has no folder name — the app recycled `ticket-store-02f3c0` for
-  // ticket 01 and gave 03 and 05 `suspicious-chaplygin-a86059`. The chip moves itself before it claims.
-  test("every chip prompt checks branch and folder first and moves into a <effort>-<NN> worktree before the claim", () => {
-    assert.match(SKILL, /`branch_name`[^\n]*names the branch only[^\n]*folder/, "step 6 still says branch_name names the folder")
+  // parallel-run-fixes#05: start_session has no folder name — the app recycles folders. merge-route-fixes#04:
+  // moving with EnterWorktree is what collided with the guard; chips that stayed put were refused 0 times.
+  // So the chip checks its branch and works where it landed; the claim's trailers name the ticket.
+  test("every chip prompt checks the branch before the claim and stays in the folder it got", () => {
+    assert.match(SKILL, /`branch_name`[^\n]*names the branch only[^\n]*recycle/, "step 6 does not say the folder may be recycled")
+    assert.match(SKILL, /\*\*Check where each session landed\.\*\*[^\n]*recycled[^\n]*leave it/, "step 7 does not say a recycled folder is left alone")
     const [start, end] = [SKILL.indexOf("## Chip prompt template"), SKILL.indexOf("## This session never works")]
     const blocks = SKILL.slice(start, end).split(/^`th`:$/m)
     assert.equal(blocks.length, 2)
     for (const block of blocks) {
       assert.match(block, /git branch --show-current/, "the prompt does not check the branch")
-      assert.match(block, /B=\$\(git branch --show-current\) && git switch --detach -q && git worktree add -q "\.\.\/\$\{B##\*\/\}" "\$B"/, "the prompt has no move command")
-      assert.match(block, /EnterWorktree/, "the prompt does not enter the new worktree")
-      assert.ok(block.indexOf("EnterWorktree") < block.indexOf("wf.mjs claim"), "the move comes after the claim")
-      // An EnterWorktree session is refused `git -C <main checkout>`; ticket 05 itself hit it at the merge.
-      assert.match(block, /ExitWorktree[^\n]*keep/, "the prompt does not leave the worktree before the merge")
+      assert.ok(block.indexOf("git branch --show-current") < block.indexOf("wf.mjs claim"), "the branch check comes after the claim")
+      for (const gone of ["EnterWorktree", "ExitWorktree", "git worktree add", "switch --detach"])
+        assert.ok(!block.includes(gone), `the prompt still moves worktrees (${gone})`)
     }
   })
 
