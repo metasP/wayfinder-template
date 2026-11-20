@@ -7,7 +7,7 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { MAP_TRANSITIONS, TICKET_TRANSITIONS } from "../template/_tools/lib/core.mjs"
 import { makeVault, map, ticket, wf } from "./vault.mjs"
-import { assertCommandsParse, verbs, wfCommands } from "./wf-doc.mjs"
+import { assertCommandsParse, commandInSpan, verbs, wfCommands } from "./wf-doc.mjs"
 
 const README = readFileSync(new URL("../template/README.md", import.meta.url), "utf8")
 
@@ -26,11 +26,13 @@ const headings = [...prose.matchAll(/^#{2,4} (.+)$/gm)].map(([, text]) => text.t
 // A table row's cells, or null for a line that isn't one.
 const cells = (line) => (/^\|.*\|$/.test(line.trim()) ? line.trim().slice(1, -1).split(" | ").map((c) => c.trim()) : null)
 
-// The rows of § Wayfinding operations whose first cell names a `wf <verb>` command.
-const verbRows = section("Wayfinding operations")
+// The rows of § Wayfinding operations whose first cell names a `wf <verb>` command, with their line.
+const verbRowLines = section("Wayfinding operations")
   .split("\n")
-  .map(cells)
-  .filter((row) => row && /^`wf [a-z-]+/.test(row[0]))
+  .map((line) => ({ line, row: cells(line) }))
+  .filter(({ row }) => row && /^`wf [a-z-]+/.test(row[0]))
+const verbRows = verbRowLines.map(({ row }) => row)
+const lineNo = (line) => README.slice(0, README.indexOf(line)).split("\n").length
 
 // The README's fenced ```markdown examples that open with frontmatter.
 const examples = [...README.matchAll(/```markdown\n(---\n[\s\S]*?)```/g)].map(([, text]) => text)
@@ -40,15 +42,19 @@ describe("vault README", () => {
     for (const heading of ["Wayfinding operations", "Spec & ticket operations"]) assert.ok(headings.includes(heading), heading)
   })
 
+  // Its command lines are the verb table's first cells — the README has no fenced wf command — plus the
+  // mentions in prose, whose verb name must exist.
   test("every wf command it spells out parses against the real verb", () => {
-    assertCommandsParse(wfCommands(README))
+    const tableCommands = verbRowLines.map(({ line, row }) => commandInSpan(row[0], `template/README.md:${lineNo(line)}`))
+    assert.ok(tableCommands.length && tableCommands.every(Boolean), "a verb table row's first cell isn't a wf command")
+    assertCommandsParse([...tableCommands, ...wfCommands(README, "template/README.md")])
   })
 
   test("§ Wayfinding operations has a verb table row for every wf verb", () => {
     for (const name of verbs.keys())
       assert.ok(
         verbRows.some((row) => row[0].startsWith(`\`wf ${name} `) || row[0] === `\`wf ${name}\``),
-        `no verb table row for wf ${name}`,
+        `no verb table row for wf ${name}: wf help lists it — add a | \`wf ${name} …\` | from → to | guarantee | row to § Wayfinding operations`,
       )
     for (const row of verbRows) assert.equal(row.length, 3, `${row[0]}: a verb row is verb · transition · guarantee`)
   })
