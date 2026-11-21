@@ -26,26 +26,51 @@ describe("wayfinder-next skill", () => {
   // parallel-run-fixes#03: then "ผ่าน merge" was followed by a second "merge PR เลย" — one go-ahead covers it all.
   // merge-route-fixes#01: chips 04–07 fast-forwarded main in the main checkout while 01–03 merged PRs, so local
   // main went ahead 5 / behind 2 of origin, and a later `reset --hard origin/main` dropped a ticket's test.
+  const mergeLines = (re) => [...SKILL.matchAll(re)].map((m) => m[0])
+  const EN_MERGE = /^The merge is yours, on one go-ahead:[^\n]*/gm
+  const TH_MERGE = /^การ merge เป็นหน้าที่ของ session นี้ และใช้ go-ahead ครั้งเดียว:[^\n]*/gm
+  const prRoute = (lines) => lines.find((l) => l.includes("gh pr")) ?? ""
+  const noRemoteRoute = (lines) => lines.find((l) => !l.includes("gh pr")) ?? ""
+
   test("every chip prompt makes the session own the merge, on one go-ahead, by one route: a PR, then pull --ff-only", () => {
-    const en = SKILL.match(/^The merge is yours, on one go-ahead:[^\n]*/m)?.[0] ?? ""
-    const th = SKILL.match(/^การ merge เป็นหน้าที่ของ session นี้ และใช้ go-ahead ครั้งเดียว:[^\n]*/m)?.[0] ?? ""
+    const en = prRoute(mergeLines(EN_MERGE))
+    const th = prRoute(mergeLines(TH_MERGE))
     assert.match(en, /one route, a PR[^\n]*rebase origin\/main[^\n]*gh pr create[^\n]*CI is green[^\n]*gh pr merge[^\n]*pull --ff-only[^\n]*then resolve/)
     assert.match(th, /ทางเดียวคือ PR[^\n]*rebase origin\/main[^\n]*gh pr create[^\n]*CI เขียว[^\n]*gh pr merge[^\n]*pull --ff-only[^\n]*resolve/)
     for (const line of [en, th]) {
       assert.doesNotMatch(line, /if the work has a PR|ถ้างานมี PR/, "the PR is still optional")
       assert.match(line, /reset/, "the prompt does not forbid resetting main")
       assert.match(line, /origin\/main/, "unmerged-branch is not said to measure against origin/main")
-      assert.match(line, /no origin|ไม่มี origin/, "a repo with no remote has no route")
+    }
+  })
+
+  // nova-dance-retro-fixes#06: the blender repo has no remote, yet its chips got the PR line — five sessions ran
+  // `git fetch origin`, got exit 128, and only then turned to rebase + merge --ff-only.
+  test("a repo with no remote gets a merge line with no origin, no PR and no CI, picked by git remote", () => {
+    const [start, end] = [SKILL.indexOf("## Chip prompt template"), SKILL.indexOf("## This session never works")]
+    const template = SKILL.slice(start, end)
+    assert.match(template, /`<merge line>`[^\n]*git -C <main checkout> remote/, "the skill does not say how to pick the merge line")
+    const blocks = template.split(/^`th`:$/m)
+    for (const block of blocks) {
+      const prompt = block.slice(block.indexOf("/wayfinder work through the map"))
+      assert.match(prompt, /^<merge line>$/m, "the chip prompt does not take the picked merge line")
+    }
+    for (const lines of [mergeLines(EN_MERGE), mergeLines(TH_MERGE)]) {
+      assert.equal(lines.length, 2, "each language has a PR line and a no-remote line")
+      const line = noRemoteRoute(lines)
+      for (const gone of ["origin", "gh pr", "CI", "fetch", "push"])
+        assert.ok(!line.includes(gone), `the no-remote line still says ${gone}`)
+      assert.match(line, /git rebase main[^\n]*test[^\n]*git -C <main checkout> merge --ff-only <branch>[^\n]*resolve/)
+      assert.match(line, /reset/, "the no-remote line does not forbid resetting main")
+      assert.ok(line.length < prRoute(lines).length, "the no-remote line is not shorter")
     }
   })
 
   // merge-route-fixes#02: the conductor relayed "ผ่าน" to chips 01–07 by SendMessage, auto mode refused every
   // push/merge on it, and Tong typed the approval again in each chip.
   test("the go-ahead is the user's own words in the chip; a relayed approval doesn't count", () => {
-    const en = SKILL.match(/^The merge is yours, on one go-ahead:[^\n]*/m)?.[0] ?? ""
-    const th = SKILL.match(/^การ merge เป็นหน้าที่ของ session นี้ และใช้ go-ahead ครั้งเดียว:[^\n]*/m)?.[0] ?? ""
-    assert.match(en, /typed by the user in this session[^\n]*relayed[^\n]*doesn't count/)
-    assert.match(th, /ผู้ใช้พิมพ์เองในหน้านี้[^\n]*ส่งต่อ[^\n]*ไม่นับ/)
+    for (const en of mergeLines(EN_MERGE)) assert.match(en, /typed by the user in this session[^\n]*relayed[^\n]*doesn't count/)
+    for (const th of mergeLines(TH_MERGE)) assert.match(th, /ผู้ใช้พิมพ์เองในหน้านี้[^\n]*ส่งต่อ[^\n]*ไม่นับ/)
     const notes = SKILL.slice(SKILL.indexOf("## Notes"))
     assert.match(notes, /\*\*Approval happens in the chip\.\*\*[^\n]*never relay/, "the starting session may still relay approvals")
   })
