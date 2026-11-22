@@ -12,6 +12,7 @@ label_draft: "✏️ ยังไม่ได้ชาร์ต"
 label_done: "✅ ปิดแล้ว"
 label_dropped: "🗑 ทิ้งแล้ว"
 language: en
+repo_paths: []
 ---
 
 # Wayfinder Config
@@ -81,6 +82,18 @@ language: en
 **ไม่ได้เปลี่ยนภาษาของ template เอง** — หน้า Dashboard · README · โน้ตนี้ ยังเป็นภาษาเดิม
 (คำบนหน้า dashboard เปลี่ยนได้ผ่าน `label_*` ข้างบนเท่านั้น) · `language` คุมแค่ของที่ agent
 เขียนตอนรัน ซึ่งไม่ใช่สำเนาที่สองของไฟล์ไหน ⇒ ไม่มีอะไรต้องดูแลสองฉบับ
+
+## ที่อยู่ของ repo — ใช้ที่ `wf repo-path` และ `/wayfinder-next`
+
+| คีย์ | ค่าเริ่มต้น | หมายถึง |
+|---|---|---|
+| `repo_paths` | `[]` | main checkout ของแต่ละ repo บนเครื่องนี้ · รายการของ `"<repo>=<absolute path>"` เช่น `"acme-web=/Users/me/code/acme-web"` |
+
+`<repo>` คือชื่อ folder ของ repo ใน vault (`<repo>/<effort>/map.md`) หรือค่า `target_repo` ของใบ ·
+`wf repo-path <repo>` อ่านจากที่นี่ก่อน ไม่มีรายการ ⇒ ใช้ main checkout ที่ claim ของใบใน repo นั้นรันบ่อยที่สุด
+(ไม่นับ claim ที่รันใน vault เอง) · ไม่มีทั้งสองอย่าง ⇒ `wf` ปฏิเสธพร้อม `fix:` ให้มาเพิ่มที่นี่ ·
+`/wayfinder-next` ใส่ path ที่ได้ลงใน chip (`cwd` และบรรทัด `Repo paths:` ของ prompt) ⇒ session ไม่ต้องเดา
+path จากชื่อ repo · path ที่ไม่มีอยู่จริงหรือรายการที่เขียนผิดรูป ⇒ `wf` ปฏิเสธ ไม่ข้ามไปเดา
 
 ## ที่นี่ไม่มีอะไร — และตั้งใจให้ไม่มี
 
