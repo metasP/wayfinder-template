@@ -8,7 +8,7 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { makeVault } from "./vault.mjs"
-import { renderOwned, templateDrift } from "../template/_tools/lib/template-drift.mjs"
+import { driftAgainstAny, renderOwned, templateDrift } from "../template/_tools/lib/template-drift.mjs"
 
 const TOOLS = fileURLToPath(new URL("../template/_tools/", import.meta.url))
 const TOKEN = "__" + "VAULT" + "__"
@@ -79,6 +79,34 @@ describe("templateDrift", () => {
     assert.equal(renderOwned("_tools/doctor.mjs", TOKEN, "/v"), TOKEN)
     assert.equal(renderOwned("_tools/autocommit.sh", `VAULT="x"\nfallback ${TOKEN}`, "/v"), `VAULT="/v"\nfallback ${TOKEN}`)
     assert.equal(renderOwned("_tools/wf.mjs", `${TOKEN} <VAULT>`, "/v"), "/v <VAULT>")
+  })
+})
+
+describe("driftAgainstAny", () => {
+  test("picks the later repo when the first is a stale checkout and the later one matches", async () => {
+    const { repo: main, vault, skillDir } = setup()
+    const stale = makeRepo()
+    put(stale, "template/README.md", "# an older README\n")
+    const r = await driftAgainstAny({ repos: [stale, main], vault, skillDir })
+    assert.deepEqual(r, { repo: main, compared: 4, differs: [], missing: [] })
+  })
+
+  test("a later repo that compares no files does not count as a match", async () => {
+    const { repo: main, vault, skillDir } = setup()
+    put(vault, "README.md", "# edited in the vault\n")
+    const empty = mkdtempSync(join(tmpdir(), "tpl-empty-"))
+    const r = await driftAgainstAny({ repos: [main, empty], vault, skillDir })
+    assert.equal(r.repo, main)
+    assert.deepEqual(r.differs, ["README.md"])
+  })
+
+  test("reports the drift against the first repo when none matches", async () => {
+    const { repo: main, vault, skillDir } = setup()
+    const stale = makeRepo()
+    put(vault, "README.md", "# edited in the vault\n")
+    const r = await driftAgainstAny({ repos: [stale, main], vault, skillDir })
+    assert.equal(r.repo, stale)
+    assert.deepEqual(r.differs, ["README.md"])
   })
 })
 

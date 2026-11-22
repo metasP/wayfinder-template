@@ -1,7 +1,9 @@
 // 1a. หา template repo: `<repo>/{template,skills,LICENSE}` คือลายเซ็นของราก repo
 //     ใช้ของที่ repo มีอยู่แล้วเป็นตัวชี้ ไม่ต้องมีไฟล์ marker เพิ่ม
+import { execFile } from 'node:child_process'
 import { stat } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
+import { promisify } from 'node:util'
 import { die } from './say.mjs'
 
 const exists = (p) => stat(p).then(() => true, () => false)
@@ -24,4 +26,19 @@ export const findRepo = async ({ from, selfDir }) => {
     d = up
   }
   return null
+}
+
+const gitPath = (dir, flag) => promisify(execFile)('git', ['-C', dir, 'rev-parse', '--path-format=absolute', flag])
+  .then((r) => r.stdout.trim(), () => null)
+
+/**
+ * The main checkout of the repo `dir` is in, when `dir` is a linked worktree; else `dir` itself (also when
+ * git can't tell — an npx install, a path that is gone). Worktrees come and go: one recorded as the template
+ * (`source_repo`) keeps doctor §10 comparing against a stale branch (nova-dance-retro-fixes-followup#05).
+ */
+export const mainCheckout = async (dir) => {
+  const [own, common] = await Promise.all([gitPath(dir, '--git-dir'), gitPath(dir, '--git-common-dir')])
+  if (!own || !common || own === common || basename(common) !== '.git') return dir
+  const main = dirname(common)
+  return (await isRepoRoot(main)) ? main : dir
 }

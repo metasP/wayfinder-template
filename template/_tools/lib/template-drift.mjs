@@ -80,3 +80,20 @@ export const templateDrift = async ({ repo, vault, skillDir, withSkills = true }
   }
   return { compared, differs, missing }
 }
+
+/**
+ * `templateDrift` against the first of `repos` the install matches, as `{ repo, compared, differs, missing }`;
+ * when none matches, the drift against `repos[0]`. `repos` = the manifest's `source_repo`, then its main
+ * checkout: a worktree recorded by a bootstrap run from it keeps its old branch, while the vault was later
+ * brought up to `main` file by file (nova-dance-retro-fixes-followup#05).
+ */
+export const driftAgainstAny = async ({ repos, ...rest }) => {
+  let first = null
+  for (const repo of [...new Set(repos)]) {
+    const r = { repo, ...(await templateDrift({ repo, ...rest })) }
+    // เทียบ 0 ไฟล์ (repo ว่าง/ผิดตัว) ไม่นับว่าตรง — ไม่งั้นตัวสำรองผ่านแบบไม่ได้เทียบอะไรเลย
+    if (r.compared > 0 && r.differs.length === 0 && r.missing.length === 0) return r
+    first ??= r
+  }
+  return first
+}
