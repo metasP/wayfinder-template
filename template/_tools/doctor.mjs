@@ -902,22 +902,26 @@ await section('§9 manifest', async () => {
 // ⇒ ฟ้องทุกไฟล์ที่ต่าง แล้วชี้ทางที่ถูก (README § ไฟล์ที่ template เป็นเจ้าของ)
 // หา repo ไม่เจอ ⇒ ⚠️ บอกวิธีชี้ ไม่ใช่ ❌ — vault ที่ติดตั้งผ่าน npx ไม่มี repo ให้เทียบ
 await section('§10 template', async () => {
-  const { isRepoRoot } = await import('./lib/bootstrap/find-repo.mjs')
-  const { templateDrift } = await import('./lib/template-drift.mjs')
+  const { isRepoRoot, mainCheckout } = await import('./lib/bootstrap/find-repo.mjs')
+  const { driftAgainstAny } = await import('./lib/template-drift.mjs')
   const man = await readJson(join(VAULT, '.wayfinder-template.json')).catch(() => null)
-  const repo = TEMPLATE_ARG !== null ? resolve(TEMPLATE_ARG) : man?.source_repo ?? null
+  const source = TEMPLATE_ARG !== null ? resolve(TEMPLATE_ARG) : man?.source_repo ?? null
   const label = 'ไฟล์ที่ template เป็นเจ้าของ ตรงกับ template'
-  if (repo === null || !(await isRepoRoot(repo))) {
-    if (TEMPLATE_ARG !== null) return check(false, label, `--template ${repo} ไม่ใช่ราก repo (ต้องมี template/ · skills/ · LICENSE)`)
+  if (source === null || !(await isRepoRoot(source))) {
+    if (TEMPLATE_ARG !== null) return check(false, label, `--template ${source} ไม่ใช่ราก repo (ต้องมี template/ · skills/ · LICENSE)`)
     return warn(false, `${label} (ยังไม่ได้เทียบ)`,
       `ไม่รู้ว่า template อยู่ไหน — node _tools/doctor.mjs --template <ราก repo wayfinder-template>`)
   }
   const skillsDir = man?.skills_dir ?? join(homedir(), '.claude/skills')
   const skillDir = (name) => man?.skills_targets?.[name] ?? join(skillsDir, name)
-  const branch = await run('git', ['-C', repo, 'rev-parse', '--abbrev-ref', 'HEAD']).then((r) => r.stdout.trim(), () => '?')
   // ติดตั้งโดยไม่เอาสกิล (`parts` ไม่มี skills) ⇒ ไม่มีสกิลให้เทียบ ไม่ใช่ "หาย"
   const withSkills = !Array.isArray(man?.parts) || man.parts.includes('skills')
-  const { compared, differs, missing } = await templateDrift({ repo, vault: MAIN_VAULT, skillDir, withSkills })
+  // `source_repo` ที่เป็น worktree (bootstrap รันจาก worktree) ค้าง branch เก่า ขณะที่ vault ถูกยกไป main ทีละไฟล์
+  // หรือด้วย `npm run install-skills` ⇒ ตรงกับ main checkout ของมันก็นับว่าผ่าน (ใบ nova-dance-retro-fixes-followup#05)
+  // · `--template` = เทียบกับตัวนั้นตัวเดียว (try-in-vault ชี้ worktree ของมันเอง)
+  const repos = TEMPLATE_ARG !== null ? [source] : [source, await mainCheckout(source)]
+  const { repo, compared, differs, missing } = await driftAgainstAny({ repos, vault: MAIN_VAULT, skillDir, withSkills })
+  const branch = await run('git', ['-C', repo, 'rev-parse', '--abbrev-ref', 'HEAD']).then((r) => r.stdout.trim(), () => '?')
   const bad = [...differs.map((f) => `≠ ${f}`), ...missing.map((f) => `ไม่มี ${f}`)]
   check(bad.length === 0, label,
     bad.length

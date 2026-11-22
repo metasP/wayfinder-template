@@ -20,3 +20,8 @@ the real vault before asking for review — never copy files into the vault by h
    `-- --forget` (keeps the files, drops the backups; never `--undo` after a template update, it would bring
    back the old files). `--status` shows what is on trial; a second worktree is refused until the first is
    undone or forgotten.
+
+To put only the skills of a merged `main` into place (no trial, no full update): `npm run install-skills` from
+the main checkout — renders the vault path like the installer, writes the files that differ to the skill dirs
+the vault's manifest names, and backs up what it replaces under `<vault>/.git/wayfinder-skills-backup/`.
+`-- --check` only reports whether the installed skills differ (exit 1). Never `sed` a skill copy by hand.

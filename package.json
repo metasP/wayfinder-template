@@ -14,7 +14,8 @@
   },
   "scripts": {
     "test": "node --test",
-    "try-in-vault": "node scripts/try-in-vault.mjs"
+    "try-in-vault": "node scripts/try-in-vault.mjs",
+    "install-skills": "node scripts/install-skills.mjs"
   },
   "bin": {
     "wayfinder-template": "template/_tools/bootstrap.mjs"

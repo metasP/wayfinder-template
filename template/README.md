@@ -31,13 +31,23 @@ vault นี้อยู่นอก repo และมี git ของตัว
 2. ลงของใหม่: vault ที่มี `.wayfinder-template.json` ⇒ อัปเดตด้วย `bootstrap.mjs` (หัวข้อ "อัปเดต" ใน SETUP.md)
    · vault ที่ไม่มี ⇒ copy ไฟล์ที่ต่างทีละไฟล์ แทนโทเคน path ของ vault (ตัวที่ installer เรนเดอร์ — ดูจาก diff) ด้วย path จริง
    แล้ว commit ใน vault ระบุ commit ต้นทาง
+   · **สกิลอย่างเดียว** (ไม่ต้อง update ทั้งชุด) ⇒ ใน checkout ของ template ที่จะเอามา (ปกติ main ที่ pull แล้ว):
+
+   ```bash
+   npm --prefix <ราก repo wayfinder-template> run install-skills
+   ```
+
+   มันอ่านปลายทางจาก `skills_targets` / `skills_dir` ของ `.wayfinder-template.json` (ปกติ `~/.claude/skills/<ชื่อสกิล>/`)
+   เรนเดอร์ path ของ vault แบบเดียวกับ installer วางเฉพาะไฟล์ที่ต่าง และเก็บของเดิมไว้ใน `<vault>/.git/wayfinder-skills-backup/`
+   — **ห้าม `sed` ทับเองหรือทิ้ง `.bak` ไว้ข้างสกิล** · `-- --check` = แค่บอกว่าต่างไหม (ต่าง/หาย = exit 1)
 3. เช็คว่าไม่เหลือที่ต่าง — doctor §10 เทียบทุกไฟล์ข้างบน (หลังเรนเดอร์ path แบบเดียวกับ installer) แล้วฟ้องทีละไฟล์:
 
 ```bash
 node <vault>/_tools/doctor.mjs --template <ราก repo wayfinder-template>
 ```
 
-(ไม่ใส่ `--template` ⇒ ใช้ `source_repo` ของ `.wayfinder-template.json` · หาไม่เจอ ⇒ ⚠️ บอกวิธีชี้)
+(ไม่ใส่ `--template` ⇒ ใช้ `source_repo` ของ `.wayfinder-template.json` — ถ้ามันเป็น worktree ก็นับว่าผ่านเมื่อตรงกับ
+main checkout ของ repo นั้น · หาไม่เจอ ⇒ ⚠️ บอกวิธีชี้)
 ⇒ ❌ ที่ §10 = มีคนแก้ใน vault/สกิลตรง ๆ หรือ PR ที่ยังไม่ merge — ย้ายเข้า template ก่อน update รอบหน้า
 
 ## โครงสร้าง
