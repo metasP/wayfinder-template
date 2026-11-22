@@ -91,6 +91,15 @@ describe("driftAgainstAny", () => {
     assert.deepEqual(r, { repo: main, compared: 4, differs: [], missing: [] })
   })
 
+  test("a later repo that compares no files does not count as a match", async () => {
+    const { repo: main, vault, skillDir } = setup()
+    put(vault, "README.md", "# edited in the vault\n")
+    const empty = mkdtempSync(join(tmpdir(), "tpl-empty-"))
+    const r = await driftAgainstAny({ repos: [main, empty], vault, skillDir })
+    assert.equal(r.repo, main)
+    assert.deepEqual(r.differs, ["README.md"])
+  })
+
   test("reports the drift against the first repo when none matches", async () => {
     const { repo: main, vault, skillDir } = setup()
     const stale = makeRepo()

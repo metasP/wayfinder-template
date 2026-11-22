@@ -91,7 +91,8 @@ export const driftAgainstAny = async ({ repos, ...rest }) => {
   let first = null
   for (const repo of [...new Set(repos)]) {
     const r = { repo, ...(await templateDrift({ repo, ...rest })) }
-    if (r.differs.length === 0 && r.missing.length === 0) return r
+    // เทียบ 0 ไฟล์ (repo ว่าง/ผิดตัว) ไม่นับว่าตรง — ไม่งั้นตัวสำรองผ่านแบบไม่ได้เทียบอะไรเลย
+    if (r.compared > 0 && r.differs.length === 0 && r.missing.length === 0) return r
     first ??= r
   }
   return first
