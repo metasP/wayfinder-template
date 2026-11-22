@@ -66,6 +66,31 @@ describe("wayfinder-next skill", () => {
     }
   })
 
+  // nova-dance-retro-fixes-followup#04: a chip guessed /…/Git/blender (no such folder) and spent four calls on
+  // ls, grep, mdfind and git trailers before it found /…/Documents/blender.
+  test("the chip's cwd and its Repo paths line come from wf repo-path, never a guess", () => {
+    assert.match(SKILL, /`cwd`:[^\n]*node __VAULT__\/_tools\/wf\.mjs repo-path <repo> --json[^\n]*`data\.path`[^\n]*Never build the path/)
+    assert.match(SKILL, /`cwd`:[^\n]*refuses[^\n]*ask the user/)
+    const [start, end] = [SKILL.indexOf("## Chip prompt template"), SKILL.indexOf("## This session never works")]
+    const template = SKILL.slice(start, end)
+    assert.match(template, /`<target repo>` \/ `<main checkout>`[^\n]*wf repo-path <target repo> --json/)
+    const [en, th] = template.split(/^`th`:$/m)
+    assert.match(en, /^Repo paths: <target repo> = <main checkout> · vault = __VAULT__ — [^\n]*never guess/m)
+    assert.match(th, /^ที่อยู่ของ repo: <target repo> = <main checkout> · vault = __VAULT__ — [^\n]*ห้ามเดา/m)
+  })
+
+  test("a no-remote repo that ships scripts/tools/merge_ticket.sh gets a line that runs it", () => {
+    const [start, end] = [SKILL.indexOf("## Chip prompt template"), SKILL.indexOf("## This session never works")]
+    const template = SKILL.slice(start, end)
+    assert.match(template, /no-remote line is picked and `<main checkout>\/scripts\/tools\/merge_ticket\.sh` exists/)
+    assert.match(template, /^For this repo the merge is one command:[^\n]*sh scripts\/tools\/merge_ticket\.sh <branch>[^\n]*stop and report$/m)
+    assert.match(template, /^สำหรับ repo นี้ merge ด้วยคำสั่งเดียว:[^\n]*sh scripts\/tools\/merge_ticket\.sh <branch>[^\n]*หยุดแล้วรายงาน$/m)
+    for (const block of template.split(/^`th`:$/m)) {
+      const prompt = block.slice(block.indexOf("/wayfinder work through the map"))
+      assert.match(prompt, /^<merge line>\n<merge script line>$/m, "the chip prompt does not take the merge script line")
+    }
+  })
+
   // merge-route-fixes#02: the conductor relayed "ผ่าน" to chips 01–07 by SendMessage, auto mode refused every
   // push/merge on it, and Tong typed the approval again in each chip.
   test("the go-ahead is the user's own words in the chip; a relayed approval doesn't count", () => {

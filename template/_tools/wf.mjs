@@ -13,6 +13,7 @@ import lint from "./lib/verbs/lint.mjs"
 import mapStatus from "./lib/verbs/map-status.mjs"
 import migrate from "./lib/verbs/migrate.mjs"
 import release from "./lib/verbs/release.mjs"
+import repoPath from "./lib/verbs/repo-path.mjs"
 import resolve from "./lib/verbs/resolve.mjs"
 import serial from "./lib/verbs/serial.mjs"
 import touches from "./lib/verbs/touches.mjs"
@@ -21,7 +22,7 @@ import stats from "./lib/verbs/stats.mjs"
 import newTicket from "./lib/verbs/new.mjs"
 import wait from "./lib/verbs/wait.mjs"
 
-const VERBS = [frontier, show, lint, chart, mapStatus, newTicket, claim, release, wait, resolve, block, touches, bumpRuns, serial, migrate, stats]
+const VERBS = [frontier, show, lint, chart, mapStatus, newTicket, claim, release, wait, resolve, block, touches, bumpRuns, serial, migrate, stats, repoPath]
 
 const { code, stdout, stderr } = main(process.argv.slice(2), {
   verbs: VERBS,

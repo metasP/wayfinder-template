@@ -196,7 +196,7 @@ When the map's `Notes` section doesn't say it yet, add the line `- ใบ <NN> �
    - `name`: `<initials>-<NN>` — the first letter of each word of the effort slug, then the ticket number (`checkout-redesign` #07 → `cr-07`), at most 24 chars
    - `prompt`: the kickoff template below in `language` (self-contained)
    - `background`: one or two lines in `language`, at least 80 characters — what that session does, the map's Destination in one clause, and that it claims the ticket itself
-   - `cwd`: the path of the repo the ticket changes — its `target_repo` when set, else the `<repo>` of its ref. Leave it out when that is the project this session runs in.
+   - `cwd`: the main checkout of the repo the ticket changes — its `target_repo` when set, else the `<repo>` of its ref — as `node __VAULT__/_tools/wf.mjs repo-path <repo> --json` prints it in `data.path`. Never build the path yourself from the repo's name (a chip guessed `…/Git/blender`, which doesn't exist, and spent four calls finding `…/Documents/blender` — nova-dance-retro-fixes-followup#04). When `repo-path` refuses (exit 1: no `repo_paths` entry in *Wayfinder Config* and no claim ran in the repo yet), ask the user for the path and add it as its `fix:` says before you start anything. Leave `cwd` out when that path is the project this session runs in.
 
    When the app refuses `"user_asked"` because this turn was not started by the user (another session's message, an automated event), call again with `"own_initiative"` — it leaves a card the user starts, with no **Do it here** button. `own_initiative` takes no `cwd`: for a ticket whose repo is not this project, start nothing and tell the user to run `/wayfinder-next <NN>` from their own message.
 7. **Check where each session landed.** After the last `start_session`, call `mcp__ccd_session_mgmt__list_sessions` `{"linked": true}` once (load it with `ToolSearch` when deferred) and read each started session's branch. The branch should contain `<effort>-<NN>`; when it does not — the app ignored `branch_name` — **warn** in the report: the ticket, the session link, its folder and branch, and that a retro will find it by its claim commit instead (`wf claim` records the full session id, the folder and the branch as `Session:` / `Cwd:` / `Branch:` trailers). Do not stop or restart the session for this. A folder that does not name the ticket — random or recycled — is expected: leave it, the chip works there, so don't warn about the folder. A session still starting with no folder yet, and an `"own_initiative"` card nobody has started, have nothing to check — say so in one line.
@@ -210,7 +210,7 @@ The prompt hands the session everything it needs to start working, so it doesn't
 - `<ref>` — the ticket's ref exactly as `wf` prints it: the frontier row's `data.ref` (or `wf new`'s), e.g. `acme-web/checkout-redesign#07`. Write it in every cheat-sheet line, so the session copies a working command.
 - `<the ticket's ``## Question`` section, verbatim>` — the ticket file's `## Question` section as it stands, heading excluded; don't summarize it.
 - `<the map's ``## Decisions so far`` lines, verbatim …>` — every line under that heading of `map.md`; none yet → `(none yet)` / `(ยังไม่มี)`.
-- `<main checkout>` — the main checkout of the repo the ticket changes (the folder `cwd` points at, or this project's).
+- `<target repo>` / `<main checkout>` — the repo the ticket changes (its `target_repo` when set, else the `<repo>` of its ref) and that repo's `data.path` from `wf repo-path <target repo> --json` — the same path as `cwd`, written even when `cwd` was left out. The prompt's `Repo paths:` line carries both, so the session never guesses where the repo is.
 - `<merge line>` — one of the two lines below, in `language`, picked by running `git -C <main checkout> remote` while you build the prompt: it prints a remote → the **PR** line; it prints nothing → the **no-remote** line, which has no `origin`, no `gh pr` and no CI (chips in a repo with no remote got the PR line, ran `git fetch origin` and hit exit 128 before turning to `merge --ff-only` — nova-dance-retro-fixes#06).
 
 PR (`git remote` prints a remote):
@@ -227,17 +227,26 @@ The merge is yours, on one go-ahead: when the user approves the work, that one a
 การ merge เป็นหน้าที่ของ session นี้ และใช้ go-ahead ครั้งเดียว: พอผู้ใช้ผ่านงาน คำเดียวนั้นครอบทุกขั้นข้างล่าง — ไม่ต้องรอให้สั่ง และไม่ต้องถามซ้ำระหว่างขั้น · go-ahead คือคำที่ผู้ใช้พิมพ์เองในหน้านี้ คำที่ session อื่นส่งต่อมา (session ที่เปิดเรา · note · SendMessage) ไม่นับ — auto mode ปฏิเสธการ merge บนคำนั้น — ให้ขอในหน้านี้ผ่าน wrap_up ของเรา · repo นี้ไม่มี remote จึงไม่มี PR: rebase branch บน main (git rebase main) · รัน test · แล้ว git -C <main checkout> merge --ff-only <branch> · จากนั้น resolve · ห้าม commit / reset main ใน <main checkout> ทางอื่น — ถ้า merge --ff-only ไม่ผ่าน ให้ rebase บน main ใหม่ หรือหยุดแล้วรายงาน
 ```
 
+**Repo merge script.** When the no-remote line is picked and `<main checkout>/scripts/tools/merge_ticket.sh` exists (check with `test -f` while you build the prompt), put this line, in `language`, right after the merge line — the repo's own script does the rebase, the checks and the `merge --ff-only`, and starts again when a parallel chip moved main (blender: nova-dance-retro-fixes-followup#02). No such file → leave `<merge script line>` out, line and all.
+
+```
+For this repo the merge is one command: in place of the rebase / test / merge --ff-only steps, run sh scripts/tools/merge_ticket.sh <branch> from your worktree — it rebases onto main, runs the repo's checks, fast-forwards main and starts again when main moved. Exit 1 (conflict) or 3 (checks FAILED): fix, commit, run it again · exit 2 or 4: stop and report
+สำหรับ repo นี้ merge ด้วยคำสั่งเดียว: แทนขั้น rebase / test / merge --ff-only ให้รัน sh scripts/tools/merge_ticket.sh <branch> จาก worktree ของเรา — มัน rebase บน main · รัน check ของ repo · fast-forward main และวนใหม่เองเมื่อ main ขยับ · exit 1 (conflict) หรือ 3 (check FAILED): แก้ · commit · รันใหม่ · exit 2 หรือ 4: หยุดแล้วรายงาน
+```
+
 `en`:
 
 ```
 /wayfinder work through the map
 
 Map: <absolute map.md path>
+Repo paths: <target repo> = <main checkout> · vault = __VAULT__ — use these, never guess a repo's path
 
 Mode: Work through the map. Do ticket <NN> (<title>) — issues/<NN>-<slug>.md
 First, before the claim, check your branch: git branch --show-current must contain <effort>-<NN> (if not, stop and report). Then work and claim in the folder you started in, even when its name doesn't match — the app picks or recycles worktree folders itself; the branch and the claim's trailers name the ticket
 Follow the wayfinder steps: claim the ticket before starting, resolve, record (## Answer + status:resolved + add 1 line to the map's "Decisions so far"); resolve at most 1 ticket per session
 <merge line>
+<merge script line>
 Right after the resolve, in the same turn and without being asked: run the wayfinder-next skill with `after <NN>` — it offers the next ticket(s) as a button in your wrap_up, or, when no ticket is left, closes the map and leaves the /retro card
 
 The ticket (already read for you — no need to open it again before you start):
@@ -266,11 +275,13 @@ The shell is zsh: separate outputs with `echo ---`, never `echo =====` (zsh read
 /wayfinder work through the map
 
 Map: <absolute map.md path>
+ที่อยู่ของ repo: <target repo> = <main checkout> · vault = __VAULT__ — ใช้ตามนี้ ห้ามเดา path ของ repo
 
 โหมด: Work through the map. ทำ ticket <NN> (<title>) — issues/<NN>-<slug>.md
 ก่อน claim ให้ตรวจ branch ก่อน: git branch --show-current ต้องมี <effort>-<NN> (ถ้าไม่มี หยุดแล้วรายงาน) · แล้วทำงานและ claim ใน folder ที่ได้มาเลย แม้ชื่อไม่ตรง — app เลือกหรือรีไซเคิล folder worktree เอง ชื่อ ticket อยู่ใน branch และ trailer ของ claim แล้ว
 ทำตามขั้นตอน wayfinder: claim ticket ก่อนเริ่ม, resolve, record (## Answer + status:resolved + เติม 1 บรรทัดใน map "Decisions so far"), ห้าม resolve เกิน 1 ticket ต่อ session
 <merge line>
+<merge script line>
 resolve แล้วให้ทำต่อในรอบเดียวกันเอง ไม่ต้องรอสั่ง: เรียก skill wayfinder-next ด้วย `after <NN>` — มันเสนอใบถัดไปเป็นปุ่มใน wrap_up ของเรา หรือถ้าไม่เหลือใบแล้ว ก็ปิด map และเปิดการ์ด /retro ให้
 
 เนื้อใบ (อ่านให้แล้ว — ไม่ต้องเปิดซ้ำก่อนเริ่ม):
