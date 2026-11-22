@@ -79,7 +79,8 @@ export default {
       throw invariantError(`no path known for repo ${repo}: Wayfinder Config has no ${CONFIG_KEY} entry and no claim ran in it`, {
         fix: addHint(repo),
       })
-    const remote = mainCheckoutOf(path)?.remote ?? false
+    // null when git can't say (not a work tree): "unknown", never read as "no remote".
+    const remote = mainCheckoutOf(path)?.remote ?? null
     const data = { repo, path, source: fromConfig ? "config" : "claims", remote }
     return { data, text: path }
   },
