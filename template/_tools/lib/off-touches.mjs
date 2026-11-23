@@ -22,6 +22,8 @@ import { branchesNamedFor, caches, existingDirOf, latestClaims, mainCheckoutOf, 
 export const OFF_TOUCHES_RULE = "off-touches"
 const SHOWN_FILES = 5
 const FIX_FILES = 20
+// Reading a worktree's index runs its `core.fsmonitor` command; a lint has no reason to run repo-configured code.
+const NO_FSMONITOR = ["-c", "core.fsmonitor=false"]
 
 const nulSplit = (text) => (text ?? "").split("\0").filter(Boolean)
 
@@ -34,7 +36,7 @@ const changedFiles = (main, cwd, branch) => {
   const onBranch = existsSync(cwd) && out(cwd, ["symbolic-ref", "--quiet", "--short", "HEAD"]) === branch
   const top = onBranch ? out(cwd, ["rev-parse", "--show-toplevel"]) : null
   const local = top
-    ? [...nulSplit(out(top, ["diff", "-z", "--name-only", "HEAD"])), ...nulSplit(out(top, ["ls-files", "-z", "--others", "--exclude-standard"]))]
+    ? [...nulSplit(out(top, [...NO_FSMONITOR, "diff", "-z", "--name-only", "HEAD"])), ...nulSplit(out(top, [...NO_FSMONITOR, "ls-files", "-z", "--others", "--exclude-standard"]))]
     : []
   return [...new Set([...nulSplit(committed), ...local])].sort()
 }
