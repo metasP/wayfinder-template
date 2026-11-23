@@ -343,6 +343,11 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
 - **Chart** — `wf chart <repo/effort> --title "…"` (ได้ `draft`) → grill จนได้ Destination แล้วเขียนลง
   `## Destination` → `wf map-status <repo/effort> active` → แตกใบด้วย `wf new` (ใบที่ blocker ยังไม่มีไฟล์
   ⇒ สร้างทุกใบก่อน แล้วค่อยต่อเส้นด้วย `wf block`)
+  · **`## Notes` บอกเจ้าของระบบที่ใช้ร่วม** — ระบบหรือไฟล์ที่ ≥ 2 ใบแตะ (rig · ช่องควบคุมตา · config · สกิลตัวเดียวกัน)
+  ได้บรรทัดละระบบ: ใบไหนเป็น **เจ้าของ** (เขียน/เปลี่ยนรูป) · ใบไหนแค่ **ใช้** · ช่องว่างที่รู้แล้ว (ของที่ยังไม่มี เช่น ท่าที่เครื่องมือยังทำไม่ได้)
+  ⇒ เช่น `- ตา (eye_L/eye_R): เจ้าของ 06 · 07 อ่านอย่างเดียว · ยังไม่มี blink ซ้อน look-at` · path ของระบบนั้นเข้า `touches:`
+  ของทุกใบที่เขียนมัน ⇒ frontier แยกรอบให้เอง · เหตุ: สองใบที่แตะตาคนละช่องรู้ตัวตอนท้าย และใบที่ไม่รู้ว่าเครื่องมือขาดอะไร
+  กลายเป็นงานแก้เครื่องมือครึ่งใบ (actor-toolkit-retro-fixes#08)
 - **Claim** — `wf claim <ref>` ก่อนทำอะไรทั้งนั้น — มันอ่านใบใหม่ใต้ lock เอง ใบที่ session อื่นเพิ่งจับจะถูกปฏิเสธ
 - **Merge ก่อน resolve** — งานที่แก้ไฟล์ใน branch ของ worktree: **session ที่ทำใบเป็นเจ้าของการ merge** ไม่ต้องรอผู้ใช้สั่ง ·
   **อนุมัติในหน้าของ chip เอง** — คำ "ผ่าน" ที่ session อื่น (ผู้คุม) ส่งต่อมาไม่นับ auto mode ปฏิเสธ push/merge บนคำนั้น ⇒
@@ -368,6 +373,22 @@ node <vault>/_tools/wf.mjs <verb> [args] [--json]
 - **Resolve** — เขียนคำตอบใต้ `## Answer` (สิ่งที่ตัดสิน · ข้อเท็จจริงที่ใบอื่นต้องใช้ · ลิงก์ PR · ลิงก์ asset)
   แล้ว `wf resolve <ref> --gist "…"`
   · **session ที่ทำงานใน worktree**: เขียน Answer ลงใบใน worktree (หรือไฟล์ไหนก็ได้) → `wf resolve <ref> --gist "…" --answer-file <ไฟล์นั้น>`
+  · **ส่งต่อให้ใบถัดไป** — สิ่งที่ใบนี้รู้แล้วและใบที่ยังไม่ปิดต้องใช้ (ท่าพักที่ยังเป็น T-pose · action ที่ยังไม่มี · WARN ที่ปล่อยไว้)
+  ไปอยู่ท้าย `## Answer` ใต้หัวข้อนี้ บรรทัดละใบปลายทาง แล้ว **ก็อบบรรทัดเดียวกันไปท้าย `## Question` ของใบปลายทาง** ด้วย Write/Edit
+  (เนื้อความ ไม่ใช่ frontmatter) — chip ของ `/wayfinder-next` ส่งเนื้อใบไป ไม่ได้ส่ง Answer ของใบอื่น ⇒ ไม่ก็อบ = ใบปลายทางไม่เห็น
+  (09 เขียนถึง 10 ไว้แล้ว แต่ 10 ไม่เห็น):
+
+  ```markdown
+  ### ส่งต่อ
+
+  - **ถึง [[10-‹slug›]]:** แขนที่ไม่ gesture ไม่ถูกแตะ ⇒ stage = T-pose ทั้งช็อต · ยังไม่มี action กอดอก — ตัดสินก่อน build
+  ```
+
+  ไม่มีอะไรส่ง = ไม่ต้องมีหัวข้อนี้ · ใบปลายทางที่ resolve แล้ว = เขียนลง `## Notes` ของ map แทน
+  · **`off-touches`** (warn) — ใบที่มี `touches:` ซึ่ง branch ของ claim แก้ไฟล์นอกรายการ (commit ตั้งแต่แยกจาก main + ไฟล์ที่ยังไม่
+  commit ใน worktree ของ claim): `wf lint` เตือนตอนใบยัง `claimed` และ `wf resolve` เตือนอีกรอบ — fix คือ `wf touches <ref> …`
+  ที่เติมไฟล์ (หรือ glob) ⇒ frontier เห็นการชนก่อน merge · ไม่โดน: ใบที่ไม่มี `touches:` (ถือทั้ง repo อยู่แล้ว) · branch ของ main checkout
+  · claim ใน vault ไม่นับไฟล์ใต้โฟลเดอร์ effort ของใบเอง
 - **หลัง resolve** — แตกใบใหม่ด้วย `wf new` · ย้าย fog ที่ชัดแล้วออกจาก Not yet specified · ใบที่เลย
   Destination ⇒ `wf resolve <ref> --out-of-scope --gist "…"` (ไม่เข้า Decisions so far)
 - **รอของนอก** — `wf wait <ref> --note "…"` · เลิกรอหรือปล่อยมือ ⇒ `wf release <ref>`

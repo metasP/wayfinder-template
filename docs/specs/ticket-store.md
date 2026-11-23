@@ -451,6 +451,13 @@ What every write verb does, in order:
   local branch of the `Cwd:` repository with `<effort>-<NN>` as a path segment, optionally a hex `-<suffix>`
   (`claude/<effort>-<NN>-7c4ab6`) — the message says `found by name`. No finding for a claim with neither `Branch:` nor a branch named for the ticket, main's own branch, a deleted branch, a branch whose commits main already has (`git cherry`: a local squash), no
   repository, or an `## Answer` linking a pull request (`/pull/N` — the PR owns the merge).
+- A ticket with `touches:` whose latest claim's branch changes a file no entry covers (`off-touches`,
+  actor-toolkit-retro-fixes#08): the branch's commits since it left main (`<main>...<branch>`) plus, while the claim's
+  worktree has the branch out, its uncommitted and untracked files. `wf lint` checks `claimed` tickets; the post-write
+  lint checks the ticket a verb wrote while `claimed` or `resolved` (so `wf resolve` warns, and `wf touches` clears it).
+  The fix is the `wf touches` command that adds the files. No finding without `touches:` (the type default), without a
+  branch, on main's own branch, or for a claim in the vault under the ticket's own effort folder
+  (`_tools/lib/off-touches.mjs`).
 - An open pull request, in a repository with an `origin` that the effort's claims ran in, whose patch is already in
   `origin/<main>` (`stale-pr`, merge-route-fixes#03): a PR left open after its commits reached main by cherry-pick
   or squash, which later tickets mistake for pending work. Only the post-write lint of `resolve` and of

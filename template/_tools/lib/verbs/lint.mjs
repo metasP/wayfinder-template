@@ -8,6 +8,7 @@ import { effortArg } from "../args.mjs"
 import { withTicketsBlock } from "../edit.mjs"
 import { EXIT } from "../errors.mjs"
 import { effortKeyOf } from "../pipeline.mjs"
+import { OFF_TOUCHES_RULE, offTouchesFindings } from "../off-touches.mjs"
 import { UNMERGED_RULE, unmergedFindings } from "../unmerged.mjs"
 
 const DRIFT_RULE = "tickets-block-drift"
@@ -34,11 +35,14 @@ const textOf = (findings, errors, warnings, rule) => {
 }
 
 // The findings for the named efforts (all when none are named), of one rule with --rule: core's, plus
-// `unmerged-branch`, which reads git outside the vault.
+// `unmerged-branch` and `off-touches` (claimed tickets), which read git outside the vault.
 const findingsOf = (index, { vault, today, config, sort }, named, rule) => {
   const inNamed = (ref) => !named.size || named.has(effortKeyOf(ref))
   const unmerged = !rule || rule === UNMERGED_RULE ? unmergedFindings(vault, index, (t) => inNamed(t.ref)) : []
-  const all = [...lint(index, { today, config, sort }), ...unmerged].sort(byFinding)
+  const offTouches = !rule || rule === OFF_TOUCHES_RULE
+    ? offTouchesFindings(vault, index, (t) => t.status === "claimed" && inNamed(t.ref))
+    : []
+  const all = [...lint(index, { today, config, sort }), ...unmerged, ...offTouches].sort(byFinding)
   return all.filter((f) => inNamed(f.ref) && (!rule || f.rule === rule))
 }
 

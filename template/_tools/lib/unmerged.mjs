@@ -41,12 +41,12 @@ export function latestClaims(vault) {
   return claims
 }
 
-const out = (cwd, args) => {
+export const out = (cwd, args) => {
   const r = runGit(cwd, args)
   return r.ok ? r.stdout.trim() : null
 }
 
-const realOf = (path) => {
+export const realOf = (path) => {
   try {
     return realpathSync(path)
   } catch {
@@ -83,9 +83,9 @@ export const mainCheckoutOf = (dir) => {
 }
 
 // Per-run caches, so a vault with hundreds of claims costs a few git calls per repository, not per claim.
-const caches = () => ({ mains: new Map(), merged: new Map(), branches: new Map() })
+export const caches = () => ({ mains: new Map(), merged: new Map(), branches: new Map() })
 
-const memo = (map, key, compute) => {
+export const memo = (map, key, compute) => {
   if (!map.has(key)) map.set(key, compute())
   return map.get(key)
 }
@@ -161,7 +161,7 @@ export function unmergedTickets(vault, index, keep = () => true) {
 }
 
 // The branches of the claim's repository named for the ticket — for a claim without `Branch:`.
-const branchesNamedFor = (ref, cwd, cache) => {
+export const branchesNamedFor = (ref, cwd, cache) => {
   const re = ticketBranchRe(ref)
   const dir = cwd && re && existingDirOf(cwd)
   const main = dir && memo(cache.mains, dir, () => mainCheckoutOf(dir))

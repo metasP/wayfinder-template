@@ -21,6 +21,7 @@ import { takeLock } from "./lock.mjs"
 import { assertCommittable, commitFiles, gitDirs, indexEntries, restoreIndex } from "./repo.mjs"
 import { checkSchema, isTrackerNote, locateVault, noteOf, readText, readVault, worktreeVaultOf } from "./store.mjs"
 import { stalePrFindings } from "./stale-prs.mjs"
+import { offTouchesFindings } from "./off-touches.mjs"
 import { unmergedFindings } from "./unmerged.mjs"
 
 /** The `repo/effort` a ref or vault path belongs to, or null (`Wayfinder Picks`). */
@@ -125,14 +126,19 @@ const transact = (verb, args, { vault, checkout, gitDir, trees, warnings }) => {
   return { ...plan, verb: verb.name, files, commit, index: after, vault, config, sort, today }
 }
 
+// A ticket being worked or just resolved: its branch hasn't merged yet, so widening `touches:` still helps.
+const OFF_TOUCHES_STATUSES = new Set(["claimed", "resolved"])
+
 // Step 8, after the lock is released: the touched efforts' findings, as warnings.
 const lintTouched = (outcome) => {
   const efforts = touchedEfforts(outcome.files, outcome.ref)
   const touched = (ref) => efforts.has(effortKeyOf(ref))
-  const unmerged = unmergedFindings(outcome.vault, outcome.index, (t) => outcome.files.includes(t.path))
+  const written = (t) => outcome.files.includes(t.path)
+  const unmerged = unmergedFindings(outcome.vault, outcome.index, written)
+  const offTouches = offTouchesFindings(outcome.vault, outcome.index, (t) => written(t) && OFF_TOUCHES_STATUSES.has(t.status))
   const stale = closingEffort(outcome)
   const stalePrs = stale ? stalePrFindings(outcome.vault, outcome.index, stale) : []
-  return [...lint(outcome.index, outcome).filter((f) => touched(f.ref)), ...unmerged, ...stalePrs].sort(byFinding)
+  return [...lint(outcome.index, outcome).filter((f) => touched(f.ref)), ...unmerged, ...offTouches, ...stalePrs].sort(byFinding)
 }
 
 // The effort a verb just closed something in — a ticket resolved, or the map done — whose repositories are
