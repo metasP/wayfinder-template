@@ -97,6 +97,15 @@ describe("off-touches", () => {
     assert.deepEqual(lintOff(s), [])
   })
 
+  test("past 20 files the fix widens by folder, and a leading - stays a path", () => {
+    const s = setup()
+    for (let i = 0; i < 21; i++) write(s.worktree, `gen/out-${i}.txt`, "x\n")
+    write(s.worktree, "-odd.md", "x\n")
+    const [f] = lintOff(s)
+    assert.match(f.message, /changes 22 files outside touches/)
+    assert.equal(f.fix, "wf touches 'r/e#01' 'src/**' ./-odd.md 'gen/**'")
+  })
+
   test("--rule off-touches lists only this rule", () => {
     const s = setup()
     s.commit("README.md")

@@ -15,11 +15,13 @@
 // a Cwd with no repository left above it. Like `unmerged-branch`, it reads git outside the vault, so it is
 // not part of core's pure `lint()`.
 import { existsSync } from "node:fs"
+import { dirname } from "node:path"
 import { globsOverlap } from "./rounds.mjs"
 import { branchesNamedFor, caches, existingDirOf, latestClaims, mainCheckoutOf, memo, out, realOf, shellWord } from "./unmerged.mjs"
 
 export const OFF_TOUCHES_RULE = "off-touches"
 const SHOWN_FILES = 5
+const FIX_FILES = 20
 
 const nulSplit = (text) => (text ?? "").split("\0").filter(Boolean)
 
@@ -39,8 +41,9 @@ const changedFiles = (main, cwd, branch) => {
 
 const covered = (file, touches) => touches.some((entry) => globsOverlap(file, entry))
 
-// The ticket's own effort folder, when the claim ran in the vault: its notes are written there, not work.
-const ownNotes = (vault, main, t) => (realOf(main.path) === realOf(vault) ? `${t.effortKey}/` : null)
+// The ticket's own effort folder, when the claim ran in the vault (main checkout or a worktree of it — `vault`
+// is the worktree when wf runs from one): its notes are written there, not work.
+const ownNotes = (vaultMain, main, t) => (vaultMain && realOf(main.path) === realOf(vaultMain.path) ? `${t.effortKey}/` : null)
 
 /** `[{ ref, branch, files, touches }]`: the tickets `keep(t)` selects whose branch writes outside `touches:`. */
 export function offTouchesTickets(vault, index, keep = () => true) {
@@ -48,13 +51,14 @@ export function offTouchesTickets(vault, index, keep = () => true) {
   if (!tickets.length) return []
   const claims = latestClaims(vault)
   const cache = caches()
+  const vaultMain = memo(cache.mains, vault, () => mainCheckoutOf(vault))
   return tickets.flatMap((t) => {
     const claim = claims.get(t.ref)
     const dir = claim?.cwd && existingDirOf(claim.cwd)
     const main = dir && memo(cache.mains, dir, () => mainCheckoutOf(dir))
     if (!main) return []
     const branches = claim.branch ? [claim.branch] : branchesNamedFor(t.ref, claim.cwd, cache)
-    const skip = ownNotes(vault, main, t)
+    const skip = ownNotes(vaultMain, main, t)
     return branches
       .filter((branch) => branch !== main.branch)
       .flatMap((branch) => {
@@ -71,6 +75,13 @@ const listOf = (files) => {
   return files.length > SHOWN_FILES ? `${shown} … (+${files.length - SHOWN_FILES} more)` : shown
 }
 
+// The entries the fix adds: each file, or — past FIX_FILES — each file's folder as `<dir>/**`, so a branch of
+// generated files doesn't make a command nobody pastes. `./` keeps a name starting with `-` from reading as a flag.
+const fixEntries = (files) => {
+  const entries = files.length > FIX_FILES ? files.map((f) => (f.includes("/") ? `${dirname(f)}/**` : f)) : files
+  return [...new Set(entries)].map((e) => (e.startsWith("-") ? `./${e}` : e))
+}
+
 /** `off-touches` warnings, finding-shaped like core's `lint()`. The fix widens `touches:` by the files. */
 export const offTouchesFindings = (vault, index, keep) =>
   offTouchesTickets(vault, index, keep).map((o) => ({
@@ -78,5 +89,5 @@ export const offTouchesFindings = (vault, index, keep) =>
     rule: OFF_TOUCHES_RULE,
     ref: o.ref,
     message: `branch ${o.branch} changes ${o.files.length} file${o.files.length === 1 ? "" : "s"} outside touches: ${listOf(o.files)} — add them (or a glob) so frontier sees the collision`,
-    fix: ["wf", "touches", o.ref, ...o.touches, ...o.files].map(shellWord).join(" "),
+    fix: ["wf", "touches", o.ref, ...o.touches, ...fixEntries(o.files)].map(shellWord).join(" "),
   }))
