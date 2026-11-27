@@ -185,6 +185,28 @@ describe("wayfinder-next skill", () => {
     assert.match(SKILL, /\*\*The session that started the chips reports changes only\.\*\*[^\n]*never write "still waiting/)
   })
 
+  // hair-v2-retro-fixes#07: ticket 01's wrap_up offered "start 02" while 02's chip was already open (started, not
+  // yet claimed, so still on the frontier) — the orchestrator had to warn the user not to click it.
+  test("after <NN> drops tickets that already have a session before offering the button", () => {
+    const after = SKILL.slice(SKILL.indexOf("### After a ticket resolves"), SKILL.indexOf("## Validate before spawning"))
+    assert.match(after, /mcp__ccd_session_mgmt__list_sessions[^\n]*\{"linked": true\}/, "the walk does not list the open sessions")
+    assert.match(after, /`<effort>-<NN>`[^\n]*`-LNN-`/, "the walk does not say how a session names its ticket")
+    assert.match(after, /already has a session[^\n]*never offer/, "a ticket with an open chip can still be offered")
+    assert.match(after, /every round-1 row already has a session[^\n]*no button/, "an all-taken batch still gets a button")
+  })
+
+  // hair-v2-retro-fixes#07: the user's "ผ่าน" relayed from the orchestrator couldn't merge, so they typed it again
+  // in the chip — the rule was right, but nobody had said so when the chip opened.
+  test("the chip prompt and the report tell the user to answer gates and approve in the chip itself", () => {
+    const [start, end] = [SKILL.indexOf("## Chip prompt template"), SKILL.indexOf("## This session never works")]
+    const [en, th] = SKILL.slice(start, end).split(/^`th`:$/m)
+    assert.match(en, /^Check gates and the go-ahead: the user answers them in this chip itself[^\n]*wrap_up/m)
+    assert.match(th, /^ด่านตรวจและคำผ่าน: ผู้ใช้ตอบด่านตรวจ\/ผ่าน ใน chip นี้เอง[^\n]*wrap_up/m)
+    const report = SKILL.slice(SKILL.indexOf("8. **Report**"), SKILL.indexOf("## Chip prompt template"))
+    assert.match(report, /answer[^\n]*gates[^\n]*approve[^\n]*in that chip itself/, "the report does not tell the user where to answer")
+    assert.match(report, /ตอบด่านตรวจ\/ผ่าน ใน chip นี้เอง/, "the report has no th wording")
+  })
+
   test("takes the batch from the frontier's round 1 instead of judging collisions itself", () => {
     assert.match(SKILL, /\*\*The batch is the first 3 rows with `round: 1`\*\*/)
     assert.match(SKILL, /`collides_with`/)
