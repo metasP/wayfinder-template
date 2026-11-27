@@ -10,6 +10,45 @@ it reads the conventional-commit messages merged to `main`, keeps a release PR o
 GitHub release notes. `feat` bumps the minor version, `fix` the patch, and while the version is
 below 1.0.0 a breaking change (`feat!`) bumps the minor too.
 
+## [0.8.0](https://github.com/metasP/wayfinder-template/compare/v0.7.0...v0.8.0) (2026-11-27)
+
+
+### Features
+
+* /to-tickets charts the map from its cards — wf chart --destination --active, wf new --card ([a147321](https://github.com/metasP/wayfinder-template/commit/a14732147e4a301382c1ce570a92919a23fb2d1c))
+* /to-tickets charts the map from its cards — wf chart --destination --active, wf new --card ([3803500](https://github.com/metasP/wayfinder-template/commit/3803500255fe0ebc090117a669875982e0c64f14))
+* npm run install-skills installs and checks skills; doctor §10 tries the main checkout ([f20f097](https://github.com/metasP/wayfinder-template/commit/f20f097719b0027e2a5f47fdb3648501cb0c93b9))
+* npm run install-skills installs and checks skills; doctor §10 tries the main checkout ([c75aeab](https://github.com/metasP/wayfinder-template/commit/c75aeabe68d018dd9eb8c1afc2e45ddc206acd3d))
+* off-touches lint; README names shared-system owners and a handoff section ([03f0256](https://github.com/metasP/wayfinder-template/commit/03f0256c03bff3d3f435e54f38eee4b1e753fb87))
+* off-touches lint; README names shared-system owners and a handoff section (actor-toolkit-retro-fixes[#08](https://github.com/metasP/wayfinder-template/issues/08)) ([9580f39](https://github.com/metasP/wayfinder-template/commit/9580f39d6757605dadd75e4b8e7972ad3c1b21ac))
+* wf new --blocker and wf block read a bare NN as a ticket in the same effort ([65956af](https://github.com/metasP/wayfinder-template/commit/65956af558db6bfaf94af9032094d75cbaf5f705))
+* wf new --blocker and wf block read a bare NN as a ticket in the same effort (hair-v2-retro-fixes[#08](https://github.com/metasP/wayfinder-template/issues/08)) ([85a77dd](https://github.com/metasP/wayfinder-template/commit/85a77dd7e3d15151037dcbd082e6af79cda16ff2))
+* wf repo-path names a repo's main checkout; chip prompt carries it ([7dc5a74](https://github.com/metasP/wayfinder-template/commit/7dc5a74a7293c1a0bba101f88882aeb1f5524acb))
+* wf repo-path names a repo's main checkout; chip prompt carries it ([b2dada7](https://github.com/metasP/wayfinder-template/commit/b2dada7b65dd9ff0da7c0ab166e9eb41e4be91a6))
+
+
+### Bug Fixes
+
+* chip prompt merges origin/main into a pushed branch instead of rebasing ([3dc127a](https://github.com/metasP/wayfinder-template/commit/3dc127ac6f3ae1daf47a5da3c3e544c25f4d0297))
+* chip prompt merges origin/main into a pushed branch instead of rebasing ([a05a9d0](https://github.com/metasP/wayfinder-template/commit/a05a9d06707b608b3b7f6f310148fb1b1aab00e4))
+* chip prompt picks a no-remote merge line when the target repo has no remote ([97655c4](https://github.com/metasP/wayfinder-template/commit/97655c4433ddfe579688314ef7c0f88f11fb6c57))
+* chip prompt picks a no-remote merge line when the target repo has no remote ([3dd0193](https://github.com/metasP/wayfinder-template/commit/3dd019344557aee949d476c00a0dcaefe8cb7371))
+* chip prompt stays in the folder it got instead of moving worktrees ([c8349ab](https://github.com/metasP/wayfinder-template/commit/c8349ab43c256ccd0b38247aca2e47658d2a4f1e))
+* chip prompt stays in the folder it got instead of moving worktrees ([090e1db](https://github.com/metasP/wayfinder-template/commit/090e1db462951569deeb0b5e3a1922c09cdd8dcf))
+* driftAgainstAny never counts a repo that compared no files as a match ([c0ab634](https://github.com/metasP/wayfinder-template/commit/c0ab6346b34c8b55bf4443756fe432dc3e228434))
+* off-touches reads the worktree with core.fsmonitor off ([70de0b2](https://github.com/metasP/wayfinder-template/commit/70de0b2e3e0dc56763e9f439aa9ec373feeced3e))
+* off-touches skips the effort folder from a vault worktree; fix widens by folder past 20 files ([5e52cac](https://github.com/metasP/wayfinder-template/commit/5e52cac6cee1df0b75ef31a8ae3e905be3ed8ffd))
+* wayfinder-next after NN skips tickets with an open session; chips say answer gates in the chip ([46522e2](https://github.com/metasP/wayfinder-template/commit/46522e220f4e78d55606dab403d3594216f9dc8c))
+* wayfinder-next after NN skips tickets with an open session; chips say answer gates in the chip (hair-v2-retro-fixes[#07](https://github.com/metasP/wayfinder-template/issues/07)) ([2e0b1e3](https://github.com/metasP/wayfinder-template/commit/2e0b1e3fe49758ce967252b2fc731d897206456c))
+* wf chart refuses a # or ## heading in --destination ([6ec1771](https://github.com/metasP/wayfinder-template/commit/6ec1771e6fd1d4c10601a14e48c849d693d045fd))
+* wf repo-path reports remote null when git can't tell ([dcce002](https://github.com/metasP/wayfinder-template/commit/dcce002816a735bcbc22a611b260ba537dfa10f6))
+
+
+### Documentation
+
+* bring hair-v2-retro-fixes[#06](https://github.com/metasP/wayfinder-template/issues/06) touches/Notes rules into template README ([973216f](https://github.com/metasP/wayfinder-template/commit/973216f064cd07c0dbc4b4095157c62c21a06c44))
+* template README gets hair-v2-retro-fixes[#06](https://github.com/metasP/wayfinder-template/issues/06) rules ([34d1a06](https://github.com/metasP/wayfinder-template/commit/34d1a06be0b72a402dacd28b3af32d081519df28))
+
 ## [0.7.0](https://github.com/metasP/wayfinder-template/compare/v0.6.0...v0.7.0) (2026-11-20)
 
 
