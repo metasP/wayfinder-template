@@ -18,6 +18,7 @@ const usageText = (verbs) =>
     ...verbs.map((v) => `  ${v.usage.padEnd(52)}  ${v.summary}`),
     "",
     `<ref> names a ticket: ${REF_FORMS.join(" · ")} (e.g. wf claim my-repo/my-effort#04)`,
+    "a blocker (--blocker of wf new, <blocker-ref> of wf block) may also be NN alone: that ticket in the same effort (e.g. --blocker 01)",
     "",
     "exit codes: 0 ok · 1 invariant violated · 2 usage or environment error",
   ].join("\n")

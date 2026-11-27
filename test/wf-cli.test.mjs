@@ -53,6 +53,7 @@ describe("usage errors exit 2", () => {
     assert.match(top.stdout, /wf new <repo\/effort> --type research\|prototype\|grilling\|task\|R\|P\|G\|T --title "…" \[--question "…" \| stdin\] \[--blocker ref\]… \[--target-repo R\] \[--touches glob\]… \[--card url\] \[--json\]/)
     assert.match(top.stdout, /wf resolve <ref> --gist "…" \[--answer-file <file>\] \[--out-of-scope\] \[--json\]/)
     assert.match(top.stdout, /wf block <ref> <blocker-ref> \[--remove\] \[--json\]/)
+    assert.match(top.stdout, /a blocker .* may also be NN alone: that ticket in the same effort/)
     assert.match(top.stdout, /wf chart <repo\/effort> --title "…" \[--destination "…" \[--active\]\] \[--serial\] \[--json\]/)
     assert.match(top.stdout, /wf map-status <repo\/effort> active\|paused\|dropped\|done \[--note "…"\] \[--superseded-by <repo\/effort>\] \[--force\] \[--json\]/)
     assert.match(top.stdout, /wf bump-runs <repo\/effort> \[--count k\] \[--json\]/)
