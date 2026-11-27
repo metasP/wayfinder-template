@@ -111,22 +111,36 @@ export function joinSplitRefs(positionals) {
 }
 
 // The usage error for an argument that isn't a ticket ref: the forms that work, and an example built
-// from what was typed (its effort, or its digits) so the fix is one edit away.
+// from what was typed (its effort, or its digits) so the fix is one edit away. With `home` (a
+// blocker's effort) the example is the full ref in that effort and the bare `NN` that names it.
 const badTicketRef = (input, verb, { home } = {}) => {
+  if (home) return badBlockerRef(input, verb, home)
   const id = parseRef(input)
   const effort = id && id.nn == null ? formatRef(id) : null
-  const forms = [...REF_FORMS, ...(home ? ["[[NN-slug]]"] : [])].join(" · ")
+  const forms = REF_FORMS.join(" · ")
   const nn = (String(input).match(/\d+/)?.[0] ?? "01").padStart(2, "0")
   const example = `wf ${verb ?? "show"} ${effort ?? "my-repo/my-effort"}#${effort ? "01" : nn}`
   const lead = effort ? `name the ticket: ${effort}#NN (or ${effort} NN)` : `use ${forms}`
   return usageError(`cannot read ${JSON.stringify(input)} as a ticket ref — ${lead}; e.g. ${example}`)
 }
 
+const badBlockerRef = (input, verb, home) => {
+  const key = formatRef({ repo: home.repo, effort: home.effort })
+  const forms = [...REF_FORMS, "[[NN-slug]]", `NN (a ticket in ${key})`].join(" · ")
+  const say = verb === "new" ? (ref) => `--blocker ${ref}` : (ref) => `wf ${verb ?? "block"} ${home.ref ?? "<ref>"} ${ref}`
+  return usageError(`cannot read ${JSON.stringify(input)} as a ticket ref — use ${forms}; e.g. ${say(`${key}#01`)} or ${say("01")}`)
+}
+
+// A blocker typed as its number alone — `01`, `1` or `#01` — names a ticket in the blocked ticket's effort.
+const SHORT_NN_RE = /^#?(\d+)$/
+
 /**
- * The ticket ref an argument names — any of `REF_FORMS`, a full-path wikilink, or a bare
- * `[[NN-slug]]` when `home` (`{ repo, effort }`) gives it an effort. The ticket may not exist.
+ * The ticket ref an argument names — any of `REF_FORMS`, a full-path wikilink, or, when `home`
+ * (`{ repo, effort }`) gives it an effort, a bare `[[NN-slug]]` or a bare `NN`. The ticket may not exist.
  */
 export function ticketRefArg(input, { roots, verb }, { home } = {}) {
+  const short = home ? SHORT_NN_RE.exec(String(input).trim()) : null
+  if (short) return formatRef({ repo: home.repo, effort: home.effort, nn: Number(short[1]) })
   const id = parseRef(vaultRelative(input, roots), { home })
   if (!id || id.nn == null) throw badTicketRef(input, verb, { home })
   return formatRef(id)

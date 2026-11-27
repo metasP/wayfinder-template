@@ -143,6 +143,17 @@ describe("wf new refuses", () => {
     assert.deepEqual(r.json.error.details, ["fix: wf map-status r/e active"])
   })
 
+  test("--blocker NN (or #NN) names a ticket in the same effort (hair-v2-retro-fixes#08)", () => {
+    const vault = vaultWith(effort([ticket("r/e/issues/01-a.md", { title: "A" }), ticket("r/e/issues/02-b.md", { title: "B" })]))
+    const r = run(vault, ["new", "r/e", "--type", "task", "--title", "C", "--question", "q", "--blocker", "01", "--blocker", "#2"])
+    assert.equal(r.code, 0, r.stderr)
+    assert.match(frontmatterOf(vault, "r/e/issues/03-c.md"), /^blockers:\n {2}- "\[\[01-a\]\]"\n {2}- "\[\[02-b\]\]"\n/m)
+  })
+
+  test("a --blocker that isn't a ref shows the full form in this effort (exit 2)", () => {
+    unchanged(vaultWith(effort()), ["new", "r/e", "--type", "task", "--title", "T", ...Q, "--blocker", "a1"], 2, /cannot read "a1" as a ticket ref — use .*NN \(a ticket in r\/e\).*; e\.g\. --blocker r\/e#01 or --blocker 01/)
+  })
+
   test("a blocker that resolves to no ticket (exit 1)", () => {
     unchanged(vaultWith(effort()), ["new", "r/e", "--type", "task", "--title", "T", ...Q, "--blocker", "r/e#09"], 1, /blocker r\/e#09 resolves to no ticket/, "wf new r/e --type <type> --title <title> (create the blocker first)")
   })
@@ -406,6 +417,14 @@ describe("wf block", () => {
     assert.equal(lastCommit(vault).subject, "wf(block): r/e#01")
   })
 
+  test("a bare NN blocker names a ticket in the blocked ticket's effort, adding and removing", () => {
+    const vault = graph()
+    assert.equal(run(vault, ["block", "r/e#01", "04"]).code, 0)
+    assert.match(frontmatterOf(vault, "r/e/issues/01-a.md"), /^blockers:\n {2}- "\[\[04-d\]\]"\n/m)
+    assert.equal(run(vault, ["block", "r/e", "01", "4", "--remove"]).code, 0)
+    assert.match(frontmatterOf(vault, "r/e/issues/01-a.md"), /^blockers: \[\]$/m)
+  })
+
   test("adds a full-path wikilink across efforts, keeping the existing blockers", () => {
     const vault = graph()
     assert.equal(run(vault, ["block", "r/e#02", "o/x#01"]).code, 0)
@@ -465,6 +484,10 @@ describe("wf block refuses", () => {
 
   test("a ref that isn't a ticket (exit 2)", () => {
     refused(chain(), ["block", "r/e#01", "nonsense"], 2, /cannot read "nonsense" as a ticket ref/)
+  })
+
+  test("a bare NN that is no ticket in the effort names the full ref", () => {
+    refused(chain(), ["block", "r/e#01", "09"], 1, /blocker r\/e#09 resolves to no ticket/)
   })
 })
 
